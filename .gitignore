@@ -1,0 +1,12 @@
+build/
+install/
+log/
+*.log
+*.so
+*.o
+*.a
+*.pyc
+__pycache__/
+.idea/
+.ros/
+tmp/

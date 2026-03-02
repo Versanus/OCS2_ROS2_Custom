@@ -1,0 +1,9 @@
+{
+    "terminal.integrated.profiles.linux": {
+        "quad_ocs2": {
+            "path": "/bin/bash",
+            "args": ["-c", "source ~/quad_ocs2_ws/setup_quad.sh && exec bash"]
+        }
+    },
+    "terminal.integrated.defaultProfile.linux": "quad_ocs2"
+}
