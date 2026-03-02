@@ -20,9 +20,9 @@ model_settings
 
 swing_trajectory_config
 {
-  liftOffVelocity               0.05
-  touchDownVelocity            -0.1
-  swingHeight                   0.08
+  liftOffVelocity               0.03
+  touchDownVelocity            -0.05
+  swingHeight                   0.04
   swingTimeScale                0.15
 }
 
@@ -155,7 +155,7 @@ initialState
    ;; Base Pose: [position, orientation] ;;
    (6,0)  0.0     ; p_base_x
    (7,0)  0.0     ; p_base_y
-   (8,0)  0.1     ; p_base_z
+   (8,0)  0.2     ; p_base_z
    (9,0)  0.0     ; theta_base_z
    (10,0) 0.0     ; theta_base_y
    (11,0) 0.0     ; theta_base_x
@@ -214,7 +214,7 @@ Q
 ; control weight matrix
 R
 {
-  scaling 1e-3
+  scaling 5e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -247,7 +247,7 @@ R
 
 frictionConeSoftConstraint
 {
-  frictionCoefficient    0.3
+  frictionCoefficient    0.6
 
   ; relaxed log barrier parameters
   mu                     0.1
@@ -264,14 +264,6 @@ selfCollision
   ; Self Collision pairs
   collisionLinkPairs
   {
-    [0] "LF_calf, RF_calf"
-    [1] "LH_calf, RH_calf"
-    [2] "LF_calf, LH_calf"
-    [3] "RF_calf, RH_calf"
-    [4] "LF_FOOT, RF_FOOT"
-    [5] "LH_FOOT, RH_FOOT"
-    [6] "LF_FOOT, LH_FOOT"
-    [7] "RF_FOOT, RH_FOOT"
   }
 
   minimumDistance  0.05
@@ -284,14 +276,14 @@ selfCollision
 ; Whole body control
 torqueLimitsTask
 {
-   (0,0)  33.5     ; HAA
-   (1,0)  33.5     ; HFE
-   (2,0)  33.5     ; KFE
+   (0,0)  20.5     ; HAA
+   (1,0)  20.5     ; HFE
+   (2,0)  20.5     ; KFE
 }
 
 frictionConeTask
 {
-  frictionCoefficient    0.3
+  frictionCoefficient    0.6
 }
 
 swingLegTask
