@@ -1,5 +1,5 @@
 centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
-stateEstimate true // true: use steat estimate, false: use real state feedback from simulator
+stateEstimate false // true: use steat estimate, false: use real state feedback from simulator
 
 legged_robot_interface
 {

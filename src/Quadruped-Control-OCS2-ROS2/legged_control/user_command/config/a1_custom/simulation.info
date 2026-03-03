@@ -1,8 +1,8 @@
 controller
 {
-    timestep  0.002
-    mpc_control_frequency  50
-    wbc_control_frequency  200
+    timestep  0.001
+    mpc_control_frequency  40
+    wbc_control_frequency  400
 }
 
 render

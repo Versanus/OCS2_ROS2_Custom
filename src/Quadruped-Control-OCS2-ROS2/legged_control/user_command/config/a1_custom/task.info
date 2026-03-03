@@ -3,7 +3,7 @@ stateEstimate false // true: use steat estimate, false: use real state feedback 
 
 legged_robot_interface
 {
-  verbose                               true  // show the loaded parameters
+  verbose                               false  // show the loaded parameters
   useAnalyticalGradientsDynamics        false
   useAnalyticalGradientsConstraints     false
 }
@@ -20,9 +20,9 @@ model_settings
 
 swing_trajectory_config
 {
-  liftOffVelocity               0.03
-  touchDownVelocity            -0.05
-  swingHeight                   0.04
+  liftOffVelocity               0.05
+  touchDownVelocity            -0.1
+  swingHeight                   0.08
   swingTimeScale                0.15
 }
 
@@ -214,7 +214,7 @@ Q
 ; control weight matrix
 R
 {
-  scaling 5e-3
+  scaling 10e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -247,7 +247,7 @@ R
 
 frictionConeSoftConstraint
 {
-  frictionCoefficient    0.6
+  frictionCoefficient    0.7
 
   ; relaxed log barrier parameters
   mu                     0.1
@@ -276,14 +276,14 @@ selfCollision
 ; Whole body control
 torqueLimitsTask
 {
-   (0,0)  20.5     ; HAA
-   (1,0)  20.5     ; HFE
-   (2,0)  20.5     ; KFE
+   (0,0)  20.0     ; HAA
+   (1,0)  20.0     ; HFE
+   (2,0)  20.0     ; KFE
 }
 
 frictionConeTask
 {
-  frictionCoefficient    0.6
+  frictionCoefficient    0.7
 }
 
 swingLegTask

@@ -1,8 +1,8 @@
 controller
 {
-    timestep  0.001
+    timestep  0.002
     mpc_control_frequency  40
-    wbc_control_frequency  500
+    wbc_control_frequency  200
 }
 
 render
@@ -10,7 +10,7 @@ render
   render_appearance true
   render_inertia false
   visualize_contacts true
-  tracking_base true
+  tracking_base false
   render_frequency 60
 }
 

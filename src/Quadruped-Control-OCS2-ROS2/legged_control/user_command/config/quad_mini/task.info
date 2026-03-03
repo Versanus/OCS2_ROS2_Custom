@@ -1,9 +1,9 @@
-centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
+centroidalModelType             1      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
 stateEstimate false // true: use steat estimate, false: use real state feedback from simulator
 
 legged_robot_interface
 {
-  verbose                               true  // show the loaded parameters
+  verbose                               false  // show the loaded parameters
   useAnalyticalGradientsDynamics        false
   useAnalyticalGradientsConstraints     false
 }
@@ -14,7 +14,7 @@ model_settings
   phaseTransitionStanceTime     0.1
 
   verboseCppAd                  true
-  recompileLibrariesCppAd       false
+  recompileLibrariesCppAd       true
   modelFolderCppAd              /tmp/legged_control/quad_mini
 }
 
@@ -99,8 +99,8 @@ ipm
   g_min                                 1e-6
   computeLagrangeMultipliers            true
   printSolverStatistics                 true
-  printSolverStatus                     true
-  printLinesearch                       true
+  printSolverStatus                     false
+  printLinesearch                       false
   useFeedbackPolicy                     false
   integratorType                        RK2
   threadPriority                        50
@@ -155,24 +155,24 @@ initialState
    ;; Base Pose: [position, orientation] ;;
    (6,0)  0.0     ; p_base_x
    (7,0)  0.0     ; p_base_y
-   (8,0)  0.12     ; p_base_z
+   (8,0)  0.10     ; p_base_z
    (9,0)  0.0     ; theta_base_z
    (10,0) 0.0     ; theta_base_y
    (11,0) 0.0     ; theta_base_x
 
    ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
-   (12,0) 0.00   ; LF_HAA
-   (13,0)  -0.17   ; LF_HFE
-   (14,0) 0.92   ; LF_KFE
-   (15,0) 0.0   ; LH_HAA
-   (16,0)  -0.17   ; LH_HFE
-   (17,0) 0.92   ; LH_KFE
-   (18,0)  0.0   ; RF_HAA
-   (19,0)  0.17   ; RF_HFE
-   (20,0) 0.92   ; RF_KFE
-   (21,0)  0.0   ; RH_HAA
-   (22,0)  0.17   ; RH_HFE
-   (23,0) 0.92   ; RH_KFE
+   (12,0) -0.20   ; LF_HAA
+   (13,0)  0.72   ; LF_HFE
+   (14,0) -1.44   ; LF_KFE
+   (15,0) -0.20   ; LH_HAA
+   (16,0)  0.72   ; LH_HFE
+   (17,0) -1.44   ; LH_KFE
+   (18,0)  0.20   ; RF_HAA
+   (19,0)  0.72   ; RF_HFE
+   (20,0) -1.44   ; RF_KFE
+   (21,0)  0.20   ; RH_HAA
+   (22,0)  0.72   ; RH_HFE
+   (23,0) -1.44   ; RH_KFE
 }
 
 ; standard state weight matrix
@@ -214,7 +214,7 @@ Q
 ; control weight matrix
 R
 {
-  scaling 10.0
+  scaling 10e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -247,7 +247,7 @@ R
 
 frictionConeSoftConstraint
 {
-  frictionCoefficient    0.3
+  frictionCoefficient    0.7
 
   ; relaxed log barrier parameters
   mu                     0.1
@@ -266,7 +266,7 @@ selfCollision
   {
   }
 
-  minimumDistance  0.001
+  minimumDistance  0.05
 
   ; relaxed log barrier parameters
   mu      1e-2
@@ -276,14 +276,14 @@ selfCollision
 ; Whole body control
 torqueLimitsTask
 {
-   (0,0)  15.5     ; HAA
-   (1,0)  15.5     ; HFE
-   (2,0)  15.5     ; KFE
+   (0,0)  40.0     ; HAA
+   (1,0)  40.0     ; HFE
+   (2,0)  40.0     ; KFE
 }
 
 frictionConeTask
 {
-  frictionCoefficient    0.3
+  frictionCoefficient    0.7
 }
 
 swingLegTask

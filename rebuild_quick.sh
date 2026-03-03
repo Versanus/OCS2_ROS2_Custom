@@ -10,6 +10,6 @@ source /opt/ros/humble/setup.bash
 source install/setup.bash
 source mujoco_env.sh
 
-colcon build --packages-select mujoco_simulator user_command --symlink-install
+colcon build --packages-select mujoco_simulator user_command --symlink-install --cmake-clean-cache
 
 source install/local_setup.sh

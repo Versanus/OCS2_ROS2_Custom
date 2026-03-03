@@ -61,6 +61,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
 
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
 
 /******************************************************************************************************/
 /******************************************************************************************************/
@@ -119,6 +122,47 @@ LeggedRobotInterface::LeggedRobotInterface(const std::string& taskFile,
   ocs2::loadData::loadEigenMatrix(taskFile, "initialState", initialState_);
 }
 
+void printPinocchioDebug(const pinocchio::Model& model, pinocchio::Data& data) {
+  std::cout << "\n========== PINOCCHIO DEBUG ==========\n";
+
+  // 1) Dimensions
+  std::cout << "nq: " << model.nq << std::endl;
+  std::cout << "nv: " << model.nv << std::endl;
+  std::cout << "njoints: " << model.njoints << std::endl;
+
+  // 2) Total Mass
+  double totalMass = pinocchio::computeTotalMass(model);
+  std::cout << "Total mass (Pinocchio): " << totalMass << std::endl;
+
+  // 3) Trunk inertia
+  if (model.existBodyName("trunk")) {
+    auto id = model.getBodyId("trunk");
+    std::cout << "Trunk inertia matrix (Pinocchio):\n"
+              << model.inertias[id].matrix() << std::endl;
+  } else {
+    std::cout << "Trunk body not found!\n";
+  }
+
+  // 4) Gravity torque test
+  Eigen::VectorXd q = Eigen::VectorXd::Zero(model.nq);
+  Eigen::VectorXd v = Eigen::VectorXd::Zero(model.nv);
+
+  pinocchio::computeGeneralizedGravity(model, data, q);
+
+  std::cout << "Gravity torque vector (Pinocchio):\n"
+            << data.g.transpose() << std::endl;
+
+  std::cout << "======================================\n\n";
+
+  for (int i = 1; i < model.njoints; ++i) {
+  std::cout << "Joint " << i << ": "
+            << model.names[i]
+            << " axis = "
+            << model.joints[i].shortname()
+            << std::endl;
+  }
+}
+
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
@@ -131,7 +175,12 @@ void LeggedRobotInterface::setupOptimalConrolProblem(
   pinocchioInterfacePtr_.reset(
       new ocs2::PinocchioInterface(ocs2::centroidal_model::createPinocchioInterface(
           urdfFile, modelSettings_.jointNames)));
-
+  // ===== DEBUG PINOCCHIO MODEL =====
+  {
+    auto& model = pinocchioInterfacePtr_->getModel();
+    auto& data  = pinocchioInterfacePtr_->getData();
+    printPinocchioDebug(model, data);
+  }
   // CentroidalModelInfo
   centroidalModelInfo_ = ocs2::centroidal_model::createCentroidalModelInfo(
       *pinocchioInterfacePtr_, ocs2::centroidal_model::loadCentroidalType(taskFile),
