@@ -1,4 +1,4 @@
-centroidalModelType             1      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
+centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
 stateEstimate false // true: use steat estimate, false: use real state feedback from simulator
 
 legged_robot_interface
@@ -14,15 +14,15 @@ model_settings
   phaseTransitionStanceTime     0.1
 
   verboseCppAd                  true
-  recompileLibrariesCppAd       true
+  recompileLibrariesCppAd       false
   modelFolderCppAd              /tmp/legged_control/quad_mini
 }
 
 swing_trajectory_config
 {
-  liftOffVelocity               0.05
-  touchDownVelocity            -0.1
-  swingHeight                   0.04
+  liftOffVelocity               0.2
+  touchDownVelocity            -0.05
+  swingHeight                   0.03
   swingTimeScale                0.15
 }
 
@@ -155,24 +155,27 @@ initialState
    ;; Base Pose: [position, orientation] ;;
    (6,0)  0.0     ; p_base_x
    (7,0)  0.0     ; p_base_y
-   (8,0)  0.10     ; p_base_z
+   (8,0)  0.16     ; p_base_z
    (9,0)  0.0     ; theta_base_z
    (10,0) 0.0     ; theta_base_y
    (11,0) 0.0     ; theta_base_x
 
    ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
-   (12,0) -0.20   ; LF_HAA
-   (13,0)  0.72   ; LF_HFE
-   (14,0) -1.44   ; LF_KFE
-   (15,0) -0.20   ; LH_HAA
-   (16,0)  0.72   ; LH_HFE
-   (17,0) -1.44   ; LH_KFE
-   (18,0)  0.20   ; RF_HAA
-   (19,0)  0.72   ; RF_HFE
-   (20,0) -1.44   ; RF_KFE
-   (21,0)  0.20   ; RH_HAA
-   (22,0)  0.72   ; RH_HFE
-   (23,0) -1.44   ; RH_KFE
+   (12,0) 0.23
+   (13,0) 0.17
+   (14,0) -0.67
+
+   (15,0) -0.23
+   (16,0) 0.17
+   (17,0) -0.67
+
+   (18,0) 0.18
+   (19,0) 0.12
+   (20,0) -0.72
+
+   (21,0) -0.19
+   (22,0) 0.13
+   (23,0) -0.72
 }
 
 ; standard state weight matrix
@@ -214,7 +217,7 @@ Q
 ; control weight matrix
 R
 {
-  scaling 10e-3
+  scaling 0.7e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -247,7 +250,7 @@ R
 
 frictionConeSoftConstraint
 {
-  frictionCoefficient    0.7
+  frictionCoefficient    0.8
 
   ; relaxed log barrier parameters
   mu                     0.1
@@ -276,20 +279,20 @@ selfCollision
 ; Whole body control
 torqueLimitsTask
 {
-   (0,0)  40.0     ; HAA
-   (1,0)  40.0     ; HFE
-   (2,0)  40.0     ; KFE
+   (0,0)  12.0     ; HAA
+   (1,0)  12.0     ; HFE
+   (2,0)  12.0     ; KFE
 }
 
 frictionConeTask
 {
-  frictionCoefficient    0.7
+  frictionCoefficient    0.8
 }
 
 swingLegTask
 {
-    kp                   350
-    kd                   37
+    kp                   150
+    kd                   15
 }
 
 weight

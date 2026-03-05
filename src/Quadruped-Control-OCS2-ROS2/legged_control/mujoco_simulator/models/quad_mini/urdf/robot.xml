@@ -22,7 +22,7 @@
     <material name="orange" rgba="0.82 0.42 0.21 1"/>
     <material name="black"  rgba="0 0 0 1"/>
     <material name="blue"   rgba="0.2 0.6 1 1"/>
-    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true" />
+    <material name="matplane" reflectance="0.0" texture="texplane" texrepeat="1 1" texuniform="true" />
     
     <mesh name="base_mesh" file="base_link.obj"/>
 
@@ -54,7 +54,7 @@
         type="plane"
         material="matplane"
         friction="1 0.005 0.0001"
-        margin="0.001"
+        margin="0.0001"
         condim="3"/>
 
   <geom type="box" size="0.12 0.04 0.04" pos="0.1 0 0" rgba="0 0 1 0.3"/>
@@ -67,7 +67,7 @@
     <inertial
       pos="-0.0069912 0.01165 -0.0071119"
       mass="6.0"
-      diaginertia="0.0158533 0.0377999 0.0456542"/>
+      diaginertia="0.0014012 0.0066079 0.0070508"/>
     <!-- BODY COLLISION - BASIC BOX -->
     <geom type="box"
           size="0.15 0.075 0.05"
@@ -136,6 +136,7 @@
                         frictionloss="0.2"/>
           <geom type="mesh"
                 mesh="FR_calf_mesh"
+                material="orange"
                 contype="1"
                 conaffinity="1"/>
 
@@ -196,6 +197,7 @@
                     damping="0.01"
                     frictionloss="0.2"/>
           <geom type="mesh"
+                material="orange"
                 mesh="FL_calf_mesh"
                 contype="1"
                 conaffinity="1"/>
@@ -260,6 +262,7 @@
                                 frictionloss="0.2"/>
           <geom type="mesh"
                 mesh="HR_calf_mesh"
+                material="orange"
                 contype="1"
                 conaffinity="1"/>
 
@@ -322,6 +325,7 @@
                             frictionloss="0.2"/>
           <geom type="mesh"
                 mesh="HL_calf_mesh"
+                material="orange"
                 contype="1"
                 conaffinity="1"/>
 
@@ -353,8 +357,8 @@
   <sensor>
     <!-- ===== IMU ===== -->
     <framequat name="imu_quat" objtype="site" objname="imu_sensor_site"/>
-    <gyro name="imu_gyro" site="imu_sensor_site"/>
-    <accelerometer name="imu_acc" site="imu_sensor_site"/>
+    <gyro name="imu_angvel" site="imu_sensor_site"/>
+    <accelerometer name="imu_linacc" site="imu_sensor_site"/>
 
     
     <!-- ===== Joint Positions ===== -->
@@ -362,13 +366,14 @@
     <jointpos  joint="LF_HFE"/>
     <jointpos  joint="LF_KFE"/>
 
+    <jointpos joint="LH_HAA"/>
+    <jointpos  joint="LH_HFE"/>
+    <jointpos  joint="LH_KFE"/>
+
     <jointpos  joint="RF_HAA"/>
     <jointpos joint="RF_HFE"/>
     <jointpos  joint="RF_KFE"/>
 
-    <jointpos joint="LH_HAA"/>
-    <jointpos  joint="LH_HFE"/>
-    <jointpos  joint="LH_KFE"/>
 
     <jointpos joint="RH_HAA"/>
     <jointpos  joint="RH_HFE"/>
@@ -380,13 +385,14 @@
     <jointvel  joint="LF_HFE"/>
     <jointvel joint="LF_KFE"/>
 
-    <jointvel  joint="RF_HAA"/>
-    <jointvel joint="RF_HFE"/>
-    <jointvel joint="RF_KFE"/>
-
     <jointvel  joint="LH_HAA"/>
     <jointvel  joint="LH_HFE"/>
     <jointvel  joint="LH_KFE"/>
+
+
+    <jointvel  joint="RF_HAA"/>
+    <jointvel joint="RF_HFE"/>
+    <jointvel joint="RF_KFE"/>
 
     <jointvel  joint="RH_HAA"/>
     <jointvel  joint="RH_HFE"/>
@@ -401,20 +407,20 @@
 
     <!-- ================= ACTUATORS ================= -->
   <actuator>
-    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
+    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
+    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
+    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
-    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-40 40" ctrllimited="true"/>
+    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
   </actuator>
 </mujoco>
