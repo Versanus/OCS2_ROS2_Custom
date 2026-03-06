@@ -10,13 +10,13 @@ render
   render_appearance true
   render_inertia false
   visualize_contacts false
-  tracking_base false
+  tracking_base true
   render_frequency 60
 }
 
 pid
 {
-    kp                   10
+    kp                   13
     kd                   0.20
 }
 
