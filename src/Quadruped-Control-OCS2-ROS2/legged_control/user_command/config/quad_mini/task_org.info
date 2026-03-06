@@ -181,43 +181,43 @@ initialState
 ; standard state weight matrix
 Q
 {
-  scaling 1.0e+0
+  scaling 1.5e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   30.0     ; vcom_x
-  (1,1)   30.0     ; vcom_y
-  (2,2)   30.0    ; vcom_z
-  (3,3)   100.0     ; L_z / robotMass
-  (4,4)   100.0     ; L_y / robotMass
-  (5,5)   100.0     ; L_x / robotMass
+  (0,0)   50.0     ; vcom_x
+  (1,1)   400.0     ; vcom_y
+  (2,2)   75.0    ; vcom_z
+  (3,3)   10.0     ; L_z / robotMass
+  (4,4)   250.0     ; L_y / robotMass
+  (5,5)   600.0     ; L_x / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   500.0   ; p_base_x
+  (6,6)   150.0   ; p_base_x
   (7,7)   500.0   ; p_base_y
-  (8,8)   500.0   ; p_base_z
-  (9,9)   1500.0    ; theta_base_z
-  (10,10) 1500.0    ; theta_base_y
-  (11,11) 1500.0    ; theta_base_x
+  (8,8)   2000.0   ; p_base_z
+  (9,9)   150.0    ; theta_base_z
+  (10,10) 200.0    ; theta_base_y
+  (11,11) 600.0    ; theta_base_x
 
   ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
   (12,12) 5.0     ; LF_HAA
-  (13,13) 5.0     ; LF_HFE
-  (14,14) 5.0     ; LF_KFE
+  (13,13) 2.0     ; LF_HFE
+  (14,14) 2.0     ; LF_KFE
   (15,15) 5.0     ; LH_HAA
-  (16,16) 5.0     ; LH_HFE
-  (17,17) 5.0     ; LH_KFE
+  (16,16) 2.0     ; LH_HFE
+  (17,17) 2.0     ; LH_KFE
   (18,18) 5.0     ; RF_HAA
-  (19,19) 5.0     ; RF_HFE
-  (20,20) 5.0     ; RF_KFE
+  (19,19) 2.0     ; RF_HFE
+  (20,20) 2.0     ; RF_KFE
   (21,21) 5.0     ; RH_HAA
-  (22,22) 5.0     ; RH_HFE
-  (23,23) 5.0     ; RH_KFE
+  (22,22) 2.0     ; RH_HFE
+  (23,23) 2.0     ; RH_KFE
 }
 
 ; control weight matrix
 R
 {
-  scaling 1.0e-3
+  scaling 0.90e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -234,18 +234,18 @@ R
   (11,11) 1.0       ; right_hind_force
 
   ;; foot velocity relative to base: [LF, LH, RF, RH] (uses the Jacobian at nominal configuration) ;;
-  (12,12) 3000.0    ; x
-  (13,13) 3000.0    ; y
-  (14,14) 3000.0    ; z
-  (15,15) 3000.0    ; x
-  (16,16) 3000.0    ; y
-  (17,17) 3000.0    ; z
-  (18,18) 3000.0    ; x
-  (19,19) 3000.0    ; y
-  (20,20) 3000.0    ; z
-  (21,21) 3000.0    ; x
-  (22,22) 3000.0    ; y
-  (23,23) 3000.0    ; z
+  (12,12) 5250.0    ; x
+  (13,13) 5250.0    ; y
+  (14,14) 5250.0    ; z
+  (15,15) 5250.0    ; x
+  (16,16) 5250.0    ; y
+  (17,17) 5250.0    ; z
+  (18,18) 5250.0    ; x
+  (19,19) 5250.0    ; y
+  (20,20) 5250.0    ; z
+  (21,21) 5250.0    ; x
+  (22,22) 5250.0    ; y
+  (23,23) 5250.0    ; z
 }
 
 frictionConeSoftConstraint

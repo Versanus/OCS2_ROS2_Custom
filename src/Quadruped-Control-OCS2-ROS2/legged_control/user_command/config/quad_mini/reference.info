@@ -1,5 +1,5 @@
-targetDisplacementVelocity          1.0;
-targetRotationVelocity              0.50;
+targetDisplacementVelocity          1.00;
+targetRotationVelocity              0.80;
 
 comHeight                           0.19
 
