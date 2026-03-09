@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
   // std::cerr << "Loading gait file: " << gaitCommandFile << std::endl;
   GaitKeyboardPublisher gaitCommand(node, gaitCommandFile, robotName, true);
 
-  const ocs2::scalar_array_t relativeBaseLimit{10.0, 10.0, 0.2, 360.0};
+  const ocs2::scalar_array_t relativeBaseLimit{100.0, 100.0, 0.2, 360.0};
   // const std::string referenceFile = "/home/zhx/Desktop/zhx_legged_ocs2_ros2/src/legged_control/user_command/config/a1/reference.info";
   const std::string referenceFile =
       node->get_parameter("referenceFile").as_string();
