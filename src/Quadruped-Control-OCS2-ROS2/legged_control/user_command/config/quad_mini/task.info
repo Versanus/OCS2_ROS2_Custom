@@ -71,12 +71,12 @@ ddp
 ; Multiple_Shooting SQP settings
 sqp
 {
-  nThreads                              4
-  dt                                    0.01
+  nThreads                              6
+  dt                                    0.015
   sqpIteration                          1
   deltaTol                              1e-3
   g_max                                 1e-2
-  g_min                                 1e-6
+  g_min                                 1e-4
   inequalityConstraintMu                0.1
   inequalityConstraintDelta             5.0
   projectStateInputEqualityConstraints  true
@@ -126,7 +126,7 @@ rollout
 {
   AbsTolODE                       1e-4
   RelTolODE                       1e-3
-  timeStep                        0.01
+  timeStep                        0.015
   integratorType                  ODE45
   maxNumStepsPerSecond            10000
   checkNumericalStability         false
@@ -184,40 +184,40 @@ Q
   scaling 1.0e+0
 
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
-  (0,0)   30.0     ; vcom_x
-  (1,1)   30.0     ; vcom_y
-  (2,2)   30.0    ; vcom_z
+  (0,0)   100.0     ; vcom_x
+  (1,1)   100.0     ; vcom_y
+  (2,2)   200.0    ; vcom_z
   (3,3)   100.0     ; L_z / robotMass
-  (4,4)   100.0     ; L_y / robotMass
-  (5,5)   100.0     ; L_x / robotMass
+  (4,4)   500.0     ; L_y / robotMass
+  (5,5)   1500.0     ; L_x / robotMass
 
   ;; Base Pose: [position, orientation] ;;
   (6,6)   500.0   ; p_base_x
   (7,7)   500.0   ; p_base_y
-  (8,8)   500.0   ; p_base_z
-  (9,9)   1500.0    ; theta_base_z
-  (10,10) 1500.0    ; theta_base_y
-  (11,11) 1500.0    ; theta_base_x
+  (8,8)   3000.0   ; p_base_z
+  (9,9)   100.0    ; theta_base_z
+  (10,10) 200.0    ; theta_base_y
+  (11,11) 2000.0    ; theta_base_x
 
   ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
-  (12,12) 5.0     ; LF_HAA
-  (13,13) 5.0     ; LF_HFE
-  (14,14) 5.0     ; LF_KFE
-  (15,15) 5.0     ; LH_HAA
-  (16,16) 5.0     ; LH_HFE
-  (17,17) 5.0     ; LH_KFE
-  (18,18) 5.0     ; RF_HAA
-  (19,19) 5.0     ; RF_HFE
-  (20,20) 5.0     ; RF_KFE
-  (21,21) 5.0     ; RH_HAA
-  (22,22) 5.0     ; RH_HFE
-  (23,23) 5.0     ; RH_KFE
+  (12,12) 3.0     ; LF_HAA
+  (13,13) 3.0     ; LF_HFE
+  (14,14) 3.0     ; LF_KFE
+  (15,15) 3.0     ; LH_HAA
+  (16,16) 3.0     ; LH_HFE
+  (17,17) 3.0     ; LH_KFE
+  (18,18) 3.0     ; RF_HAA
+  (19,19) 3.0     ; RF_HFE
+  (20,20) 3.0     ; RF_KFE
+  (21,21) 3.0     ; RH_HAA
+  (22,22) 3.0     ; RH_HFE
+  (23,23) 3.0     ; RH_KFE
 }
 
 ; control weight matrix
 R
 {
-  scaling 1.0e-3
+  scaling 0.70e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -234,18 +234,18 @@ R
   (11,11) 1.0       ; right_hind_force
 
   ;; foot velocity relative to base: [LF, LH, RF, RH] (uses the Jacobian at nominal configuration) ;;
-  (12,12) 3000.0    ; x
-  (13,13) 3000.0    ; y
-  (14,14) 3000.0    ; z
-  (15,15) 3000.0    ; x
-  (16,16) 3000.0    ; y
-  (17,17) 3000.0    ; z
-  (18,18) 3000.0    ; x
-  (19,19) 3000.0    ; y
-  (20,20) 3000.0    ; z
-  (21,21) 3000.0    ; x
-  (22,22) 3000.0    ; y
-  (23,23) 3000.0    ; z
+  (12,12) 2000.0    ; x
+  (13,13) 2000.0    ; y
+  (14,14) 2000.0    ; z
+  (15,15) 2000.0    ; x
+  (16,16) 2000.0    ; y
+  (17,17) 2000.0    ; z
+  (18,18) 2000.0    ; x
+  (19,19) 2000.0    ; y
+  (20,20) 2000.0    ; z
+  (21,21) 2000.0    ; x
+  (22,22) 2000.0    ; y
+  (23,23) 2000.0    ; z
 }
 
 frictionConeSoftConstraint
@@ -279,7 +279,7 @@ selfCollision
 ; Whole body control
 torqueLimitsTask
 {
-   (0,0)  12.0     ; HAA
+   (0,0)  6.0     ; HAA
    (1,0)  12.0     ; HFE
    (2,0)  12.0     ; KFE
 }
@@ -292,7 +292,7 @@ frictionConeTask
 swingLegTask
 {
     kp                   150
-    kd                   15
+    kd                   12
 }
 
 weight

@@ -16,7 +16,7 @@ render
 
 pid
 {
-    kp                   13
-    kd                   0.20
+    kp                   7.5
+    kd                   0.30
 }
 
