@@ -1,4 +1,10 @@
-cd ~/quad_ocs2_ws
+#!/bin/bash
+
+set -e
+
+WS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+cd "${WS_DIR}"
 
 rm -rf build/motion_control
 rm -rf install/motion_control

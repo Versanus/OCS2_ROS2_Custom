@@ -1,0 +1,289 @@
+<mujoco model="b2_description">
+  <compiler angle="radian" meshdir="../assets/"/>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512" />
+    <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 0.15 0.2" width="512" height="512" mark="cross" markrgb=".8 .8 .8" />
+    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true" />
+
+    <mesh name="base_link" file="base_link.obj"/>
+    <mesh name="FR_hip" file="FR_hip.obj"/>
+    <mesh name="FR_thigh" file="FR_thigh.obj"/>
+    <mesh name="FR_calf" file="FR_calf.obj"/>
+    <mesh name="FL_hip" file="FL_hip.obj"/>
+    <mesh name="FL_thigh" file="FL_thigh.obj"/>
+    <mesh name="FL_calf" file="FL_calf.obj"/>
+    <mesh name="RR_hip" file="RR_hip.obj"/>
+    <mesh name="RR_thigh" file="RR_thigh.obj"/>
+    <mesh name="RR_calf" file="RR_calf.obj"/>
+    <mesh name="RL_hip" file="RL_hip.obj"/>
+    <mesh name="RL_thigh" file="RL_thigh.obj"/>
+    <mesh name="RL_calf" file="RL_calf.obj"/>
+  </asset>
+
+  <worldbody>
+    <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false" />
+    <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1" />
+    <geom type="box" size="0.25 0.1 0.11" pos="0.1 0 0" rgba="0 0 1 0.3"/>
+    <geom size="0.0005 0.0005 0.0005" type="box" contype="0" conaffinity="0" group="1" density="0"/>
+    <geom name="floor" pos="0 0 0" size="15 15 1" type="plane" material="matplane" margin="0.001" condim="3" friction="1 0.005 0.0001" />
+    <body name="trunk" pos="0 0 0.8">
+      <site name="imu_sensor_site" pos="0 -0.02341 0.04927" />
+      <inertial pos="0.000458 0.005261 0.000665" mass="35.86" fullinertia="0.27466 1.0618 1.1825 -0.000622 0.00315 -0.00139"/>
+      <joint name="floating_base" type="free" limited="false" actuatorfrclimited="false"/>
+      <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="base_link" rgba="0.7 0.7 0.7 1"/>
+      <geom group="2" rgba="1 0.423529 0.0392157 0.5" type="box" size="0.25 0.14 0.075"/>
+
+      <body name="FR_hip" pos="0.3285 -0.072 0">
+        <inertial pos="-0.009305 0.010228 0.000264" mass="2.673" fullinertia="0.0026431 0.0046728 0.0034208 -0.00019234 -6.76E-06 7.16E-06"/>
+        <joint name="RF_HAA" pos="0 0 0" axis="1 0 0" range="-0.87 0.87" actuatorfrcrange="-200 200"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FR_hip" rgba="0.7 0.7 0.7 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0 -0.12 0" euler="1.5707963267948966 0 0" type="cylinder" size="0.07 0.025"/>
+        <body name="FR_thigh" pos="0 -0.11973 0">
+          <inertial pos="-0.006279 0.032049 -0.057835" mass="4.536" fullinertia="0.06229908 0.06139927 0.008199745 -0.000877808 -0.003647464 -0.008353671"/>
+          <joint name="RF_HFE" pos="0 0 0" axis="0 1 0" range="-0.94 4.69" actuatorfrcrange="-200 200"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FR_thigh" rgba="0.7 0.7 0.7 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.03 0 -0.2" euler="0 1.57 0" type="box" size="0.125 0.014 0.02"/>
+          <body name="FR_calf" pos="0 8.6986E-05 -0.35">
+            <inertial pos="0.012422 0 -0.12499" mass="0.404" fullinertia="0.01143 0.011534 0.000331 0 0.000643 0"/>
+            <joint name="RF_KFE" pos="0 0 0" axis="0 1 0" range="-2.82 -0.43" actuatorfrcrange="-320 320"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FR_calf" rgba="0.7 0.7 0.7 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.002 0 -0.03" euler="0 1.2 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.022 0 -0.1" euler="0 1.35 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.036 0 -0.225" euler="0 1.53 0" type="box" size="0.075 0.01225 0.0075"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.023 0 -0.31" euler="0 2 0" type="box" size="0.025 0.014 0.0175"/>
+            <body name="RF_FOOT" pos="0 0 -0.35">
+              <inertial pos="-0.006511 0 -0.010144" mass="0.126" fullinertia="3.8E-05 4.1E-05 4.2E-05 0 1.1E-05 0"/>
+              <geom contype="0" conaffinity="0" group="1" density="0" type="sphere" size="0.03" rgba="0 0.8 0 1"/>
+              <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.57 0 0" type="sphere" size="0.032" name="RF_FOOT_geom" friction="0.4 0.005 0.0001"/>
+            </body>
+          </body>
+          <body name="FR_calf_rotor" pos="0 0.05788 0">
+            <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+          </body>
+        </body>
+        <body name="FR_thigh_rotor" pos="0 0.00798 0">
+          <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+        </body>
+      </body>
+
+      <body name="FL_hip" pos="0.3285 0.072 0">
+        <inertial pos="-0.003841 -0.009068 0" mass="2.673" fullinertia="0.0033188 0.0048743 0.0037087 7.16E-05 -3.77E-07 4E-09"/>
+        <joint name="LF_HAA" pos="0 0 0" axis="1 0 0" range="-0.87 0.87" actuatorfrcrange="-200 200"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FL_hip" rgba="0.7 0.7 0.7 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0 0.12 0" euler="1.5707963267948966 0 0" type="cylinder" size="0.07 0.025"/>
+        <body name="FL_thigh" pos="0 0.11973 0">
+          <inertial pos="-0.006279 -0.032049 -0.057835" mass="4.536" fullinertia="0.062299 0.061399 0.0081997 0.00087781 -0.0036475 0.0083537"/>
+          <joint name="LF_HFE" pos="0 0 0" axis="0 1 0" range="-0.94 4.69" actuatorfrcrange="-200 200"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FL_thigh" rgba="0.7 0.7 0.7 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.025 0 -0.16" euler="0 1.57 0" type="box" size="0.16 0.02225 0.027"/>
+          <body name="FL_calf" pos="0 -8.6984E-05 -0.35">
+            <inertial pos="0.012422 0 -0.12499" mass="0.404" fullinertia="0.01143 0.011534 0.000331 0 0.000643 0"/>
+            <joint name="LF_KFE" pos="0 0 0" axis="0 1 0" range="-2.82 -0.43" actuatorfrcrange="-320 320"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="FL_calf" rgba="0.7 0.7 0.7 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.002 0 -0.03" euler="0 1.2 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.022 0 -0.1" euler="0 1.35 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.036 0 -0.225" euler="0 1.53 0" type="box" size="0.075 0.01225 0.0075"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.023 0 -0.31" euler="0 2 0" type="box" size="0.025 0.014 0.0175"/>
+            <body name="LF_FOOT" pos="0 0 -0.35">
+              <inertial pos="-0.006511 0 -0.010144" mass="0.126" fullinertia="3.8E-05 4.1E-05 4.2E-05 0 1.1E-05 0"/>
+              <geom contype="0" conaffinity="0" group="1" density="0" type="sphere" size="0.03" rgba="0 0.8 0 1"/>
+              <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.57 0 0" type="sphere" size="0.032" name="LF_FOOT_geom" friction="0.4 0.005 0.0001"/>
+            </body>
+          </body>
+          <body name="FL_calf_rotor" pos="0 -0.05788 0">
+            <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+          </body>
+        </body>
+        <body name="FL_thigh_rotor" pos="0 -0.00798 0">
+          <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+        </body>
+      </body>
+
+      <body name="RR_hip" pos="-0.3285 -0.072 0">
+        <inertial pos="0.003841 0.009068 0" mass="2.673" fullinertia="0.0033188 0.0048743 0.0037087 7.16E-05 3.77E-07 -4E-09"/>
+        <joint name="RH_HAA" pos="0 0 0" axis="1 0 0" range="-0.87 0.87" actuatorfrcrange="-200 200"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RR_hip" rgba="0.7 0.7 0.7 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0 -0.12 0" euler="1.5707963267948966 0 0" type="cylinder" size="0.07 0.025"/>
+        <body name="RR_thigh" pos="0 -0.11973 0">
+          <inertial pos="-0.006279 0.032049 -0.057835" mass="4.536" fullinertia="0.062299 0.061399 0.0081997 -0.00087781 -0.0036475 -0.0083537"/>
+          <joint name="RH_HFE" pos="0 0 0" axis="0 1 0" range="-0.94 4.69" actuatorfrcrange="-200 200"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RR_thigh" rgba="0.7 0.7 0.7 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.03 0 -0.2" euler="0 1.57 0" type="box" size="0.125 0.014 0.02"/>
+          <body name="RR_calf" pos="0 8.6986E-05 -0.35">
+            <inertial pos="0.012422 0 -0.12499" mass="0.404" fullinertia="0.01143 0.011534 0.000331 0 0.000643 0"/>
+            <joint name="RH_KFE" pos="0 0 0" axis="0 1 0" range="-2.82 -0.43" actuatorfrcrange="-320 320"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RR_calf" rgba="0.7 0.7 0.7 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.002 0 -0.03" euler="0 1.2 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.022 0 -0.1" euler="0 1.35 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.036 0 -0.225" euler="0 1.53 0" type="box" size="0.075 0.01225 0.0075"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.023 0 -0.31" euler="0 2 0" type="box" size="0.025 0.014 0.0175"/>
+            <body name="RH_FOOT" pos="0 -8.6984E-05 -0.35">
+              <inertial pos="-0.006511 0 -0.010144" mass="0.126" fullinertia="3.8E-05 4.1E-05 4.2E-05 0 1.1E-05 0"/>
+              <geom contype="0" conaffinity="0" group="1" density="0" type="sphere" size="0.03" rgba="0 0.8 0 1"/>
+              <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.57 0 0" type="sphere" size="0.032" name="RH_FOOT_geom" friction="0.4 0.005 0.0001"/>
+            </body>
+          </body>
+          <body name="RR_calf_rotor" pos="0 0.05788 0">
+            <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+          </body>
+        </body>
+        <body name="RR_thigh_rotor" pos="0 0.00798 0">
+          <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+        </body>
+      </body>
+
+      <body name="RL_hip" pos="-0.3285 0.072 0">
+        <inertial pos="0.009305 -0.010228 0.000264" mass="2.673" fullinertia="0.0026431 0.0046728 0.0034208 -0.00019234 6.76E-06 -7.16E-06"/>
+        <joint name="LH_HAA" pos="0 0 0" axis="1 0 0" range="-0.87 0.87" actuatorfrcrange="-200 200"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RL_hip" rgba="0.7 0.7 0.7 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0 0.12 0" euler="1.5707963267948966 0 0" type="cylinder" size="0.07 0.025"/>
+        <body name="RL_thigh" pos="0 0.11973 0">
+          <inertial pos="-0.006279 -0.032049 -0.057835" mass="4.536" fullinertia="0.06229908 0.06139927 0.008199745 0.000877808 -0.003647464 0.008353671"/>
+          <joint name="LH_HFE" pos="0 0 0" axis="0 1 0" range="-0.94 4.69" actuatorfrcrange="-200 200"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RL_thigh" rgba="0.7 0.7 0.7 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.03 0 -0.2" euler="0 1.57 0" type="box" size="0.125 0.014 0.02"/>
+          <body name="RL_calf" pos="0 -8.6984E-05 -0.35">
+            <inertial pos="0.012422 0 -0.12499" mass="0.404" fullinertia="0.01143 0.011534 0.000331 0 0.000643 0"/>
+            <joint name="LH_KFE" pos="0 0 0" axis="0 1 0" range="-2.82 -0.43" actuatorfrcrange="-320 320"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" type="mesh" mesh="RL_calf" rgba="0.7 0.7 0.7 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.002 0 -0.03" euler="0 1.2 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.022 0 -0.1" euler="0 1.35 0" type="box" size="0.05 0.01225 0.009"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.036 0 -0.225" euler="0 1.53 0" type="box" size="0.075 0.01225 0.0075"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.023 0 -0.31" euler="0 2 0" type="box" size="0.025 0.014 0.0175"/>
+            <body name="LH_FOOT" pos="0 0 -0.35">
+              <inertial pos="-0.006511 0 -0.010144" mass="0.126" fullinertia="3.8E-05 4.1E-05 4.2E-05 0 1.1E-05 0"/>
+              <geom contype="0" conaffinity="0" group="1" density="0" type="sphere" size="0.03" rgba="0 0.8 0 1"/>
+              <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.57 0 0" type="sphere" size="0.032" name="LH_FOOT_geom" friction="0.4 0.005 0.0001"/>
+            </body>
+          </body>
+          <body name="RL_calf_rotor" pos="0 -0.05788 0">
+            <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+            <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+            <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+          </body>
+        </body>
+        <body name="RL_thigh_rotor" pos="0 -0.00798 0">
+          <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+          <geom contype="0" conaffinity="0" group="1" density="0" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+          <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="1.5707963267948966 0 0" type="cylinder" size="0.05 0.01"/>
+        </body>
+      </body>
+
+      <body name="FL_hip_rotor" pos="0.20205 0.072 0">
+        <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01"/>
+      </body>
+      <body name="FR_hip_rotor" pos="0.20205 -0.072 0">
+        <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01"/>
+      </body>
+      <body name="RL_hip_rotor" pos="-0.20205 0.072 0">
+        <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01"/>
+      </body>
+      <body name="RR_hip_rotor" pos="-0.20205 -0.072 0">
+        <inertial pos="0.0 0.0 0.0" mass="0.2734" fullinertia="0.000144463 0.000144463 0.000263053 0.0 0.0 0.0"/>
+        <geom contype="0" conaffinity="0" group="1" density="0" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01" rgba="0 0.8 0 1"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" euler="0 1.5707963267948966 0" type="cylinder" size="0.05 0.01"/>
+      </body>
+
+      <body name="f_dc_link" pos="0.41251 0.024997 0.04765" euler="-2.3562 0 -1.5708">
+        <inertial pos="3.47E-18 0 5.55E-17" mass="4.19E-15" diaginertia="1.68E-27 1.68E-27 1.68E-27"/>
+      </body>
+      <body name="f_oc_link" pos="0.39079 0 -0.013433" euler="-1.5708 0 -1.5708">
+        <inertial pos="-3.39E-15 1.46E-16 -6.11E-16" mass="4.19E-15" diaginertia="1.68E-27 1.68E-27 1.68E-27"/>
+      </body>
+      <body name="head_Link">
+        <inertial pos="0.33989 -0.000168 0.12029" mass="3.6885" fullinertia="0.026455 0.029221 0.010918 3.15E-05 0.00166 -3.27E-05"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0.41 0 0.005" type="box" size="0.02 0.06 0.07"/>
+      </body>
+      <body name="imu_link" pos="0 -0.02341 0.04927">
+        <inertial pos="-2.02E-17 1.73E-17 -1.39E-17" mass="4.19E-15" diaginertia="1.68E-27 1.68E-27 1.68E-27"/>
+      </body>
+      <body name="lidar_link" pos="0.34218 0 0.17851">
+        <inertial pos="0.34218 0 0.17851" mass="4.19E-15" diaginertia="1.68E-27 1.68E-27 1.68E-27"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="0 0 -0.02" type="cylinder" size="0.076 0.08"/>
+      </body>
+      <body name="r_dc_link" pos="-0.4081 -0.025 0.024861" euler="-2.3557 0 1.5708">
+        <inertial pos="-7.46E-16 -3.33E-16 -1.11E-15" mass="4.19E-15" diaginertia="1.68E-27 1.68E-27 1.68E-27"/>
+      </body>
+      <body name="r_oc_link" pos="-0.38451 0 -0.023249" euler="-1.5708 0 1.5708">
+        <inertial pos="-0.39143 1.52E-07 -0.011961" mass="4.19E-12" diaginertia="1.68E-22 1.68E-22 1.68E-22"/>
+      </body>
+      <body name="tail_link">
+        <inertial pos="-0.37448 0.000488 0.006495" mass="0.795" fullinertia="0.0028118 0.0047506 0.0029154 1.95E-05 -7.87E-06 -1.57E-05"/>
+        <geom group="2" rgba="1 0.423529 0.0392157 0.5" pos="-0.405 0 0.005" type="box" size="0.0125 0.06 0.07"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <sensor>
+    <framequat name="imu_quat" objtype="site" objname="imu_sensor_site" />
+    <gyro name="imu_angvel" site="imu_sensor_site" />
+    <accelerometer name="imu_linacc" site="imu_sensor_site" />
+
+    <jointpos joint="LF_HAA" />
+    <jointpos joint="LF_HFE" />
+    <jointpos joint="LF_KFE" />
+    <jointpos joint="LH_HAA" />
+    <jointpos joint="LH_HFE" />
+    <jointpos joint="LH_KFE" />
+    <jointpos joint="RF_HAA" />
+    <jointpos joint="RF_HFE" />
+    <jointpos joint="RF_KFE" />
+    <jointpos joint="RH_HAA" />
+    <jointpos joint="RH_HFE" />
+    <jointpos joint="RH_KFE" />
+
+    <jointvel joint="LF_HAA" />
+    <jointvel joint="LF_HFE" />
+    <jointvel joint="LF_KFE" />
+    <jointvel joint="LH_HAA" />
+    <jointvel joint="LH_HFE" />
+    <jointvel joint="LH_KFE" />
+    <jointvel joint="RF_HAA" />
+    <jointvel joint="RF_HFE" />
+    <jointvel joint="RF_KFE" />
+    <jointvel joint="RH_HAA" />
+    <jointvel joint="RH_HFE" />
+    <jointvel joint="RH_KFE" />
+
+    <framequat name="base_quat" objtype="site" objname="imu_sensor_site" />
+    <framepos name="base_pose" objtype="site" objname="imu_sensor_site" />
+    <frameangvel name="base_angvel" objtype="site" objname="imu_sensor_site" />
+    <framelinvel name="base_linvel" objtype="site" objname="imu_sensor_site" />
+
+  </sensor>
+
+  <actuator>
+    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-320 320" ctrllimited="true"/>
+    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-320 320" ctrllimited="true"/>
+    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-320 320" ctrllimited="true"/>
+    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-200 200" ctrllimited="true"/>
+    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-320 320" ctrllimited="true"/>
+  </actuator>
+
+</mujoco>

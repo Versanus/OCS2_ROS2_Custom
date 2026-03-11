@@ -1,8 +1,18 @@
 cmake_minimum_required(VERSION 3.8)
 project(mujoco_simulator)
 
-set(MUJOCO_INCLUDE_DIRS /home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/mujoco/mujoco-3.2.2/include)
-set(MUJOCO_LIBRARIES /home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/mujoco/mujoco-3.2.2/lib/libmujoco.so)
+get_filename_component(QUAD_OCS2_VENDOR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(MUJOCO_ROOT "${QUAD_OCS2_VENDOR_ROOT}/mujoco/mujoco-3.2.2" CACHE PATH "MuJoCo root directory")
+set(MUJOCO_INCLUDE_DIRS "${MUJOCO_ROOT}/include")
+set(MUJOCO_LIBRARIES "${MUJOCO_ROOT}/lib/libmujoco.so")
+
+if(NOT EXISTS "${MUJOCO_INCLUDE_DIRS}")
+  message(FATAL_ERROR "MuJoCo headers not found: ${MUJOCO_INCLUDE_DIRS}")
+endif()
+
+if(NOT EXISTS "${MUJOCO_LIBRARIES}")
+  message(FATAL_ERROR "MuJoCo library not found: ${MUJOCO_LIBRARIES}")
+endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)

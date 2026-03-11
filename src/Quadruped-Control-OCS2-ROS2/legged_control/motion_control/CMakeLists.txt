@@ -64,10 +64,20 @@ pkg_check_modules(pinocchio REQUIRED pinocchio)
 
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
-# Manually add qpOASES (compiled from source)
-include_directories(/home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/qpOASES-master/include)
+get_filename_component(QUAD_OCS2_VENDOR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(QPOASES_ROOT "${QUAD_OCS2_VENDOR_ROOT}/qpOASES-master" CACHE PATH "qpOASES root directory")
+set(QPOASES_INCLUDE_DIR "${QPOASES_ROOT}/include")
+set(QPOASES_LIBRARY "${QPOASES_ROOT}/build/libs/libqpOASES.a")
 
-link_directories(/home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/qpOASES-master/build/libs)
+if(NOT EXISTS "${QPOASES_INCLUDE_DIR}")
+  message(FATAL_ERROR "qpOASES headers not found: ${QPOASES_INCLUDE_DIR}")
+endif()
+
+if(NOT EXISTS "${QPOASES_LIBRARY}")
+  message(FATAL_ERROR "qpOASES static library not found: ${QPOASES_LIBRARY}")
+endif()
+
+include_directories(${QPOASES_INCLUDE_DIR})
 
 # Add directories for all targets
 include_directories(
@@ -115,7 +125,7 @@ ament_target_dependencies(${PROJECT_NAME}
 )
 # Link qpOASES to main motion_control library
 target_link_libraries(${PROJECT_NAME}
-  /home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/qpOASES-master/build/libs/libqpOASES.a
+  ${QPOASES_LIBRARY}
 )
 
 target_compile_options(${PROJECT_NAME} PUBLIC ${OCS2_CXX_FLAGS})

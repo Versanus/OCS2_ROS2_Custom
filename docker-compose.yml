@@ -1,0 +1,26 @@
+services:
+  quad_ocs2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-humble}
+        USER_NAME: ${USER_NAME:-ros}
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
+    image: quad_ocs2:${ROS_DISTRO:-humble}
+    working_dir: /workspaces/quad_ocs2_ws
+    stdin_open: true
+    tty: true
+    network_mode: host
+    ipc: host
+    environment:
+      DISPLAY: ${DISPLAY}
+      QT_X11_NO_MITSHM: "1"
+      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+      ROS_DISTRO: ${ROS_DISTRO:-humble}
+      WS_DIR: /workspaces/quad_ocs2_ws
+      XDG_RUNTIME_DIR: /tmp/runtime-${USER_NAME:-ros}
+    volumes:
+      - .:/workspaces/quad_ocs2_ws
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
