@@ -4,7 +4,7 @@
   <asset>
     <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512" />
     <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .3 .4" rgb2=".1 0.15 0.2" width="512" height="512" mark="cross" markrgb=".8 .8 .8" />
-    <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true" />
+    <material name="matplane" reflectance="0.0" texture="texplane" texrepeat="1 1" texuniform="true" />
 
     <mesh name="base_link" file="base_link.obj"/>
     <mesh name="FR_hip" file="FR_hip.obj"/>
@@ -24,9 +24,9 @@
   <worldbody>
     <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false" />
     <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1" />
-    <geom type="box" size="0.25 0.1 0.11" pos="0.1 0 0" rgba="0 0 1 0.3"/>
+    <geom type="box" size="0.20 0.05 0.11" pos="0.1 0 0" rgba="0 0 1 0.3"/>
     <geom size="0.0005 0.0005 0.0005" type="box" contype="0" conaffinity="0" group="1" density="0"/>
-    <geom name="floor" pos="0 0 0" size="15 15 1" type="plane" material="matplane" margin="0.001" condim="3" friction="1 0.005 0.0001" />
+    <geom name="floor" pos="0 0 0" size="200 200 1" type="plane" material="matplane" margin="0.001" condim="3" friction="1 0.005 0.0001" />
     <body name="trunk" pos="0 0 0.8">
       <site name="imu_sensor_site" pos="0 -0.02341 0.04927" />
       <inertial pos="0.000458 0.005261 0.000665" mass="35.86" fullinertia="0.27466 1.0618 1.1825 -0.000622 0.00315 -0.00139"/>

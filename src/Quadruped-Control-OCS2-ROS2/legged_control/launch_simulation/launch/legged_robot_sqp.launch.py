@@ -110,7 +110,7 @@ def generate_launch_description():
         
         # Add a TimerAction to wait 5 seconds before starting the next node
         TimerAction(
-            period=2.0,  # Wait for 5 seconds
+            period=5.0,  # Wait for 5 seconds
             actions=[Node(
             package='motion_control',
             executable='legged_robot_sqp_mpc',

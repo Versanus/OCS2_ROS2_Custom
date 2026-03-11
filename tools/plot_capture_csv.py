@@ -40,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--time-column",
         choices=TIME_COLUMNS,
-        default="elapsed_time_sec",
+        default="elapsed_simulation_time_sec",
         help="Time axis to use.",
     )
     parser.add_argument(

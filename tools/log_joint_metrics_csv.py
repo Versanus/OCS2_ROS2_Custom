@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 
-"""Write per-joint torque and speed samples to a CSV file."""
+"""Write published joint torques and velocities from ROS directly to CSV files."""
 
 import argparse
 import csv
 import re
 import sys
-import xml.etree.ElementTree as ET
-from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 try:
     import rclpy
@@ -23,18 +21,9 @@ except ImportError as exc:  # pragma: no cover - environment-specific
     ) from exc
 
 
-RPM_PER_RAD_PER_SEC = 60.0 / (2.0 * 3.141592653589793)
-FLOAT_PATTERN = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ROBOT_XML = WORKSPACE_ROOT / (
-    "src/Quadruped-Control-OCS2-ROS2/legged_control/"
-    "mujoco_simulator/models/quad_mini/urdf/robot.xml"
-)
-DEFAULT_SIM_CONFIG = WORKSPACE_ROOT / (
-    "src/Quadruped-Control-OCS2-ROS2/legged_control/"
-    "user_command/config/quad_mini/simulation.info"
-)
-DEFAULT_JOINT_ORDER = [
+DEFAULT_JOINT_COUNT = 12
+DEFAULT_JOINT_NAMES = [
     "LF_HAA",
     "LF_HFE",
     "LF_KFE",
@@ -50,72 +39,39 @@ DEFAULT_JOINT_ORDER = [
 ]
 
 
-@dataclass
-class ControlSnapshot:
-    joint_torque: List[float]
-    joint_position: List[float]
-    joint_velocity: List[float]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "After you start this script, capture the next N seconds of joint torque and "
-            "joint speed into two CSV files, then exit automatically."
+            "Capture the published joint_torque and joint_velocity arrays from a "
+            "ROS topic and save them directly to separate CSV files."
         )
     )
     parser.add_argument(
         "--state-topic",
         default="simulator_state_data",
-        help="Simulator state topic carrying measured joint state.",
+        help="ROS topic carrying SimulatorStateData messages.",
     )
     parser.add_argument(
         "--control-topic",
         default="joint_control_data",
-        help="Controller topic carrying feedforward torque and desired joints.",
-    )
-    parser.add_argument(
-        "--robot-xml",
-        type=Path,
-        default=DEFAULT_ROBOT_XML if DEFAULT_ROBOT_XML.exists() else None,
-        help=(
-            "MuJoCo robot XML used to detect joint ordering. Defaults to quad_mini if present."
-        ),
-    )
-    parser.add_argument(
-        "--sim-config",
-        type=Path,
-        default=None,
-        help="Simulation config containing pid.kp and pid.kd.",
-    )
-    parser.add_argument(
-        "--kp",
-        type=float,
-        default=None,
-        help="Override simulator proportional gain.",
-    )
-    parser.add_argument(
-        "--kd",
-        type=float,
-        default=None,
-        help="Override simulator derivative gain.",
+        help="ROS topic carrying JointControlData messages.",
     )
     parser.add_argument(
         "--duration",
         type=float,
         default=10.0,
-        help="Capture duration in simulator seconds.",
+        help="Capture duration in seconds, starting from the first valid message.",
     )
     parser.add_argument(
         "--name",
-        default="joint",
-        help="Capture name used in the default CSV filenames, for example 'stand' or 'trot'.",
+        default="joint_command",
+        help="Capture name used in the default CSV filename.",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=WORKSPACE_ROOT,
-        help="Directory for the default named CSV files.",
+        help="Directory for the default CSV files.",
     )
     parser.add_argument(
         "--torque-output",
@@ -129,83 +85,26 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Explicit speed CSV output path. Overrides --name for the speed file.",
     )
+    parser.add_argument(
+        "--joint-count",
+        type=int,
+        default=DEFAULT_JOINT_COUNT,
+        help="Expected number of joint torques to log from each message.",
+    )
+    parser.add_argument(
+        "--joint-names",
+        default=",".join(DEFAULT_JOINT_NAMES),
+        help=(
+            "Comma-separated joint names used for CSV headers. "
+            "Defaults to the B2 MuJoCo order."
+        ),
+    )
     return parser.parse_args()
-
-
-def infer_sim_config_from_robot_xml(robot_xml: Path) -> Optional[Path]:
-    try:
-        if robot_xml.parents[3].name != "mujoco_simulator" or robot_xml.parents[2].name != "models":
-            return None
-        robot_type = robot_xml.parent.parent.name
-        legged_control_root = robot_xml.parents[4]
-    except IndexError:
-        return None
-
-    sim_config = legged_control_root / "user_command" / "config" / robot_type / "simulation.info"
-    return sim_config if sim_config.exists() else None
-
-
-def extract_joint_order(robot_xml: Optional[Path]) -> List[str]:
-    if robot_xml is None:
-        return DEFAULT_JOINT_ORDER.copy()
-
-    robot_xml = robot_xml.expanduser().resolve()
-    if not robot_xml.exists():
-        raise FileNotFoundError(f"Robot XML not found: {robot_xml}")
-
-    root = ET.parse(robot_xml).getroot()
-    sensor = root.find("sensor")
-    if sensor is None:
-        raise ValueError(f"No <sensor> block found in {robot_xml}")
-
-    for tag_name in ("jointpos", "jointvel"):
-        joints = [element.attrib["joint"] for element in sensor.findall(tag_name) if "joint" in element.attrib]
-        if len(joints) >= 12:
-            return joints[:12]
-
-    raise ValueError(f"Could not determine 12 joint names from {robot_xml}")
-
-
-def load_pid_gains(
-    sim_config: Optional[Path], kp_override: Optional[float], kd_override: Optional[float]
-) -> Tuple[float, float, Optional[Path]]:
-    if kp_override is not None and kd_override is not None:
-        return kp_override, kd_override, sim_config
-
-    resolved_config = sim_config
-    if resolved_config is None and DEFAULT_SIM_CONFIG.exists():
-        resolved_config = DEFAULT_SIM_CONFIG
-
-    if resolved_config is None:
-        return (
-            0.0 if kp_override is None else kp_override,
-            0.0 if kd_override is None else kd_override,
-            None,
-        )
-
-    resolved_config = resolved_config.expanduser().resolve()
-    if not resolved_config.exists():
-        raise FileNotFoundError(f"Simulation config not found: {resolved_config}")
-
-    text = resolved_config.read_text(encoding="utf-8")
-    pid_block = re.search(r"pid\s*\{(?P<body>.*?)\}", text, flags=re.DOTALL)
-    search_text = pid_block.group("body") if pid_block else text
-
-    kp = kp_override if kp_override is not None else extract_scalar(search_text, "kp")
-    kd = kd_override if kd_override is not None else extract_scalar(search_text, "kd")
-    return kp, kd, resolved_config
-
-
-def extract_scalar(text: str, key: str) -> float:
-    match = re.search(rf"\b{re.escape(key)}\b\s+({FLOAT_PATTERN})", text)
-    if not match:
-        raise ValueError(f"Could not find '{key}' in simulation config.")
-    return float(match.group(1))
 
 
 def sanitize_capture_name(name: str) -> str:
     sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("._-")
-    return sanitized or "joint"
+    return sanitized or "joint_torque"
 
 
 def resolve_output_paths(
@@ -213,7 +112,7 @@ def resolve_output_paths(
     output_dir: Path,
     torque_output: Optional[Path],
     speed_output: Optional[Path],
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     if torque_output is not None and speed_output is not None:
         return torque_output.expanduser().resolve(), speed_output.expanduser().resolve()
 
@@ -221,32 +120,40 @@ def resolve_output_paths(
     resolved_dir = output_dir.expanduser().resolve()
     default_torque = resolved_dir / f"{sanitized_name}_torque.csv"
     default_speed = resolved_dir / f"{sanitized_name}_speed.csv"
-
-    resolved_torque = torque_output.expanduser().resolve() if torque_output is not None else default_torque
-    resolved_speed = speed_output.expanduser().resolve() if speed_output is not None else default_speed
+    resolved_torque = (
+        torque_output.expanduser().resolve() if torque_output is not None else default_torque
+    )
+    resolved_speed = (
+        speed_output.expanduser().resolve() if speed_output is not None else default_speed
+    )
     return resolved_torque, resolved_speed
 
 
-class JointMetricCsvLogger(Node):
+def parse_joint_names(joint_names_text: str, joint_count: int) -> List[str]:
+    joint_names = [name.strip() for name in joint_names_text.split(",") if name.strip()]
+    if len(joint_names) != joint_count:
+        raise ValueError(
+            f"Expected {joint_count} joint names, but got {len(joint_names)}."
+        )
+    return joint_names
+
+
+class JointTorqueCsvLogger(Node):
     def __init__(
         self,
         state_topic: str,
         control_topic: str,
-        joint_order: Sequence[str],
-        kp: float,
-        kd: float,
+        joint_names: Sequence[str],
         duration: float,
         torque_output_path: Path,
         speed_output_path: Path,
     ) -> None:
-        super().__init__("joint_metric_csv_logger")
-        self.joint_order = list(joint_order)
-        self.expected_joint_count = len(self.joint_order)
-        self.kp = kp
-        self.kd = kd
+        super().__init__("joint_torque_csv_logger")
+        self.joint_names = list(joint_names)
+        self.joint_count = len(self.joint_names)
         self.duration = max(duration, 0.001)
-        self.latest_command: Optional[ControlSnapshot] = None
         self.capture_start_time: Optional[float] = None
+        self.latest_control: Optional[JointControlData] = None
         self.samples_written = 0
         self.finished = False
 
@@ -260,47 +167,36 @@ class JointMetricCsvLogger(Node):
         self.torque_writer = csv.writer(self.torque_output_file)
         self.speed_writer = csv.writer(self.speed_output_file)
         self.torque_writer.writerow(self._header("torque_nm"))
-        self.speed_writer.writerow(self._header("speed_rpm"))
+        self.speed_writer.writerow(self._header("speed_rad_per_sec"))
         self.torque_output_file.flush()
         self.speed_output_file.flush()
 
         self.create_subscription(JointControlData, control_topic, self.control_callback, 10)
         self.create_subscription(SimulatorStateData, state_topic, self.state_callback, 10)
-
         self.get_logger().info(
-            "Ready. Waiting for the first valid simulator sample to start a "
+            "Ready. Waiting for a valid control/state pair to start a "
             f"{self.duration:.3f}s capture."
         )
 
     def _header(self, suffix: str) -> List[str]:
-        columns = ["elapsed_time_sec", "simulation_time_sec"]
-        columns.extend(f"{joint_name}_{suffix}" for joint_name in self.joint_order)
+        columns = ["elapsed_simulation_time_sec", "simulation_time_sec"]
+        columns.extend(f"{joint_name}_{suffix}" for joint_name in self.joint_names)
         return columns
 
     def control_callback(self, msg: JointControlData) -> None:
-        if (
-            len(msg.joint_torque) < self.expected_joint_count
-            or len(msg.joint_position) < self.expected_joint_count
-            or len(msg.joint_velocity) < self.expected_joint_count
-        ):
-            self.get_logger().warning("Ignoring control sample with incomplete joint arrays.")
+        if self.finished:
             return
 
-        self.latest_command = ControlSnapshot(
-            joint_torque=list(msg.joint_torque[: self.expected_joint_count]),
-            joint_position=list(msg.joint_position[: self.expected_joint_count]),
-            joint_velocity=list(msg.joint_velocity[: self.expected_joint_count]),
-        )
+        if len(msg.joint_torque) < self.joint_count or len(msg.joint_velocity) < self.joint_count:
+            self.get_logger().warning(
+                "Ignoring JointControlData message with incomplete torque/velocity arrays."
+            )
+            return
+
+        self.latest_control = msg
 
     def state_callback(self, msg: SimulatorStateData) -> None:
-        if self.finished or self.latest_command is None:
-            return
-
-        if (
-            len(msg.joint_position_values) < self.expected_joint_count
-            or len(msg.joint_velocity_values) < self.expected_joint_count
-        ):
-            self.get_logger().warning("Ignoring state sample with incomplete joint arrays.")
+        if self.finished or self.latest_control is None:
             return
 
         simulation_time = float(msg.simulation_time)
@@ -315,28 +211,16 @@ class JointMetricCsvLogger(Node):
             self.finish_capture()
             return
 
-        torques = []
-        speeds = []
-        for index in range(self.expected_joint_count):
-            applied_torque = self.latest_command.joint_torque[index]
-            applied_torque += self.kp * (
-                self.latest_command.joint_position[index] - msg.joint_position_values[index]
-            )
-            applied_torque += self.kd * (
-                self.latest_command.joint_velocity[index] - msg.joint_velocity_values[index]
-            )
-            torques.append(applied_torque)
-            speeds.append(msg.joint_velocity_values[index] * RPM_PER_RAD_PER_SEC)
-
         torque_row = [elapsed_time, simulation_time]
-        torque_row.extend(torques)
+        torque_row.extend(self.latest_control.joint_torque[: self.joint_count])
         speed_row = [elapsed_time, simulation_time]
-        speed_row.extend(speeds)
+        speed_row.extend(self.latest_control.joint_velocity[: self.joint_count])
 
         self.torque_writer.writerow(torque_row)
         self.speed_writer.writerow(speed_row)
         self.torque_output_file.flush()
         self.speed_output_file.flush()
+        self.latest_control = None
         self.samples_written += 1
 
         if elapsed_time >= self.duration:
@@ -361,44 +245,33 @@ class JointMetricCsvLogger(Node):
 
 def main() -> int:
     args = parse_args()
-
-    sim_config = args.sim_config
-    if sim_config is None and args.robot_xml is not None:
-        inferred = infer_sim_config_from_robot_xml(args.robot_xml)
-        if inferred is not None:
-            sim_config = inferred
+    joint_count = max(args.joint_count, 1)
 
     try:
-        joint_order = extract_joint_order(args.robot_xml)
-        kp, kd, resolved_sim_config = load_pid_gains(sim_config, args.kp, args.kd)
+        joint_names = parse_joint_names(args.joint_names, joint_count)
         torque_output_path, speed_output_path = resolve_output_paths(
-            name=args.name,
-            output_dir=args.output_dir,
-            torque_output=args.torque_output,
-            speed_output=args.speed_output,
+            args.name,
+            args.output_dir,
+            args.torque_output,
+            args.speed_output,
         )
-    except (FileNotFoundError, ValueError, ET.ParseError) as exc:
+    except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    if resolved_sim_config is not None:
-        print(f"Using simulation gains from: {resolved_sim_config}")
-    elif args.kp is None or args.kd is None:
-        print("Warning: no simulation config found, using zero PID gains.", file=sys.stderr)
-
-    print(f"Logging joints in this order: {', '.join(joint_order)}")
+    print(f"Control topic: {args.control_topic}")
+    print(f"State topic: {args.state_topic}")
+    print(f"Joint count: {joint_count}")
+    print(f"Joint names: {', '.join(joint_names)}")
     print(f"Capture duration: {max(args.duration, 0.001):.3f} seconds")
-    print(f"Capture name: {sanitize_capture_name(args.name)}")
     print(f"Torque CSV: {torque_output_path}")
     print(f"Speed CSV: {speed_output_path}")
 
     rclpy.init()
-    node = JointMetricCsvLogger(
+    node = JointTorqueCsvLogger(
         state_topic=args.state_topic,
         control_topic=args.control_topic,
-        joint_order=joint_order,
-        kp=kp,
-        kd=kd,
+        joint_names=joint_names,
         duration=args.duration,
         torque_output_path=torque_output_path,
         speed_output_path=speed_output_path,
