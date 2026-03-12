@@ -63,7 +63,7 @@ docker compose run --rm quad_ocs2 bash
 
 ### Build the workspace in the container
 ```
-colcon build --packages-up-to launch_simulation --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
+colcon build --packages-up-to motion_control mujoco_simulator user_command launch_simulation --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
 ```
 
 ### Run the simulator in the container

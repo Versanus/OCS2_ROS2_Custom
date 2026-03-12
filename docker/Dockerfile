@@ -75,7 +75,8 @@ COPY . ${WS_DIR}
 
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
     && rosdep update \
-    && rosdep install --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} -r -y --skip-keys="mujoco"
+    && rosdep install --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} -r -y \
+    --skip-keys="mujoco pinocchio gazebo rviz ocs2_robotic_assets ocs2_mpc"
 
 COPY docker/ros_entrypoint.sh /ros_entrypoint_local.sh
 RUN chmod +x /ros_entrypoint_local.sh \
