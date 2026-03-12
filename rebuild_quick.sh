@@ -1,21 +1,43 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
-WS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-cd "${WS_DIR}"
+# Detect if running inside Docker
+if [ -f "/.dockerenv" ]; then
+    echo "Running quick rebuild inside Docker"
 
-rm -rf build/mujoco_simulator
-rm -rf install/mujoco_simulator
+    cd "${WS_DIR}"
 
-rm -rf build/user_command
-rm -rf install/user_command
+    echo "Cleaning selected packages..."
 
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-source mujoco_env.sh
+    rm -rf build/mujoco_simulator install/mujoco_simulator
+    rm -rf build/user_command install/user_command
 
-colcon build --packages-select mujoco_simulator user_command --symlink-install --cmake-clean-cache
+    echo "Loading environment..."
 
-source install/local_setup.sh
+    source /opt/ros/humble/setup.bash
+    source "${WS_DIR}/mujoco_env.sh"
+
+    if [ -f "${WS_DIR}/install/setup.bash" ]; then
+        source "${WS_DIR}/install/setup.bash"
+    fi
+
+    echo "Rebuilding packages..."
+
+    colcon build \
+        --packages-select mujoco_simulator user_command \
+        --symlink-install \
+        --cmake-clean-cache
+
+    source install/local_setup.bash
+
+    echo "Quick rebuild finished ✅"
+
+else
+    echo "Running on host system"
+    echo "Starting Docker container for quick rebuild..."
+
+    docker compose run --rm quad_ocs2 ./rebuild_quick.sh
+fi

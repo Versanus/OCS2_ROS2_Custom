@@ -1,4 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -e
+
 git add -A
-git commit -m "update"
+
+if git diff --cached --quiet; then
+    echo "No changes to commit."
+    exit 0
+fi
+
+MSG=${1:-"update"}
+
+echo "Committing with message: $MSG"
+echo "Pushing branch: $(git branch --show-current)"
+git commit -m "$MSG"
 git push
