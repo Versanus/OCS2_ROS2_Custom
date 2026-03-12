@@ -3,9 +3,9 @@
 **/.git
 **/.git/**
 .vscode
-build
-install
-log
+/build
+/install
+/log
 MUJOCO_LOG.TXT
 *.pyc
 __pycache__

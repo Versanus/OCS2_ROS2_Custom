@@ -63,8 +63,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-xacro \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rosdep init 2>/dev/null || true
-
 RUN groupadd --gid "${USER_GID}" "${USER_NAME}" \
     && useradd --uid "${USER_UID}" --gid "${USER_GID}" -m -s /bin/bash "${USER_NAME}" \
     && echo "${USER_NAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USER_NAME}" \
@@ -72,11 +70,6 @@ RUN groupadd --gid "${USER_GID}" "${USER_NAME}" \
 
 WORKDIR ${WS_DIR}
 COPY . ${WS_DIR}
-
-RUN source /opt/ros/${ROS_DISTRO}/setup.bash \
-    && rosdep update \
-    && rosdep install --from-paths src --ignore-src --rosdistro ${ROS_DISTRO} -r -y \
-    --skip-keys="mujoco pinocchio gazebo rviz ocs2_robotic_assets ocs2_mpc"
 
 COPY docker/ros_entrypoint.sh /ros_entrypoint_local.sh
 RUN chmod +x /ros_entrypoint_local.sh \
