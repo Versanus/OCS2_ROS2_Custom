@@ -43,15 +43,7 @@ cd "$WS_DIR"
 echo "[3/4] Building Docker image"
 docker compose build
 
-MUJOCO_LIB="src/Quadruped-Control-OCS2-ROS2/mujoco/mujoco-3.2.2/lib"
-
-if [ -f "$MUJOCO_LIB/libmujoco.so.3.2.2" ] && [ ! -f "$MUJOCO_LIB/libmujoco.so" ]; then
-    echo "Creating MuJoCo library symlink..."
-    ln -s libmujoco.so.3.2.2 "$MUJOCO_LIB/libmujoco.so"
-fi
-
-# build ROS workspace inside container
-echo "[3/4] Building ROS2 workspace..."
+echo "[4/4] Building workspace in container..."
 
 docker compose run --rm 
 -u $(id -u):$(id -g) 
