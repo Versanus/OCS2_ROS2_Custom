@@ -5,5 +5,6 @@
             "args": ["-c", "source ~/quad_ocs2_ws/source_ws.sh && exec bash"]
         }
     },
-    "terminal.integrated.defaultProfile.linux": "quad_ocs2"
+    "terminal.integrated.defaultProfile.linux": "quad_ocs2",
+    "cmake.sourceDirectory": "/home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/hpp-fcl/test"
 }
