@@ -7,21 +7,24 @@ echo "====================================="
 
 WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$WS_DIR/src/Quadruped-Control-OCS2-ROS2"
+MUJOCO_LIB="$SRC_DIR/mujoco/mujoco-3.2.2/lib"
+QPOASES_DIR="$SRC_DIR/qpOASES-master"
 
-echo "[1/4] Enable X11"
+echo "[1/6] Enable X11"
 xhost +local:docker > /dev/null 2>&1 || true
 
-echo "[2/4] Checking external dependencies..."
+
+echo "[2/6] Checking external dependencies..."
 
 cd "$SRC_DIR"
 
 clone_if_missing () {
-if [ ! -d "$1/.git" ]; then
-echo "Cloning $1..."
-git clone "$2"
-else
-echo "$1 already exists"
-fi
+    if [ ! -d "$1/.git" ]; then
+        echo "Cloning $1..."
+        git clone "$2"
+    else
+        echo "$1 already exists"
+    fi
 }
 
 clone_if_missing "ocs2_ros2" https://github.com/zhengxiang94/ocs2_ros2.git
@@ -29,28 +32,60 @@ clone_if_missing "ocs2_robotic_assets" https://github.com/zhengxiang94/ocs2_robo
 clone_if_missing "plane_segmentation_ros2" https://github.com/zhengxiang94/plane_segmentation_ros2.git
 
 if [ ! -d pinocchio/.git ]; then
-echo "Cloning pinocchio..."
-git clone --recurse-submodules https://github.com/zhengxiang94/pinocchio.git
+    echo "Cloning pinocchio..."
+    git clone --recurse-submodules https://github.com/zhengxiang94/pinocchio.git
 fi
 
 if [ ! -d hpp-fcl/.git ]; then
-echo "Cloning hpp-fcl..."
-git clone --recurse-submodules https://github.com/zhengxiang94/hpp-fcl.git
+    echo "Cloning hpp-fcl..."
+    git clone --recurse-submodules https://github.com/zhengxiang94/hpp-fcl.git
 fi
 
 cd "$WS_DIR"
 
-echo "[3/4] Building Docker image"
+
+echo "[3/6] Checking MuJoCo library symlink..."
+
+if [ -d "$MUJOCO_LIB" ]; then
+    if [ -f "$MUJOCO_LIB/libmujoco.so.3.2.2" ] && [ ! -f "$MUJOCO_LIB/libmujoco.so" ]; then
+        echo "Creating MuJoCo symlink..."
+        ln -s libmujoco.so.3.2.2 "$MUJOCO_LIB/libmujoco.so"
+    else
+        echo "MuJoCo symlink already exists"
+    fi
+else
+    echo "WARNING: MuJoCo directory not found:"
+    echo "$MUJOCO_LIB"
+fi
+
+
+echo "[4/6] Building qpOASES..."
+
+if [ -d "$QPOASES_DIR" ]; then
+    cd "$QPOASES_DIR"
+
+    mkdir -p build
+    cd build
+
+    cmake ..
+    make -j$(nproc)
+
+    cd "$WS_DIR"
+else
+    echo "ERROR: qpOASES-master not found!"
+    exit 1
+fi
+
+
+echo "[5/6] Building Docker image"
 docker compose build
 
-echo "[4/4] Building workspace in container..."
 
-docker compose run --rm 
--u $(id -u):$(id -g) 
--v "$WS_DIR:/workspaces/quad_ocs2_ws" 
-quad_ocs2 bash -c "
+echo "[6/6] Building workspace in container..."
 
+docker compose run --rm quad_ocs2 bash -lc "
 set -e
+
 source /opt/ros/humble/setup.bash
 cd /workspaces/quad_ocs2_ws
 
@@ -58,9 +93,9 @@ echo 'Cleaning previous build'
 rm -rf build install log || true
 
 echo 'Building OCS2 core packages'
-colcon build 
---packages-up-to ocs2_legged_robot_ros ocs2_self_collision_visualization 
---cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
+colcon build \
+  --packages-up-to ocs2_legged_robot_ros ocs2_self_collision_visualization \
+  --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 echo 'Sourcing workspace'
 source install/setup.bash

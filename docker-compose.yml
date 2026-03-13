@@ -8,19 +8,39 @@ services:
         USER_NAME: ${USER_NAME:-ros}
         USER_UID: ${HOST_UID:-1000}
         USER_GID: ${HOST_GID:-1000}
+
     image: quad_ocs2:${ROS_DISTRO:-humble}
+
     working_dir: /workspaces/quad_ocs2_ws
     stdin_open: true
     tty: true
+
     network_mode: host
     ipc: host
+
+    # Enable GPU
+    gpus: all
+
     environment:
       DISPLAY: ${DISPLAY}
       QT_X11_NO_MITSHM: "1"
-      LIBGL_ALWAYS_SOFTWARE: ${LIBGL_ALWAYS_SOFTWARE:-1}
+      LIBGL_ALWAYS_INDIRECT: "0"
+
+      __NV_PRIME_RENDER_OFFLOAD: "1"
+      __GLX_VENDOR_LIBRARY_NAME: "nvidia"
+      
       ROS_DISTRO: ${ROS_DISTRO:-humble}
       WS_DIR: /workspaces/quad_ocs2_ws
       XDG_RUNTIME_DIR: /tmp/runtime-${USER_NAME:-ros}
+
+      # NVIDIA runtime
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+
     volumes:
       - .:/workspaces/quad_ocs2_ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+    # Needed for OpenGL / MuJoCo
+    devices:
+      - /dev/dri:/dev/dri

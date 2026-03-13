@@ -14,6 +14,7 @@ ENV LC_ALL=C.UTF-8
 SHELL ["/bin/bash", "-lc"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    tmux \
     build-essential \
     cmake \
     gdb \
