@@ -14,6 +14,7 @@ if [ -f "/.dockerenv" ]; then
 
     rm -rf build/mujoco_simulator install/mujoco_simulator
     rm -rf build/user_command install/user_command
+    rm -rf build/launch_simulation install/launch_simulation
 
     echo "Loading environment..."
 
@@ -27,7 +28,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select mujoco_simulator user_command \
+        --packages-select mujoco_simulator user_command launch_simulation\
         --symlink-install \
         --cmake-clean-cache
 

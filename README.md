@@ -1,42 +1,58 @@
 # Quadruped-Control-OCS2-ROS2
 
-## Introduction
+## Overview
 
-This project implements a **quadruped robot simulation and NMPC control framework** using **ROS 2**, **OCS2**, and **MuJoCo**.
+This project implements a **quadruped robot simulation and control framework** using:
+
+- **ROS 2 (Humble)**
+- **OCS2 (Optimal Control for Switched Systems)**
+- **MuJoCo physics simulator**
 
 The system integrates:
 
-* user command interface
-* nonlinear model predictive control (NMPC)
-* quadruped robot physics simulation
-* ROS 2 communication and launch infrastructure
+- user command interface  
+- nonlinear model predictive control (**NMPC**)  
+- quadruped robot physics simulation  
+- ROS 2 communication and launch infrastructure  
 
-The project is based on the open-source work from:
+The controller is based on **centroidal NMPC using OCS2** and runs in real time inside a MuJoCo simulation environment.
 
-* https://github.com/leggedrobotics/ocs2
-* https://github.com/qiayuanl/legged_control
-* https://github.com/zhengxiang94/ocs2_ros2
+This repository builds upon several open-source projects:
+
+- https://github.com/leggedrobotics/ocs2  
+- https://github.com/qiayuanl/legged_control  
+- https://github.com/zhengxiang94/ocs2_ros2  
 
 ---
 
-## Simulation Overview
+# Simulation Architecture
+
+The overall system architecture is illustrated below.
 
 ![structure](.image/structure.jpg)
+
+Example MuJoCo simulation environment:
 
 ![mujoco](.image/mujoco_simulation_image.png)
 
 ---
 
-# Quick Start (Recommended)
+# Quick Start (Docker)
 
-The easiest way to run the project is using Docker.
+The easiest way to run the project is using **Docker**, which automatically manages all dependencies.
 
-### Requirements
+## Requirements
 
-* Ubuntu 22.04
-* Docker Engine
-* Docker Compose plugin (`docker compose`)
-* X11 (for MuJoCo GUI)
+- Ubuntu 22.04  
+- Docker Engine  
+- Docker Compose plugin (`docker compose`)  
+- X11 display server (for MuJoCo viewer)
+
+Install Docker if necessary:
+
+```bash
+sudo apt install docker.io docker-compose-plugin
+```
 
 ---
 
@@ -51,33 +67,49 @@ cd OCS2_quad_mini
 
 ## Build the Environment
 
+Run:
+
 ```bash
 ./build.sh
 ```
 
 This script will:
 
-* build the Docker image
-* build the ROS2 workspace
-* configure MuJoCo and qpOASES dependencies
+- build the Docker image  
+- build the ROS2 workspace  
+- configure MuJoCo  
+- compile qpOASES  
+- fetch required external repositories  
+
+The first build may take several minutes.
 
 ---
 
 ## Run the Simulation
 
+Start the quadruped simulation:
+
 ```bash
 ./run.sh
 ```
 
-This launches the quadruped simulation using MuJoCo.
+This launches:
+
+- MuJoCo simulator  
+- NMPC controller  
+- user command interface  
+
+If X11 is configured correctly, the **MuJoCo viewer window should appear**.
 
 ---
 
 # Manual Docker Workflow (Optional)
 
-If you prefer to run Docker commands manually:
+You can also run the project manually using Docker commands.
 
-### Enable X11 access
+---
+
+## Enable X11 Access
 
 ```bash
 xhost +local:docker
@@ -85,7 +117,7 @@ xhost +local:docker
 
 ---
 
-### Build Docker image
+## Build Docker Image
 
 ```bash
 docker compose build
@@ -93,7 +125,7 @@ docker compose build
 
 ---
 
-### Enter the container
+## Enter the Container
 
 ```bash
 docker compose run --rm quad_ocs2 bash
@@ -101,7 +133,9 @@ docker compose run --rm quad_ocs2 bash
 
 ---
 
-### Build the workspace
+## Build the ROS2 Workspace
+
+Inside the container:
 
 ```bash
 colcon build \
@@ -112,26 +146,26 @@ colcon build \
 
 ---
 
-### Run simulation
+## Launch the Simulation
 
 ```bash
-./run.sh
+ros2 launch launch_simulation simulation.launch.py
 ```
 
 ---
 
 # Simulation Controls
 
-The `user_command` interface allows controlling the robot during simulation.
+The **user_command** interface allows sending commands to the robot during runtime.
 
-Examples:
+Example commands:
 
 ```
 gait:trot
 goal:1 1 0 0
 ```
 
-Where:
+Command format:
 
 ```
 goal: x y z yaw
@@ -143,7 +177,14 @@ Example:
 goal:1 1 0 0
 ```
 
-moves the robot to position `(x=1, y=1)` with yaw `0`.
+This moves the robot toward the position:
+
+```
+x = 1
+y = 1
+z = 0
+yaw = 0
+```
 
 ---
 
@@ -152,12 +193,12 @@ moves the robot to position `(x=1, y=1)` with yaw `0`.
 ```
 OCS2_quad_mini
 │
-├── docker/                  Docker environment
+├── docker/                  Docker environment configuration
 ├── src/                     ROS2 packages
 ├── tools/                   helper utilities
 │
-├── build.sh                 build the workspace
-├── run.sh                   launch simulation
+├── build.sh                 builds Docker image and workspace
+├── run.sh                   launches the simulation
 ├── rebuild_quick.sh         fast rebuild for development
 ├── docker-compose.yml
 │
@@ -168,38 +209,68 @@ OCS2_quad_mini
 
 # Dependencies
 
-This project uses:
+The Docker environment automatically installs all required dependencies, including:
 
-* ROS 2 Humble
-* MuJoCo
-* OCS2
-* qpOASES
-* grid_map
-* OctoMap
-
-All dependencies are automatically handled inside the Docker environment.
+- ROS2 Humble  
+- MuJoCo  
+- OCS2  
+- qpOASES  
+- grid_map  
+- OctoMap  
+- Pinocchio  
+- HPP-FCL  
 
 ---
 
 # Development
 
-For quick package rebuilds during development:
+For faster rebuilds during development:
 
 ```bash
 ./rebuild_quick.sh
 ```
 
-This rebuilds only the necessary packages instead of the entire workspace.
+This script rebuilds only the required packages instead of the entire workspace.
 
 ---
 
-# Original Project References
+# Troubleshooting
 
-This repository builds upon the following open-source work:
+## MuJoCo window does not appear
 
-* https://github.com/HexiangZhou/Quadruped-Control-OCS2-ROS2
-* https://github.com/zhengxiang94/ocs2_ros2
-* https://github.com/leggedrobotics/ocs2
+Ensure X11 permissions are enabled:
+
+```bash
+xhost +local:docker
+```
+
+---
+
+## Check running ROS nodes
+
+Inside the container:
+
+```bash
+ros2 node list
+```
+
+Expected nodes:
+
+```
+/mujoco_simulator
+/user_command_node
+/legged_robot_sqp_mpc
+```
+
+---
+
+# References
+
+This project builds upon the following open-source work:
+
+- https://github.com/HexiangZhou/Quadruped-Control-OCS2-ROS2  
+- https://github.com/zhengxiang94/ocs2_ros2  
+- https://github.com/leggedrobotics/ocs2  
 
 ---
 
@@ -211,4 +282,4 @@ This repository builds upon the following open-source work:
 
 # License
 
-This project inherits licenses from the upstream repositories used in this work.
+This repository inherits licenses from the upstream projects used in this work.

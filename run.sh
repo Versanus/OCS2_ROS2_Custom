@@ -22,7 +22,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Environment loaded ✅"
     echo "Launching Quadruped Simulation..."
 
-    ros2 launch launch_simulation legged_robot_sqp.launch.py robot_type:=b2
+    ./tools/run_tmux.sh
 
 else
     echo "Running on host system"
