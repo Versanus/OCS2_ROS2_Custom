@@ -253,21 +253,21 @@ Supported robots:
 
 ```
 a1
-go1
 b1
 b2
+quad_mini
 ```
 
 Run a specific robot:
 
 ```
-./run.sh go1
+./run.sh quad_mini
 ```
 
 Default robot:
 
 ```
-b1
+b2
 ```
 
 ---
