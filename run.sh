@@ -30,5 +30,9 @@ else
 
     xhost +local:docker >/dev/null 2>&1 || true
 
-    docker compose run --rm quad_ocs2 ./run.sh
+    docker compose up -d
+
+    echo "Attaching to container..."
+
+    docker exec -it $(docker compose ps -q quad_ocs2) ./run.sh
 fi
