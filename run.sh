@@ -22,7 +22,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Environment loaded ✅"
     echo "Launching Quadruped Simulation..."
 
-    ./tools/run_tmux.sh b2
+    ./tools/run_tmux.sh quad_mini
 
 else
     echo "Running on host system"
@@ -34,5 +34,5 @@ else
 
     echo "Attaching to container..."
 
-    docker exec -it $(docker compose ps -q quad_ocs2) ./run.sh
+    docker exec -it $(docker compose ps -q quad_ocs2) ./run.sh 
 fi
