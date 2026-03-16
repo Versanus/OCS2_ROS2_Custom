@@ -4,43 +4,70 @@ set -e
 SESSION=quad
 WS=/workspaces/quad_ocs2_ws
 
+# robot type argument (default b1)
+ROBOT_TYPE=${1:-b1}
+
+echo "Launching robot: $ROBOT_TYPE"
+
 tmux new-session -d -s $SESSION
 
-# create 4 panes first
-tmux split-window -h -t $SESSION:0
+tmux split-window -h -t $SESSION
 tmux split-window -v -t $SESSION:0.0
 tmux split-window -v -t $SESSION:0.1
 
 tmux select-layout -t $SESSION tiled
 
-# Pane 0 → Mujoco
-tmux send-keys -t $SESSION:0.0 "
+
+# -------------------------
+# Mujoco simulator
+# -------------------------
+tmux respawn-pane -k -t $SESSION:0.0 \
+"bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-ros2 launch launch_simulation mujoco.launch.py robot_type:=b1
-" C-m
+ros2 launch launch_simulation mujoco.launch.py robot_type:=$ROBOT_TYPE
+'"
 
-# Pane 1 → User command
-tmux send-keys -t $SESSION:0.1 "
+
+# -------------------------
+# User command (interactive)
+# -------------------------
+tmux respawn-pane -k -t $SESSION:0.1 \
+"bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-ros2 launch launch_simulation user_command.launch.py robot_type:=b1
-" C-m
 
-# Pane 2 → MPC (with delay like TimerAction)
-tmux send-keys -t $SESSION:0.2 "
+REF=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/reference.info
+GAIT=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/gait.info
+
+ros2 run user_command user_command_node \
+ --ros-args \
+ -p referenceFile:=\$REF \
+ -p gaitCommandFile:=\$GAIT
+'"
+
+
+# -------------------------
+# MPC controller
+# -------------------------
+tmux respawn-pane -k -t $SESSION:0.2 \
+"bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
 sleep 5
-ros2 launch launch_simulation mpc.launch.py robot_type:=b1
-" C-m
+ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
+'"
 
-# Pane 3 → debug
-tmux send-keys -t $SESSION:0.3 "
+
+# -------------------------
+# Debug terminal
+# -------------------------
+tmux respawn-pane -k -t $SESSION:0.3 \
+"bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-echo 'Debug terminal ready'
+echo Debug terminal ready
 bash
-" C-m
+'"
 
 tmux attach-session -t $SESSION
