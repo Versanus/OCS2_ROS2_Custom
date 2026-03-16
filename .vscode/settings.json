@@ -2,9 +2,14 @@
     "terminal.integrated.profiles.linux": {
         "quad_ocs2": {
             "path": "/bin/bash",
-            "args": ["-c", "source ~/quad_ocs2_ws/source_ws.sh && exec bash"]
+            "args": [
+                "-c",
+                "if [ -f ${workspaceFolder}/source_ws.sh ]; then source ${workspaceFolder}/source_ws.sh; fi; exec bash"
+            ]
         }
     },
+
     "terminal.integrated.defaultProfile.linux": "quad_ocs2",
-    "cmake.sourceDirectory": "/home/kaan/quad_ocs2_ws/src/Quadruped-Control-OCS2-ROS2/hpp-fcl/test"
+
+    "cmake.sourceDirectory": "${workspaceFolder}"
 }
