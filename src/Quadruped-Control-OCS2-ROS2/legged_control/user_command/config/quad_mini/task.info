@@ -1,5 +1,5 @@
 centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
-stateEstimate false // true: use steat estimate, false: use real state feedback from simulator
+stateEstimate true // true: use state estimate, false: use real state feedback from simulator
 
 legged_robot_interface
 {
@@ -20,9 +20,9 @@ model_settings
 
 swing_trajectory_config
 {
-  liftOffVelocity               0.10
-  touchDownVelocity            -0.03
-  swingHeight                   0.04
+  liftOffVelocity               0.20
+  touchDownVelocity            -0.00
+  swingHeight                   0.03
   swingTimeScale                0.15
 }
 
@@ -125,7 +125,7 @@ ipm
 rollout
 {
   AbsTolODE                       1e-5
-  RelTolODE                       1e-4
+  RelTolODE                       1e-3
   timeStep                        0.015
   integratorType                  ODE45
   maxNumStepsPerSecond            10000
@@ -186,38 +186,38 @@ Q
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
   (0,0)   100.0     ; vcom_x
   (1,1)   100.0     ; vcom_y
-  (2,2)   50.0    ; vcom_z
-  (3,3)   400.0     ; L_z / robotMass
-  (4,4)   400.0     ; L_y / robotMass
-  (5,5)   400.0     ; L_x / robotMass
+  (2,2)   10.0    ; vcom_z
+  (3,3)   100.0     ; L_z / robotMass
+  (4,4)   100.0     ; L_y / robotMass
+  (5,5)   200.0     ; L_x / robotMass
 
   ;; Base Pose: [position, orientation] ;;
   (6,6)   200.0   ; p_base_x
   (7,7)   200.0   ; p_base_y
-  (8,8)   2000.0   ; p_base_z
-  (9,9)   200.0    ; theta_base_z
-  (10,10) 500.0    ; theta_base_y
-  (11,11) 2000.0    ; theta_base_x
+  (8,8)   2500.0   ; p_base_z
+  (9,9)   300.0    ; theta_base_z
+  (10,10) 200.0    ; theta_base_y
+  (11,11) 600.0    ; theta_base_x
 
   ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
-  (12,12) 5.0     ; LF_HAA
-  (13,13) 5.0     ; LF_HFE
-  (14,14) 5.0     ; LF_KFE
-  (15,15) 5.0     ; LH_HAA
-  (16,16) 5.0     ; LH_HFE
-  (17,17) 5.0     ; LH_KFE
-  (18,18) 5.0     ; RF_HAA
-  (19,19) 5.0     ; RF_HFE
-  (20,20) 5.0     ; RF_KFE
-  (21,21) 5.0     ; RH_HAA
-  (22,22) 5.0     ; RH_HFE
-  (23,23) 5.0     ; RH_KFE
+  (12,12) 6.0     ; LF_HAA
+  (13,13) 6.0     ; LF_HFE
+  (14,14) 6.0     ; LF_KFE
+  (15,15) 6.0     ; LH_HAA
+  (16,16) 6.0     ; LH_HFE
+  (17,17) 6.0     ; LH_KFE
+  (18,18) 6.0     ; RF_HAA
+  (19,19) 6.0     ; RF_HFE
+  (20,20) 6.0     ; RF_KFE
+  (21,21) 6.0     ; RH_HAA
+  (22,22) 6.0     ; RH_HFE
+  (23,23) 6.0     ; RH_KFE
 }
 
 ; control weight matrix
 R
 {
-  scaling 1.0e-3
+  scaling 0.9e-3
 
   ;; Feet Contact Forces: [LF, RF, LH, RH] ;;
   (0,0)   1.0       ; left_front_force
@@ -234,23 +234,23 @@ R
   (11,11) 1.0       ; right_hind_force
 
   ;; foot velocity relative to base: [LF, LH, RF, RH] (uses the Jacobian at nominal configuration) ;;
-  (12,12) 3000.0    ; x
-  (13,13) 3000.0    ; y
-  (14,14) 3000.0    ; z
-  (15,15) 3000.0    ; x
-  (16,16) 3000.0    ; y
-  (17,17) 3000.0    ; z
-  (18,18) 3000.0    ; x
-  (19,19) 3000.0    ; y
-  (20,20) 3000.0    ; z
-  (21,21) 3000.0    ; x
-  (22,22) 3000.0    ; y
-  (23,23) 3000.0    ; z
+  (12,12) 2000.0    ; x
+  (13,13) 2000.0    ; y
+  (14,14) 2000.0    ; z
+  (15,15) 2000.0    ; x
+  (16,16) 2000.0    ; y
+  (17,17) 2000.0    ; z
+  (18,18) 2000.0    ; x
+  (19,19) 2000.0    ; y
+  (20,20) 2000.0    ; z
+  (21,21) 2000.0    ; x
+  (22,22) 2000.0    ; y
+  (23,23) 2000.0    ; z
 }
 
 frictionConeSoftConstraint
 {
-  frictionCoefficient    0.6
+  frictionCoefficient    0.3
 
   ; relaxed log barrier parameters
   mu                     0.1
@@ -286,20 +286,20 @@ torqueLimitsTask
 
 frictionConeTask
 {
-  frictionCoefficient    0.6
+  frictionCoefficient    0.3
 }
 
 swingLegTask
 {
-    kp                   130
-    kd                   10
+    kp                   250
+    kd                   25
 }
 
 weight
 {
-    swingLeg        100
+    swingLeg        100.0
     baseAccel       0.01
-    contactForce    1
+    contactForce    10.0
 }
 
 ; State Estimation

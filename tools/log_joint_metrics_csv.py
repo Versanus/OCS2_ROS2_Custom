@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+#python3 /home/kaan/OCS2_quad_mini/tools/log_joint_metrics_csv.py \
+#  --name stand \
+#  --output-dir /home/kaan/OCS2_quad_mini/sim_capture/quad_mini/real
 
 """Write published joint torques and velocities from ROS directly to CSV files."""
 
@@ -162,14 +165,26 @@ class JointTorqueCsvLogger(Node):
         self.torque_output_path.parent.mkdir(parents=True, exist_ok=True)
         self.speed_output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        self.position_output_path = self.torque_output_path.with_name(
+            self.torque_output_path.stem.replace("_torque", "_position") + ".csv"
+        )
+
         self.torque_output_file = self.torque_output_path.open("w", newline="", encoding="utf-8")
         self.speed_output_file = self.speed_output_path.open("w", newline="", encoding="utf-8")
+        self.position_output_file = self.position_output_path.open("w", newline="", encoding="utf-8")
+
+
         self.torque_writer = csv.writer(self.torque_output_file)
         self.speed_writer = csv.writer(self.speed_output_file)
+        self.position_writer = csv.writer(self.position_output_file)
+
         self.torque_writer.writerow(self._header("torque_nm"))
         self.speed_writer.writerow(self._header("speed_rad_per_sec"))
+        self.position_writer.writerow(self._header("position_rad"))
+
         self.torque_output_file.flush()
         self.speed_output_file.flush()
+        self.position_output_file.flush()
 
         self.create_subscription(JointControlData, control_topic, self.control_callback, 10)
         self.create_subscription(SimulatorStateData, state_topic, self.state_callback, 10)
@@ -216,10 +231,17 @@ class JointTorqueCsvLogger(Node):
         speed_row = [elapsed_time, simulation_time]
         speed_row.extend(self.latest_control.joint_velocity[: self.joint_count])
 
+        position_row = [elapsed_time, simulation_time]
+        position_row.extend(self.latest_control.joint_position[: self.joint_count])
+
         self.torque_writer.writerow(torque_row)
         self.speed_writer.writerow(speed_row)
+        self.position_writer.writerow(position_row)
+
         self.torque_output_file.flush()
         self.speed_output_file.flush()
+        self.position_output_file.flush()     
+
         self.latest_control = None
         self.samples_written += 1
 
@@ -229,6 +251,7 @@ class JointTorqueCsvLogger(Node):
     def destroy_node(self) -> bool:
         self.torque_output_file.close()
         self.speed_output_file.close()
+        self.position_output_file.close()
         return super().destroy_node()
 
     def finish_capture(self) -> None:
