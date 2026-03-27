@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+
+"""Compare one leg across walk captures at multiple commanded speeds."""
+
+import argparse
+import csv
+import importlib.util
+import os
+from pathlib import Path
+import site
+import sys
+from typing import Dict, List, Optional, Sequence, Tuple
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_INPUT_DIR = WORKSPACE_ROOT / "sim_capture/quad_mini/new_motors"
+MPL_CONFIG_DIR = Path("/tmp/quad_ocs2_matplotlib")
+MPL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
+
+TIME_COLUMNS = ("elapsed_simulation_time_sec", "elapsed_time_sec", "simulation_time_sec")
+LEGS = ("LF", "LH", "RF", "RH")
+WALK_SPEEDS = ("0.5", "1.0", "1.5", "2.0")
+JOINT_ORDER = ("HAA", "HFE", "KFE")
+JOINT_LABELS = {
+    "HAA": "hipx",
+    "HFE": "hipy",
+    "KFE": "knee",
+}
+METRICS = {
+    "torque": {
+        "suffix": "torque_nm",
+        "ylabel": "torque [Nm]",
+        "title": "Torque",
+        "default_output_name": "walk_leg_torque_comparison.png",
+    },
+    "speed": {
+        "suffix": "speed_rad_per_sec",
+        "ylabel": "speed [rad/s]",
+        "title": "Speed",
+        "default_output_name": "walk_leg_speed_comparison.png",
+    },
+}
+
+
+def module_origin(module_name: str) -> Optional[Path]:
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        return None
+    if spec.origin is not None:
+        return Path(spec.origin).resolve()
+    if spec.submodule_search_locations:
+        return Path(next(iter(spec.submodule_search_locations))).resolve()
+    return None
+
+
+def should_restart_without_user_site() -> bool:
+    if sys.flags.no_user_site:
+        return False
+
+    numpy_origin = module_origin("numpy")
+    matplotlib_origin = module_origin("matplotlib")
+    if numpy_origin is None or matplotlib_origin is None:
+        return False
+
+    user_site = Path(site.getusersitepackages()).resolve()
+    return user_site in numpy_origin.parents and user_site not in matplotlib_origin.parents
+
+
+if should_restart_without_user_site():
+    os.execvpe(sys.executable, [sys.executable, "-s", *sys.argv], os.environ.copy())
+
+try:
+    import matplotlib.pyplot as plt
+except Exception as exc:  # pragma: no cover - environment-specific
+    raise SystemExit(
+        "matplotlib could not be imported. This is often caused by mixing a user-installed "
+        "NumPy with the system matplotlib package.\n"
+        f"Import error: {exc}\n"
+        f"Try rerunning with:\n  {sys.executable} -s {' '.join(sys.argv)}"
+    ) from exc
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Plot one leg from walk_0.5, walk_1.0, walk_1.5, and walk_2.0 captures. "
+            "Creates separate torque and speed figures."
+        )
+    )
+    parser.add_argument(
+        "--leg",
+        choices=LEGS,
+        default="LF",
+        help="Leg to compare across captures.",
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=DEFAULT_INPUT_DIR,
+        help="Directory containing walk_<speed>_torque.csv and walk_<speed>_speed.csv files.",
+    )
+    parser.add_argument(
+        "--time-column",
+        choices=TIME_COLUMNS,
+        default="elapsed_simulation_time_sec",
+        help="Time axis to use.",
+    )
+    parser.add_argument(
+        "--torque-output",
+        type=Path,
+        default=None,
+        help="Optional output image path for the torque figure.",
+    )
+    parser.add_argument(
+        "--speed-output",
+        type=Path,
+        default=None,
+        help="Optional output image path for the speed figure.",
+    )
+    parser.add_argument(
+        "--title-prefix",
+        default="Walk Comparison",
+        help="Optional prefix used in figure titles.",
+    )
+    return parser.parse_args()
+
+
+def load_csv(path: Path, time_column: str) -> Tuple[List[float], Dict[str, List[float]]]:
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"CSV file not found: {resolved}")
+
+    with resolved.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV file has no header: {resolved}")
+        if time_column not in reader.fieldnames:
+            raise ValueError(f"{resolved} is missing time column '{time_column}'.")
+
+        data_columns = [name for name in reader.fieldnames if name not in TIME_COLUMNS]
+        time_values: List[float] = []
+        values = {column: [] for column in data_columns}
+
+        for row_index, row in enumerate(reader, start=2):
+            try:
+                time_values.append(float(row[time_column]))
+                for column in data_columns:
+                    values[column].append(float(row[column]))
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Could not parse numeric value in {resolved} at CSV row {row_index}."
+                ) from exc
+
+    if not time_values:
+        raise ValueError(f"CSV file is empty: {resolved}")
+
+    return time_values, values
+
+
+def metric_file(input_dir: Path, walk_speed: str, metric_name: str) -> Path:
+    return input_dir.expanduser().resolve() / f"walk_{walk_speed}_{metric_name}.csv"
+
+
+def leg_columns(leg_name: str, metric_suffix: str) -> List[str]:
+    return [f"{leg_name}_{joint_name}_{metric_suffix}" for joint_name in JOINT_ORDER]
+
+
+def plot_metric(
+    leg_name: str,
+    input_dir: Path,
+    time_column: str,
+    metric_name: str,
+    output_path: Optional[Path],
+    title_prefix: str,
+) -> Optional[Path]:
+    metric_config = METRICS[metric_name]
+    columns = leg_columns(leg_name, metric_config["suffix"])
+
+    figure, axes = plt.subplots(len(columns), 1, figsize=(10.0, 8.0), sharex=True)
+    axis_list = list(axes.flat) if hasattr(axes, "flat") else [axes]
+
+    for walk_speed in WALK_SPEEDS:
+        csv_path = metric_file(input_dir, walk_speed, metric_name)
+        time_values, values = load_csv(csv_path, time_column)
+
+        for axis, column in zip(axis_list, columns):
+            if column not in values:
+                raise ValueError(f"{csv_path} is missing expected column '{column}'.")
+            joint_name = column.split("_")[1]
+            axis.plot(time_values, values[column], linewidth=1.3, label=f"walk {walk_speed}")
+            axis.set_title(f"{leg_name} {JOINT_LABELS[joint_name]}")
+            axis.set_ylabel(metric_config["ylabel"])
+            axis.grid(True, alpha=0.3)
+
+    axis_list[-1].set_xlabel(time_column)
+    axis_list[0].legend(loc="upper right")
+    figure.suptitle(f"{title_prefix} - {leg_name} {metric_config['title']}")
+    figure.tight_layout()
+
+    if output_path is None:
+        return None
+
+    resolved_output = output_path.expanduser().resolve()
+    resolved_output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(resolved_output, dpi=160, bbox_inches="tight")
+    print(f"Saved {metric_name} plot to {resolved_output}")
+    return resolved_output
+
+
+def main() -> int:
+    args = parse_args()
+
+    torque_path = plot_metric(
+        leg_name=args.leg,
+        input_dir=args.input_dir,
+        time_column=args.time_column,
+        metric_name="torque",
+        output_path=args.torque_output,
+        title_prefix=args.title_prefix,
+    )
+    speed_path = plot_metric(
+        leg_name=args.leg,
+        input_dir=args.input_dir,
+        time_column=args.time_column,
+        metric_name="speed",
+        output_path=args.speed_output,
+        title_prefix=args.title_prefix,
+    )
+
+    if torque_path is None or speed_path is None:
+        plt.show()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

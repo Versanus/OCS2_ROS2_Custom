@@ -4,9 +4,12 @@
 
 import argparse
 import csv
+import importlib.util
 import math
 import os
 from pathlib import Path
+import site
+import sys
 from typing import Dict, List, Optional, Sequence, Tuple
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
@@ -14,13 +17,48 @@ MPL_CONFIG_DIR = Path("/tmp/quad_ocs2_matplotlib")
 MPL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
 
-TIME_COLUMNS = ("elapsed_time_sec", "simulation_time_sec")
+TIME_COLUMNS = ("elapsed_simulation_time_sec", "elapsed_time_sec", "simulation_time_sec")
+JOINT_NAME_MAP = {
+    "HAA": "hipx",
+    "HFE": "hipy",
+    "KFE": "knee",
+}
+
+def module_origin(module_name: str) -> Optional[Path]:
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        return None
+    if spec.origin is not None:
+        return Path(spec.origin).resolve()
+    if spec.submodule_search_locations:
+        return Path(next(iter(spec.submodule_search_locations))).resolve()
+    return None
+
+
+def should_restart_without_user_site() -> bool:
+    if sys.flags.no_user_site:
+        return False
+
+    numpy_origin = module_origin("numpy")
+    matplotlib_origin = module_origin("matplotlib")
+    if numpy_origin is None or matplotlib_origin is None:
+        return False
+
+    user_site = Path(site.getusersitepackages()).resolve()
+    return user_site in numpy_origin.parents and user_site not in matplotlib_origin.parents
+
+
+if should_restart_without_user_site():
+    os.execvpe(sys.executable, [sys.executable, "-s", *sys.argv], os.environ.copy())
 
 try:
     import matplotlib.pyplot as plt
-except ImportError as exc:  # pragma: no cover - environment-specific
+except Exception as exc:  # pragma: no cover - environment-specific
     raise SystemExit(
-        "matplotlib is required for plotting. Install it first, then rerun this script."
+        "matplotlib could not be imported. This is often caused by mixing a user-installed "
+        "NumPy with the system matplotlib package.\n"
+        f"Import error: {exc}\n"
+        f"Try rerunning with:\n  {sys.executable} -s {' '.join(sys.argv)}"
     ) from exc
 
 
@@ -129,6 +167,19 @@ def infer_ylabel(columns: Sequence[str]) -> str:
     return "value"
 
 
+def format_column_label(column: str) -> str:
+    parts = column.split("_")
+    if len(parts) < 3:
+        return column
+
+    leg_name, joint_name = parts[0], parts[1]
+    mapped_joint_name = JOINT_NAME_MAP.get(joint_name)
+    if mapped_joint_name is None:
+        return column
+
+    return f"{leg_name} {mapped_joint_name}"
+
+
 def plot_files(
     csv_files: Sequence[Path],
     time_column: str,
@@ -161,7 +212,7 @@ def plot_files(
     for axis, column in zip(axis_list, plot_columns):
         for csv_path, time_values, values, _ in loaded:
             axis.plot(time_values, values[column], linewidth=1.2, label=csv_path.stem)
-        axis.set_title(column)
+        axis.set_title(format_column_label(column))
         axis.grid(True, alpha=0.3)
 
     for axis in axis_list[len(plot_columns) :]:

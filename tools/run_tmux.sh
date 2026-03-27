@@ -70,4 +70,7 @@ echo Debug terminal ready
 bash
 '"
 
+# Focus the interactive user-command pane when attaching.
+tmux select-pane -t $SESSION:0.1
+
 tmux attach-session -t $SESSION

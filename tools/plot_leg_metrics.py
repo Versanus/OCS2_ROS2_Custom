@@ -3,9 +3,11 @@
 """Live plots for per-leg average actuator torque and speed."""
 
 import argparse
+import importlib.util
 import math
 import os
 import re
+import site
 import sys
 import xml.etree.ElementTree as ET
 from collections import deque
@@ -18,11 +20,41 @@ MPL_CONFIG_DIR = Path("/tmp/quad_ocs2_matplotlib")
 MPL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
 
+def module_origin(module_name: str) -> Optional[Path]:
+    spec = importlib.util.find_spec(module_name)
+    if spec is None:
+        return None
+    if spec.origin is not None:
+        return Path(spec.origin).resolve()
+    if spec.submodule_search_locations:
+        return Path(next(iter(spec.submodule_search_locations))).resolve()
+    return None
+
+
+def should_restart_without_user_site() -> bool:
+    if sys.flags.no_user_site:
+        return False
+
+    numpy_origin = module_origin("numpy")
+    matplotlib_origin = module_origin("matplotlib")
+    if numpy_origin is None or matplotlib_origin is None:
+        return False
+
+    user_site = Path(site.getusersitepackages()).resolve()
+    return user_site in numpy_origin.parents and user_site not in matplotlib_origin.parents
+
+
+if should_restart_without_user_site():
+    os.execvpe(sys.executable, [sys.executable, "-s", *sys.argv], os.environ.copy())
+
 try:
     import matplotlib.pyplot as plt
-except ImportError as exc:  # pragma: no cover - environment-specific
+except Exception as exc:  # pragma: no cover - environment-specific
     raise SystemExit(
-        "matplotlib is required for plotting. Install it first, then rerun this script."
+        "matplotlib could not be imported. This is often caused by mixing a user-installed "
+        "NumPy with the system matplotlib package.\n"
+        f"Import error: {exc}\n"
+        f"Try rerunning with:\n  {sys.executable} -s {' '.join(sys.argv)}"
     ) from exc
 
 try:
