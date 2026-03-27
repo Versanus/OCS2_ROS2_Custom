@@ -11,3 +11,4 @@ __pycache__/
 .ros/
 tmp/
 MUJOCO_LOG.TXT
+sim_capture/
