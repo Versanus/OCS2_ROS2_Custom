@@ -155,25 +155,25 @@ initialState
    ;; Base Pose: [position, orientation] ;;
    (6,0)  0.0     ; p_base_x
    (7,0)  0.0     ; p_base_y
-   (8,0)  0.17     ; p_base_z
+   (8,0)  0.19     ; p_base_z
    (9,0)  0.0     ; theta_base_z
    (10,0) 0.0     ; theta_base_y
    (11,0) 0.0     ; theta_base_x
 
    ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
-   (12,0) 0.00
+   (12,0) 0.40
    (13,0) 0.17
    (14,0) -0.92
 
-   (15,0) -0.00
+   (15,0) 0.40
    (16,0) 0.17
    (17,0) -0.92
 
-   (18,0) 0.00
+   (18,0) -0.40
    (19,0) 0.17
    (20,0) -0.92
 
-   (21,0) -0.00
+   (21,0) -0.40
    (22,0) 0.17
    (23,0) -0.92
 }
@@ -186,18 +186,18 @@ Q
   ;; Normalized Centroidal Momentum: [linear, angular] ;;
   (0,0)   100.0     ; vcom_x
   (1,1)   100.0     ; vcom_y
-  (2,2)   10.0    ; vcom_z
-  (3,3)   100.0     ; L_z / robotMass
-  (4,4)   100.0     ; L_y / robotMass
+  (2,2)   100.0    ; vcom_z
+  (3,3)   200.0     ; L_z / robotMass
+  (4,4)   200.0     ; L_y / robotMass
   (5,5)   200.0     ; L_x / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   200.0   ; p_base_x
-  (7,7)   200.0   ; p_base_y
-  (8,8)   2500.0   ; p_base_z
-  (9,9)   300.0    ; theta_base_z
-  (10,10) 200.0    ; theta_base_y
-  (11,11) 600.0    ; theta_base_x
+  (6,6)   1000.0   ; p_base_x
+  (7,7)   1000.0   ; p_base_y
+  (8,8)   1000.0   ; p_base_z
+  (9,9)   1500.0    ; theta_base_z
+  (10,10) 1500.0    ; theta_base_y
+  (11,11) 1500.0    ; theta_base_x
 
   ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
   (12,12) 6.0     ; LF_HAA

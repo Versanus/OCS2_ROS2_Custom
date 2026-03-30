@@ -83,7 +83,11 @@ class TargetTrajectoriesKeyboardPublisher {
    */
   // void publishKeyboardCommand(
   //     const std::string& commadMsg = "Enter command, separated by space");
-  void publishKeyboardCommand(std::string& commandValue);
+  void publishGoalCommand(const ocs2::vector_t& goalCommand);
+  void publishVelocityCommand(const ocs2::vector_t& velocityCommand, bool verbose = true);
+  void publishHoldPositionCommand(bool verbose = true);
+  ocs2::scalar_t adjustDesiredHeight(ocs2::scalar_t deltaHeight);
+  ocs2::scalar_t getDesiredHeight() const { return comHeight_; }
 
  private:
   /** Gets the target from command line. */
@@ -97,8 +101,15 @@ class TargetTrajectoriesKeyboardPublisher {
     const legged_msgs::msg::MpcObservation& observationMsg);
   legged_msgs::msg::MpcTargetTrajectories createTargetTrajectoriesMsg(
     const ocs2::TargetTrajectories& targetTrajectories);
+  ocs2::SystemObservation getLatestObservation();
+  void publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose = true);
+  void resetVelocityReference();
   ocs2::TargetTrajectories commandLineToTargetTrajectories(
     const ocs2::vector_t& commadLineTarget, const ocs2::SystemObservation& observation);
+  ocs2::TargetTrajectories velocityCommandToTargetTrajectories(
+    const ocs2::vector_t& velocityCommand, const ocs2::SystemObservation& observation);
+  ocs2::TargetTrajectories holdCurrentPoseToTargetTrajectories(
+    const ocs2::SystemObservation& observation);
   ocs2::scalar_t estimateTimeToTarget(const ocs2::vector_t& desiredBaseDisplacement);
 
   // std::unique_ptr<TargetTrajectoriesRosPublisher>
@@ -115,6 +126,10 @@ class TargetTrajectoriesKeyboardPublisher {
   ocs2::scalar_t targetRotationVelocity_;
   ocs2::scalar_t comHeight_;
   ocs2::vector_t defaultJointState_;
+  ocs2::scalar_t velocityCommandLookaheadTime_ = 0.3;
+  ocs2::scalar_t velocityCommandPreviewTime_ = 1.5;
+  bool velocityReferenceInitialized_ = false;
+  ocs2::vector_t velocityReferencePose_ = ocs2::vector_t::Zero(6);
+  ocs2::scalar_t lastVelocityReferenceTime_ = 0.0;
   
 };
-

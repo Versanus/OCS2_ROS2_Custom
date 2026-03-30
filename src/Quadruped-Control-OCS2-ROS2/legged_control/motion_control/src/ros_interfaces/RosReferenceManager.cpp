@@ -67,7 +67,6 @@ void RosReferenceManager::subscribe(const rclcpp::Node::SharedPtr& node) {
             readTargetTrajectoriesMsg(msg);
         referenceManagerPtr_->setTargetTrajectories(
             std::move(targetTrajectories));
-        std::cout << "goal recieved!" << std::endl;
       };
   targetTrajectoriesSubscriber_ =
       node_->create_subscription<legged_msgs::msg::MpcTargetTrajectories>(

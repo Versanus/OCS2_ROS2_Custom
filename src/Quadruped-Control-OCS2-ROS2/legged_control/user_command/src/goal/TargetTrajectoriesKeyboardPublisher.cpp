@@ -30,6 +30,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //#include "ocs2_ros_interfaces/command/TargetTrajectoriesKeyboardPublisher.h"
 #include "user_command/goal/TargetTrajectoriesKeyboardPublisher.h"
 
+#include <algorithm>
 #include <ocs2_core/misc/CommandLine.h>
 #include <ocs2_core/misc/Display.h>
 // #include <ocs2_ros_interfaces/common/RosMsgConversions.h>
@@ -65,7 +66,6 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
         //By locking latestObservationMutex_, it ensures that the following code block is thread-safe, 
         //preventing multiple threads from simultaneously accessing or modifying the shared resource latestObservation_.
         latestObservation_ = readObservationMsg(*msg);
-        std::cout << "observation recieved" << std::endl;
       };
   observationSubscriber_ =
       node->create_subscription<legged_msgs::msg::MpcObservation>(
@@ -85,40 +85,40 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
-void TargetTrajectoriesKeyboardPublisher::publishKeyboardCommand(std::string& commandValue) {
-    // a line to words
-  const std::vector<std::string> words = ocs2::stringToWords(commandValue);
+void TargetTrajectoriesKeyboardPublisher::publishGoalCommand(const ocs2::vector_t& goalCommand) {
+  const ocs2::vector_t commandLineInput = goalCommand.cwiseMin(targetCommandLimits_).cwiseMax(-targetCommandLimits_);
+  std::cout << "Publishing goal command: [" << ocs2::toDelimitedString(commandLineInput) << "]\n";
+  resetVelocityReference();
+  publishTargetTrajectories(commandLineToTargetTrajectories(commandLineInput, getLatestObservation()));
+}
 
-  const size_t targetCommandSize = targetCommandLimits_.size();
-  ocs2::vector_t targetCommand = ocs2::vector_t::Zero(targetCommandSize);
-  for (size_t i = 0; i < std::min(words.size(), targetCommandSize); i++) {
-    targetCommand(i) = static_cast<ocs2::scalar_t>(stof(words[i]));
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::publishVelocityCommand(const ocs2::vector_t& velocityCommand, bool verbose) {
+  if (verbose) {
+    std::cout << "Publishing velocity command: [" << ocs2::toDelimitedString(velocityCommand) << "]\n";
   }
-  const ocs2::vector_t commandLineInput = targetCommand
-                                        .cwiseMin(targetCommandLimits_)
-                                        .cwiseMax(-targetCommandLimits_);
+  publishTargetTrajectories(velocityCommandToTargetTrajectories(velocityCommand, getLatestObservation()), verbose);
+}
 
-  // display
-  std::cout << "The following command is publishing: ["
-            << ocs2::toDelimitedString(commandLineInput) << "]\n";
-
-  // get the latest observation
-  rclcpp::spin_some(node_->get_node_base_interface());
-  ocs2::SystemObservation observation;
-  {
-    std::lock_guard<std::mutex> lock(latestObservationMutex_);
-    observation = latestObservation_;
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::publishHoldPositionCommand(bool verbose) {
+  if (verbose) {
+    std::cout << "Publishing hold-position command.\n";
   }
-  
-  // get TargetTrajectories
-  const auto targetTrajectories =
-      commandLineToTargetTrajectories(commandLineInput, observation);
+  resetVelocityReference();
+  publishTargetTrajectories(holdCurrentPoseToTargetTrajectories(getLatestObservation()), verbose);
+}
 
-  // publish TargetTrajectories
-  const auto mpcTargetTrajectoriesMsg = createTargetTrajectoriesMsg(targetTrajectories);
-  targetTrajectoriesPublisherPtr_->publish(mpcTargetTrajectoriesMsg);
-  std::cout << "Goal publish succeed!!!.\n";
-  std::cout << std::endl;
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::adjustDesiredHeight(ocs2::scalar_t deltaHeight) {
+  comHeight_ = std::clamp(comHeight_ + deltaHeight, ocs2::scalar_t(0.12), ocs2::scalar_t(0.30));
+  return comHeight_;
 }
 
 // /******************************************************************************************************/
@@ -244,6 +244,35 @@ legged_msgs::msg::MpcTargetTrajectories TargetTrajectoriesKeyboardPublisher::cre
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+ocs2::SystemObservation TargetTrajectoriesKeyboardPublisher::getLatestObservation() {
+  rclcpp::spin_some(node_->get_node_base_interface());
+  std::lock_guard<std::mutex> lock(latestObservationMutex_);
+  return latestObservation_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose) {
+  const auto mpcTargetTrajectoriesMsg = createTargetTrajectoriesMsg(targetTrajectories);
+  targetTrajectoriesPublisherPtr_->publish(mpcTargetTrajectoriesMsg);
+  if (verbose) {
+    std::cout << "Target trajectory publish succeed!!!.\n";
+    std::cout << std::endl;
+  }
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::resetVelocityReference() {
+  velocityReferenceInitialized_ = false;
+  lastVelocityReferenceTime_ = 0.0;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::estimateTimeToTarget(const ocs2::vector_t& desiredBaseDisplacement) {
   const ocs2::scalar_t& dx = desiredBaseDisplacement(0);
   const ocs2::scalar_t& dy = desiredBaseDisplacement(1);
@@ -294,5 +323,85 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::commandLineToTarge
   const ocs2::vector_array_t inputTrajectory(
       2, ocs2::vector_t::Zero(observation.input.size()));
 
+  return {timeTrajectory, stateTrajectory, inputTrajectory};
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToTargetTrajectories(
+    const ocs2::vector_t& velocityCommand, const ocs2::SystemObservation& observation) {
+  const ocs2::vector_t currentPose = observation.state.segment<6>(6);
+  ocs2::vector_t desiredPoseNow = currentPose;
+  desiredPoseNow(2) = comHeight_;
+  desiredPoseNow(4) = 0.0;
+  desiredPoseNow(5) = 0.0;
+  if (!velocityReferenceInitialized_ || observation.time < lastVelocityReferenceTime_ ||
+      observation.time - lastVelocityReferenceTime_ > 0.5) {
+    velocityReferencePose_ = desiredPoseNow;
+    lastVelocityReferenceTime_ = observation.time;
+    velocityReferenceInitialized_ = true;
+  }
+
+  const ocs2::scalar_t dt = std::clamp(observation.time - lastVelocityReferenceTime_, ocs2::scalar_t(0.0), ocs2::scalar_t(0.1));
+  const ocs2::scalar_t referenceYaw = velocityReferencePose_(3);
+  const ocs2::scalar_t bodyDx = velocityCommand(0) * dt;
+  const ocs2::scalar_t bodyDy = velocityCommand(1) * dt;
+  const ocs2::scalar_t worldDx = std::cos(referenceYaw) * bodyDx - std::sin(referenceYaw) * bodyDy;
+  const ocs2::scalar_t worldDy = std::sin(referenceYaw) * bodyDx + std::cos(referenceYaw) * bodyDy;
+
+  velocityReferencePose_(0) += worldDx;
+  velocityReferencePose_(1) += worldDy;
+  velocityReferencePose_(2) = comHeight_;
+  velocityReferencePose_(3) += velocityCommand(2) * dt;
+  velocityReferencePose_(4) = 0.0;
+  velocityReferencePose_(5) = 0.0;
+  lastVelocityReferenceTime_ = observation.time;
+
+  ocs2::vector_t targetPose = velocityReferencePose_;
+  const ocs2::scalar_t previewYaw = targetPose(3);
+  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityCommandPreviewTime_;
+  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityCommandPreviewTime_;
+  const ocs2::scalar_t previewWorldDx = std::cos(previewYaw) * previewBodyDx - std::sin(previewYaw) * previewBodyDy;
+  const ocs2::scalar_t previewWorldDy = std::sin(previewYaw) * previewBodyDx + std::cos(previewYaw) * previewBodyDy;
+  targetPose(0) += previewWorldDx;
+  targetPose(1) += previewWorldDy;
+  targetPose(2) = comHeight_;
+  targetPose(3) += velocityCommand(2) * velocityCommandPreviewTime_;
+  targetPose(4) = 0.0;
+  targetPose(5) = 0.0;
+
+  const ocs2::scalar_t targetReachingTime = observation.time + velocityCommandPreviewTime_;
+  const ocs2::scalar_array_t timeTrajectory{observation.time, targetReachingTime};
+
+  ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));
+  stateTrajectory[0] << ocs2::vector_t::Zero(6), desiredPoseNow, defaultJointState_;
+  stateTrajectory[1] << ocs2::vector_t::Zero(6), targetPose, defaultJointState_;
+
+  const ocs2::vector_array_t inputTrajectory(2, ocs2::vector_t::Zero(observation.input.size()));
+  return {timeTrajectory, stateTrajectory, inputTrajectory};
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::holdCurrentPoseToTargetTrajectories(
+    const ocs2::SystemObservation& observation) {
+  const ocs2::vector_t currentPose = observation.state.segment<6>(6);
+  const ocs2::scalar_array_t timeTrajectory{observation.time, observation.time + velocityCommandLookaheadTime_};
+  ocs2::vector_t desiredPoseNow = currentPose;
+  desiredPoseNow(2) = comHeight_;
+  desiredPoseNow(4) = 0.0;
+  desiredPoseNow(5) = 0.0;
+  ocs2::vector_t holdPose = currentPose;
+  holdPose(2) = comHeight_;
+  holdPose(4) = 0.0;
+  holdPose(5) = 0.0;
+
+  ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));
+  stateTrajectory[0] << ocs2::vector_t::Zero(6), desiredPoseNow, defaultJointState_;
+  stateTrajectory[1] << ocs2::vector_t::Zero(6), holdPose, defaultJointState_;
+
+  const ocs2::vector_array_t inputTrajectory(2, ocs2::vector_t::Zero(observation.input.size()));
   return {timeTrajectory, stateTrajectory, inputTrajectory};
 }
