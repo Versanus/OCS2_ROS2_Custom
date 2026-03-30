@@ -16,12 +16,26 @@ load_quad_ocs2_ws() {
 
     # Load workspace. The bash variant resolves the current prefix correctly
     # even if the workspace was built in Docker under a different path.
-    source "${WS_DIR}/install/local_setup.bash"
+    source_local_setup_bash
 
     # Load MuJoCo paths
     source "${WS_DIR}/mujoco_env.sh"
 
     echo "quad_ocs2_ws environment loaded ✅"
+}
+
+source_local_setup_bash() {
+    local setup_stderr
+    setup_stderr="$(mktemp)"
+
+    if ! source "${WS_DIR}/install/local_setup.bash" 2>"${setup_stderr}"; then
+        cat "${setup_stderr}" >&2
+        rm -f "${setup_stderr}"
+        return 1
+    fi
+
+    grep -vE '^not found: ".*/install/[^/]+/share/[^/]+/local_setup\.bash"$' "${setup_stderr}" >&2 || true
+    rm -f "${setup_stderr}"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
