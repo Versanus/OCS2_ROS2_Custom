@@ -360,18 +360,18 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
 
   ocs2::vector_t targetPose = velocityReferencePose_;
   const ocs2::scalar_t previewYaw = targetPose(3);
-  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityCommandPreviewTime_;
-  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityCommandPreviewTime_;
+  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityPreviewTime_;
+  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityPreviewTime_;
   const ocs2::scalar_t previewWorldDx = std::cos(previewYaw) * previewBodyDx - std::sin(previewYaw) * previewBodyDy;
   const ocs2::scalar_t previewWorldDy = std::sin(previewYaw) * previewBodyDx + std::cos(previewYaw) * previewBodyDy;
   targetPose(0) += previewWorldDx;
   targetPose(1) += previewWorldDy;
   targetPose(2) = comHeight_;
-  targetPose(3) += velocityCommand(2) * velocityCommandPreviewTime_;
+  targetPose(3) += velocityCommand(2) * velocityPreviewTime_;
   targetPose(4) = 0.0;
   targetPose(5) = 0.0;
 
-  const ocs2::scalar_t targetReachingTime = observation.time + velocityCommandPreviewTime_;
+  const ocs2::scalar_t targetReachingTime = observation.time + velocityPreviewTime_;
   const ocs2::scalar_array_t timeTrajectory{observation.time, targetReachingTime};
 
   ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));
@@ -388,7 +388,7 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
 ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::holdCurrentPoseToTargetTrajectories(
     const ocs2::SystemObservation& observation) {
   const ocs2::vector_t currentPose = observation.state.segment<6>(6);
-  const ocs2::scalar_array_t timeTrajectory{observation.time, observation.time + velocityCommandLookaheadTime_};
+  const ocs2::scalar_array_t timeTrajectory{observation.time, observation.time + holdTrajectoryDuration_};
   ocs2::vector_t desiredPoseNow = currentPose;
   desiredPoseNow(2) = comHeight_;
   desiredPoseNow(4) = 0.0;

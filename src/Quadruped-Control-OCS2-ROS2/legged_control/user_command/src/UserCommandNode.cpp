@@ -66,6 +66,25 @@ std::string modeToString(UserCommandMode mode) {
   return mode == UserCommandMode::Goal ? "goal" : "vel";
 }
 
+struct TeleopCommandState {
+  ocs2::scalar_t forwardAxis = 0.0;
+  ocs2::scalar_t lateralAxis = 0.0;
+  ocs2::scalar_t yawAxis = 0.0;
+  bool holdPositionActive = true;
+  std::chrono::steady_clock::time_point forwardUpdatedAt;
+  std::chrono::steady_clock::time_point lateralUpdatedAt;
+  std::chrono::steady_clock::time_point yawUpdatedAt;
+
+  void resetAxes(const std::chrono::steady_clock::time_point& inactiveTime) {
+    forwardAxis = 0.0;
+    lateralAxis = 0.0;
+    yawAxis = 0.0;
+    forwardUpdatedAt = inactiveTime;
+    lateralUpdatedAt = inactiveTime;
+    yawUpdatedAt = inactiveTime;
+  }
+};
+
 class ScopedRawTerminalMode {
  public:
   explicit ScopedRawTerminalMode(int fd = STDIN_FILENO) : fd_(fd) {
@@ -116,34 +135,31 @@ char readSingleKey(std::chrono::milliseconds timeout) {
   return bytesRead == 1 ? key : '\0';
 }
 
-ocs2::vector_t velocityFromKey(char key, ocs2::scalar_t linearSpeed, ocs2::scalar_t lateralSpeed,
-                               ocs2::scalar_t yawSpeed) {
-  ocs2::vector_t command = ocs2::vector_t::Zero(3);
-
+ocs2::vector_t normalizedAxisFromKey(char key) {
+  ocs2::vector_t axis = ocs2::vector_t::Zero(3);
   switch (key) {
     case 'w':
-      command(0) = linearSpeed;
+      axis(0) = 1.0;
       break;
     case 's':
-      command(0) = -linearSpeed;
+      axis(0) = -1.0;
       break;
     case 'a':
-      command(1) = lateralSpeed;
+      axis(1) = 1.0;
       break;
     case 'd':
-      command(1) = -lateralSpeed;
+      axis(1) = -1.0;
       break;
     case 'q':
-      command(2) = yawSpeed;
+      axis(2) = 1.0;
       break;
     case 'e':
-      command(2) = -yawSpeed;
+      axis(2) = -1.0;
       break;
     default:
       break;
   }
-
-  return command;
+  return axis;
 }
 
 bool isMotionKey(char key) {
@@ -209,7 +225,47 @@ void printVelocityModeHelp() {
       << "  o/l : raise/lower desired height slowly\n"
       << "  +/- : increase/decrease speeds\n"
       << "  space : switch to stance with safe clamped motion\n"
-      << "  g : exit velocity mode back to goal mode\n\n";
+      << "  g : exit velocity mode back to goal mode\n"
+      << "Keyboard currently drives full-scale axes. The teleop state is analog-ready for future controller support.\n\n";
+}
+
+void updateTeleopAxisFromKeyboard(TeleopCommandState& teleopState, char key,
+                                  const std::chrono::steady_clock::time_point& now) {
+  const ocs2::vector_t axis = normalizedAxisFromKey(key);
+  if (std::abs(axis(0)) > 1e-6) {
+    teleopState.forwardAxis = axis(0);
+    teleopState.forwardUpdatedAt = now;
+  }
+  if (std::abs(axis(1)) > 1e-6) {
+    teleopState.lateralAxis = axis(1);
+    teleopState.lateralUpdatedAt = now;
+  }
+  if (std::abs(axis(2)) > 1e-6) {
+    teleopState.yawAxis = axis(2);
+    teleopState.yawUpdatedAt = now;
+  }
+}
+
+void decayTeleopAxes(TeleopCommandState& teleopState, const std::chrono::steady_clock::time_point& now,
+                     const std::chrono::milliseconds& axisTimeout) {
+  if (now - teleopState.forwardUpdatedAt > axisTimeout) {
+    teleopState.forwardAxis = 0.0;
+  }
+  if (now - teleopState.lateralUpdatedAt > axisTimeout) {
+    teleopState.lateralAxis = 0.0;
+  }
+  if (now - teleopState.yawUpdatedAt > axisTimeout) {
+    teleopState.yawAxis = 0.0;
+  }
+}
+
+ocs2::vector_t composeVelocityCommand(const TeleopCommandState& teleopState, ocs2::scalar_t linearSpeed,
+                                      ocs2::scalar_t lateralSpeed, ocs2::scalar_t yawSpeed) {
+  ocs2::vector_t velocityCommand = ocs2::vector_t::Zero(3);
+  velocityCommand(0) = teleopState.forwardAxis * linearSpeed;
+  velocityCommand(1) = teleopState.lateralAxis * lateralSpeed;
+  velocityCommand(2) = teleopState.yawAxis * yawSpeed;
+  return velocityCommand;
 }
 
 void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseCommand,
@@ -229,12 +285,15 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
   const ocs2::scalar_t minLinearSpeed = 0.05;
   const ocs2::scalar_t minYawSpeed = 0.1;
   ocs2::vector_t currentVelocityCommand = ocs2::vector_t::Zero(3);
-  bool holdPositionActive = true;
-  auto lastMotionKeyTime = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+  const auto inactiveTime = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+  const auto axisTimeout = std::chrono::milliseconds(220);
+  TeleopCommandState teleopState;
+  teleopState.resetAxes(inactiveTime);
 
   while (rclcpp::ok() && currentMode == UserCommandMode::Velocity) {
     const char rawKey = readSingleKey(std::chrono::milliseconds(50));
     const char key = rawKey == '\0' ? '\0' : static_cast<char>(std::tolower(static_cast<unsigned char>(rawKey)));
+    const auto now = std::chrono::steady_clock::now();
 
     if (key != '\0') {
       const std::string gaitCommandString = gaitCommandFromKey(key);
@@ -243,10 +302,12 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         gaitCommand.publishKeyboardCommand(gaitCommandValue);
         activeGaitCommand = gaitCommandString;
         currentVelocityCommand.setZero();
-        holdPositionActive = true;
+        teleopState.resetAxes(inactiveTime);
+        teleopState.holdPositionActive = true;
         std::cout << "Switched gait to '" << gaitCommandString << "'.\n";
       } else if (isMotionKey(key)) {
-        ocs2::vector_t velocityCommand = velocityFromKey(key, linearSpeed, lateralSpeed, yawSpeed);
+        updateTeleopAxisFromKeyboard(teleopState, key, now);
+        ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
         if (activeGaitCommand == "stance") {
           bool wasClamped = false;
           velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
@@ -255,17 +316,16 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           }
         }
         currentVelocityCommand = velocityCommand;
-        holdPositionActive = false;
-        lastMotionKeyTime = std::chrono::steady_clock::now();
+        teleopState.holdPositionActive = false;
       } else if (key == 'o') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(heightStep);
-        if (holdPositionActive) {
+        if (teleopState.holdPositionActive) {
           targetPoseCommand.publishHoldPositionCommand(false);
         }
         std::cout << "\rDesired height: " << desiredHeight << "            " << std::flush;
       } else if (key == 'l') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(-heightStep);
-        if (holdPositionActive) {
+        if (teleopState.holdPositionActive) {
           targetPoseCommand.publishHoldPositionCommand(false);
         }
         std::cout << "\rDesired height: " << desiredHeight << "            " << std::flush;
@@ -287,25 +347,36 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         gaitCommand.publishKeyboardCommand(stanceCommand);
         activeGaitCommand = "stance";
         targetPoseCommand.publishHoldPositionCommand();
-        holdPositionActive = true;
+        teleopState.resetAxes(inactiveTime);
+        teleopState.holdPositionActive = true;
         std::cout << "Switched to stance. Motion stays enabled with stance safety limits.\n";
       } else if (key == 'g') {
         currentVelocityCommand.setZero();
         targetPoseCommand.publishHoldPositionCommand();
-        holdPositionActive = true;
+        teleopState.resetAxes(inactiveTime);
+        teleopState.holdPositionActive = true;
         currentMode = UserCommandMode::Goal;
         std::cout << "\nExited velocity mode. Back to goal mode.\n\n";
         break;
       }
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    if (now - lastMotionKeyTime > std::chrono::milliseconds(180)) {
+    decayTeleopAxes(teleopState, now, axisTimeout);
+    ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+
+    if (velocityCommand.isZero(1e-6)) {
       currentVelocityCommand.setZero();
-      holdPositionActive = true;
+      teleopState.holdPositionActive = true;
+    } else {
+      if (activeGaitCommand == "stance") {
+        bool wasClamped = false;
+        velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
+      }
+      currentVelocityCommand = velocityCommand;
+      teleopState.holdPositionActive = false;
     }
 
-    if (holdPositionActive) {
+    if (teleopState.holdPositionActive) {
       targetPoseCommand.publishHoldPositionCommand(false);
     } else {
       targetPoseCommand.publishVelocityCommand(currentVelocityCommand, false);
