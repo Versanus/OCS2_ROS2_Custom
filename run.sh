@@ -22,7 +22,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Environment loaded ✅"
     echo "Launching Quadruped Simulation..."
 
-    ./tools/run_tmux.sh quad_mini
+    ./tools/run_tmux.sh a1_custom
 
 else
     echo "Running on host system"

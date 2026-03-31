@@ -276,11 +276,12 @@ void TargetTrajectoriesKeyboardPublisher::resetVelocityReference() {
 ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::estimateTimeToTarget(const ocs2::vector_t& desiredBaseDisplacement) {
   const ocs2::scalar_t& dx = desiredBaseDisplacement(0);
   const ocs2::scalar_t& dy = desiredBaseDisplacement(1);
+  const ocs2::scalar_t& dz = desiredBaseDisplacement(2);
   const ocs2::scalar_t& dyaw = desiredBaseDisplacement(3);
   const ocs2::scalar_t rotationTime = std::abs(dyaw) / targetRotationVelocity_;
-  const ocs2::scalar_t displacement = std::sqrt(dx * dx + dy * dy);
+  const ocs2::scalar_t displacement = std::sqrt(dx * dx + dy * dy + dz * dz);
   const ocs2::scalar_t displacementTime = displacement / targetDisplacementVelocity_;
-  return std::max(rotationTime, displacementTime);
+  return std::max({rotationTime, displacementTime, minGoalTrajectoryDuration_});
 }
 
 /**

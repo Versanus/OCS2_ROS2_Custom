@@ -16,7 +16,7 @@
   <worldbody>
     <light directional="true" diffuse=".4 .4 .4" specular="0.1 0.1 0.1" pos="0 0 5.0" dir="0 0 -1" castshadow="false" />
     <light directional="true" diffuse=".6 .6 .6" specular="0.2 0.2 0.2" pos="0 0 4" dir="0 0 -1" />
-    <geom name="floor" pos="0 0 0" size="15 15 1" type="plane" material="matplane" margin="0.001" condim="3" friction="1 0.005 0.0001" />
+    <geom name="floor" pos="0 0 0" size="200 200 1" type="plane" material="matplane" margin="0.001" condim="3" friction="1 0.005 0.0001" />
     
     <geom type="box" size="0.15 0.05 0.05" pos="0.1 0 0" rgba="0 0 1 0.3"/>
 
@@ -162,18 +162,18 @@
   </sensor>
 
   <actuator>
-    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-91.0035 91.0035" ctrllimited="true"/>
-    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-93.33 93.33" ctrllimited="true"/>
-    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-140 140" ctrllimited="true"/>
-    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-91.0035 91.0035" ctrllimited="true"/>
-    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-93.33 93.33" ctrllimited="true"/>
-    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-140 140" ctrllimited="true"/>
-    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-91.0035 91.0035" ctrllimited="true"/>
-    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-93.33 93.33" ctrllimited="true"/>
-    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-140 140" ctrllimited="true"/>
-    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-91.0035 91.0035" ctrllimited="true"/>
-    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-93.33 93.33" ctrllimited="true"/>
-    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-140 140" ctrllimited="true"/>  
+    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
+    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>  
   </actuator>
   
 </mujoco>

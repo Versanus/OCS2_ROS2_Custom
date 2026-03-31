@@ -2,7 +2,7 @@ controller
 {
     timestep  0.001
     mpc_control_frequency  40
-    wbc_control_frequency  400
+    wbc_control_frequency  500
 }
 
 render
@@ -10,13 +10,13 @@ render
   render_appearance true
   render_inertia false
   visualize_contacts false
-  tracking_base false
+  tracking_base true
   render_frequency 60
 }
 
 pid
 {
-    kp                   10
-    kd                   1
+    kp                   10.0
+    kd                   0.5
 }
 

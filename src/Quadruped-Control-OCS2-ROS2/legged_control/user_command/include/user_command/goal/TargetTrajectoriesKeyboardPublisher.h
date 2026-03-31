@@ -126,8 +126,9 @@ class TargetTrajectoriesKeyboardPublisher {
   ocs2::scalar_t targetRotationVelocity_;
   ocs2::scalar_t comHeight_;
   ocs2::vector_t defaultJointState_;
+  ocs2::scalar_t minGoalTrajectoryDuration_ = 0.3;
   ocs2::scalar_t holdTrajectoryDuration_ = 0.3;
-  ocs2::scalar_t velocityPreviewTime_ = 2.0;
+  ocs2::scalar_t velocityPreviewTime_ = 1.50;
   bool velocityReferenceInitialized_ = false;
   ocs2::vector_t velocityReferencePose_ = ocs2::vector_t::Zero(6);
   ocs2::scalar_t lastVelocityReferenceTime_ = 0.0;
