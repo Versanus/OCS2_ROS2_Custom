@@ -12,6 +12,8 @@ if [ -f "/.dockerenv" ]; then
 
     echo "Cleaning selected packages..."
 
+    rm -rf build/legged_msgs install/legged_msgs
+    rm -rf build/motion_control install/motion_control
     rm -rf build/mujoco_simulator install/mujoco_simulator
     rm -rf build/user_command install/user_command
     rm -rf build/launch_simulation install/launch_simulation
@@ -28,7 +30,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select mujoco_simulator user_command launch_simulation\
+        --packages-select legged_msgs motion_control mujoco_simulator user_command launch_simulation \
         --symlink-install \
         --cmake-clean-cache
 

@@ -345,50 +345,44 @@ bool MujocoSimulation::checkCollision(const mjData* d, int geom1_id, int geom2_i
     return 0;
 }
 
+void MujocoSimulation::populate_state_message(legged_msgs::msg::SimulatorStateData& state)
+{
+    state.simulation_time = data_->time;
+
+    state.base_quat_values.clear();
+    for (int i = 0; i < 4; ++i) {
+        state.base_quat_values.push_back(static_cast<double>(data_->sensordata[i + 34]));
+    }
+
+    state.base_pose_values.clear();
+    state.base_angvel_values.clear();
+    state.base_linvel_values.clear();
+    for (int i = 0; i < 3; ++i) {
+        state.base_pose_values.push_back(static_cast<double>(data_->sensordata[i + 38]));
+        state.base_angvel_values.push_back(static_cast<double>(data_->sensordata[i + 41]));
+        state.base_linvel_values.push_back(static_cast<double>(data_->sensordata[i + 44]));
+    }
+
+    state.joint_position_values.clear();
+    state.joint_velocity_values.clear();
+    state.joint_torque_values.clear();
+    for (int i = 0; i < 12; ++i) {
+        state.joint_position_values.push_back(static_cast<double>(data_->sensordata[i + 10]));
+        state.joint_velocity_values.push_back(static_cast<double>(data_->sensordata[i + 22]));
+        state.joint_torque_values.push_back(static_cast<double>(data_->actuator_force[i]));
+    }
+
+    state.contact_flags.resize(geom_ids_.size() - 1);
+    for (size_t i = 0; i < (geom_ids_.size() - 1); ++i) {
+        state.contact_flags[i] = checkCollision(data_, geom_ids_[0], geom_ids_[i + 1]);
+    }
+}
+
 
 void MujocoSimulation::publish_state_data()
 {
     auto message = legged_msgs::msg::SimulatorStateData();
-    message.simulation_time = data_->time;
-
-    message.base_quat_values.clear();
-    mjtNum* imu_data = &data_->sensordata[0];
-    for (int i = 0; i < 4; ++i) {
-        double quat_value;
-        quat_value = static_cast<double>(data_->sensordata[i + 34]);
-        message.base_quat_values.push_back(quat_value);
-    }
-
-    message.base_pose_values.clear();
-    message.base_angvel_values.clear();
-    message.base_linvel_values.clear();
-    for (int i = 0; i < 3; ++i) {
-        double base_pose_value;
-        double base_angvel_value;
-        double base_linvel_value;
-        base_pose_value = static_cast<double>(data_->sensordata[i + 38]);
-        message.base_pose_values.push_back(base_pose_value);
-        base_angvel_value = static_cast<double>(data_->sensordata[i + 41]);
-        message.base_angvel_values.push_back(base_angvel_value);
-        base_linvel_value = static_cast<double>(data_->sensordata[i + 44]);
-        message.base_linvel_values.push_back(base_linvel_value);
-    }
-
-    message.joint_position_values.clear();
-    message.joint_velocity_values.clear();
-    for (int i = 0; i < 12; ++i) {
-        double joint_position_value;
-        double joint_velocity_value;
-        joint_position_value = static_cast<double>(data_->sensordata[i + 10]);
-        message.joint_position_values.push_back(joint_position_value);
-        joint_velocity_value = static_cast<double>(data_->sensordata[i + 22]);
-        message.joint_velocity_values.push_back(joint_velocity_value);
-    }
-
-    message.contact_flags.resize(geom_ids_.size()-1);
-    for (size_t i = 0; i < (geom_ids_.size()-1); ++i) {
-        message.contact_flags[i] = checkCollision(data_, geom_ids_[0], geom_ids_[i+1]);
-    }
+    populate_state_message(message);
 
     RCLCPP_INFO(node_->get_logger(),
             "Simulation time = [%f], \n"
@@ -398,6 +392,7 @@ void MujocoSimulation::publish_state_data()
             "Publishing base linvel data: [%f, %f, %f], \n"
             "Publishing joint position data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
             "Publishing joint velocity data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+            "Publishing joint torque data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
             "Publishing contact flag: [%zu, %zu, %zu, %zu]",
             message.simulation_time,
             message.base_quat_values[0], message.base_quat_values[1], 
@@ -417,6 +412,12 @@ void MujocoSimulation::publish_state_data()
             message.joint_velocity_values[6], message.joint_velocity_values[7],
             message.joint_velocity_values[8], message.joint_velocity_values[9],
             message.joint_velocity_values[10], message.joint_velocity_values[11],
+            message.joint_torque_values[0], message.joint_torque_values[1],
+            message.joint_torque_values[2], message.joint_torque_values[3],
+            message.joint_torque_values[4], message.joint_torque_values[5],
+            message.joint_torque_values[6], message.joint_torque_values[7],
+            message.joint_torque_values[8], message.joint_torque_values[9],
+            message.joint_torque_values[10], message.joint_torque_values[11],
             static_cast<size_t>(message.contact_flags[0]), static_cast<size_t>(message.contact_flags[1]),
             static_cast<size_t>(message.contact_flags[2]), static_cast<size_t>(message.contact_flags[3]));
     RCLCPP_INFO(node_->get_logger(),
@@ -505,47 +506,7 @@ void MujocoSimulation::start_control_service(const std::shared_ptr<legged_msgs::
     Start_simulate_=false;
 
     legged_msgs::msg::SimulatorStateData state;
-
-    state.simulation_time = data_->time;
-
-    state.base_quat_values.clear();
-    mjtNum* imu_data = &data_->sensordata[0];
-    for (int i = 0; i < 4; ++i) {
-        double quat_value;
-        quat_value = static_cast<double>(data_->sensordata[i + 34]);
-        state.base_quat_values.push_back(quat_value);
-    }
-
-    state.base_pose_values.clear();
-    state.base_angvel_values.clear();
-    state.base_linvel_values.clear();
-    for (int i = 0; i < 3; ++i) {
-        double base_pose_value;
-        double base_angvel_value;
-        double base_linvel_value;
-        base_pose_value = static_cast<double>(data_->sensordata[i + 38]);
-        state.base_pose_values.push_back(base_pose_value);
-        base_angvel_value = static_cast<double>(data_->sensordata[i + 41]);
-        state.base_angvel_values.push_back(base_angvel_value);
-        base_linvel_value = static_cast<double>(data_->sensordata[i + 44]);
-        state.base_linvel_values.push_back(base_linvel_value);
-    }
-
-    state.joint_position_values.clear();
-    state.joint_velocity_values.clear();
-    for (int i = 0; i < 12; ++i) {
-        double joint_position_value;
-        double joint_velocity_value;
-        joint_position_value = static_cast<double>(data_->sensordata[i + 10]);
-        state.joint_position_values.push_back(joint_position_value);
-        joint_velocity_value = static_cast<double>(data_->sensordata[i + 22]);
-        state.joint_velocity_values.push_back(joint_velocity_value);
-    }
-
-    state.contact_flags.resize(geom_ids_.size()-1);
-    for (size_t i = 0; i < (geom_ids_.size()-1); ++i) {
-        state.contact_flags[i] = checkCollision(data_, geom_ids_[0], geom_ids_[i+1]);
-    }
+    populate_state_message(state);
 
     // response
     response->state = state;
@@ -559,6 +520,7 @@ void MujocoSimulation::start_control_service(const std::shared_ptr<legged_msgs::
             "Responding base linvel data: [%f, %f, %f], \n"
             "Responding joint position data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
             "Responding joint velocity data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+            "Responding joint torque data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
             "Responding contact flag: [%zu, %zu, %zu, %zu]",
             response->state.simulation_time,
             response->state.base_quat_values[0], response->state.base_quat_values[1], 
@@ -578,6 +540,12 @@ void MujocoSimulation::start_control_service(const std::shared_ptr<legged_msgs::
             response->state.joint_velocity_values[6], response->state.joint_velocity_values[7],
             response->state.joint_velocity_values[8], response->state.joint_velocity_values[9],
             response->state.joint_velocity_values[10], response->state.joint_velocity_values[11],
+            response->state.joint_torque_values[0], response->state.joint_torque_values[1],
+            response->state.joint_torque_values[2], response->state.joint_torque_values[3],
+            response->state.joint_torque_values[4], response->state.joint_torque_values[5],
+            response->state.joint_torque_values[6], response->state.joint_torque_values[7],
+            response->state.joint_torque_values[8], response->state.joint_torque_values[9],
+            response->state.joint_torque_values[10], response->state.joint_torque_values[11],
             static_cast<size_t>(response->state.contact_flags[0]), static_cast<size_t>(response->state.contact_flags[1]),
             static_cast<size_t>(response->state.contact_flags[2]), static_cast<size_t>(response->state.contact_flags[3]));
 }

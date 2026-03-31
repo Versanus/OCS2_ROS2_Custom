@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+#python3 tools/plot_capture_csv.py sim_capture/quad_mini/new/stand_position.csv
 """Plot recorded joint capture CSV files."""
 
 import argparse
@@ -22,6 +22,11 @@ JOINT_NAME_MAP = {
     "HAA": "hipx",
     "HFE": "hipy",
     "KFE": "knee",
+}
+JOINT_DISPLAY_NAMES = {
+    "hipx": "hipx",
+    "hipy": "hipy",
+    "knee": "knee",
 }
 
 def module_origin(module_name: str) -> Optional[Path]:
@@ -162,8 +167,12 @@ def infer_ylabel(columns: Sequence[str]) -> str:
 
     if all(column.endswith("_speed_rpm") for column in columns):
         return "speed [rpm]"
+    if all(column.endswith("_speed_rad_per_sec") for column in columns):
+        return "speed [rad/s]"
     if all(column.endswith("_torque_nm") for column in columns):
         return "torque [Nm]"
+    if all(column.endswith("_position_rad") for column in columns):
+        return "position [rad]"
     return "value"
 
 
@@ -172,12 +181,28 @@ def format_column_label(column: str) -> str:
     if len(parts) < 3:
         return column
 
-    leg_name, joint_name = parts[0], parts[1]
-    mapped_joint_name = JOINT_NAME_MAP.get(joint_name)
-    if mapped_joint_name is None:
+    leg_name = parts[0]
+    joint_name = parts[1]
+    metric_suffix = parts[-1]
+
+    # Support both old names like FL_HAA_torque_nm and new names like FL_hipx_torque_nm.
+    joint_name = JOINT_NAME_MAP.get(joint_name, joint_name)
+    joint_display_name = JOINT_DISPLAY_NAMES.get(joint_name)
+    if joint_display_name is None:
         return column
 
-    return f"{leg_name} {mapped_joint_name}"
+    if metric_suffix == "nm":
+        metric_name = "torque"
+    elif metric_suffix == "sec":
+        metric_name = "speed"
+    elif metric_suffix == "rad":
+        metric_name = "position"
+    else:
+        metric_name = None
+
+    if metric_name is None:
+        return f"{leg_name} {joint_display_name}"
+    return f"{leg_name} {joint_display_name} {metric_name}"
 
 
 def plot_files(

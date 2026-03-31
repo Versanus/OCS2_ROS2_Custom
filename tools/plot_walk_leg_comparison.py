@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 
 """Compare one leg across walk captures at multiple commanded speeds."""
+#python3 tools/plot_walk_leg_comparison.py \
+#  --input-dir sim_capture/quad_mini/new \
+#  --leg FL
 
 import argparse
 import csv
 import importlib.util
 import os
 from pathlib import Path
+import re
 import site
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT_DIR = WORKSPACE_ROOT / "sim_capture/quad_mini/new_motors"
+DEFAULT_INPUT_DIR = WORKSPACE_ROOT / "sim_capture/quad_mini/new"
 MPL_CONFIG_DIR = Path("/tmp/quad_ocs2_matplotlib")
 MPL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
 
 TIME_COLUMNS = ("elapsed_simulation_time_sec", "elapsed_time_sec", "simulation_time_sec")
-LEGS = ("LF", "LH", "RF", "RH")
-WALK_SPEEDS = ("0.5", "1.0", "1.5", "2.0")
+LEGS = ("FL", "HL", "FR", "HR")
 JOINT_ORDER = ("HAA", "HFE", "KFE")
 JOINT_LABELS = {
     "HAA": "hipx",
@@ -161,8 +164,22 @@ def metric_file(input_dir: Path, walk_speed: str, metric_name: str) -> Path:
     return input_dir.expanduser().resolve() / f"walk_{walk_speed}_{metric_name}.csv"
 
 
+def discover_walk_speeds(input_dir: Path, metric_name: str) -> List[str]:
+    pattern = re.compile(rf"walk_(.+)_{re.escape(metric_name)}\.csv$")
+    discovered = []
+    for path in sorted(input_dir.expanduser().resolve().glob(f"walk_*_{metric_name}.csv")):
+        match = pattern.match(path.name)
+        if match:
+            discovered.append(match.group(1))
+    if not discovered:
+        raise FileNotFoundError(
+            f"No walk capture files matching 'walk_*_{metric_name}.csv' were found in {input_dir.expanduser().resolve()}."
+        )
+    return discovered
+
+
 def leg_columns(leg_name: str, metric_suffix: str) -> List[str]:
-    return [f"{leg_name}_{joint_name}_{metric_suffix}" for joint_name in JOINT_ORDER]
+    return [f"{leg_name}_{JOINT_LABELS[joint_name]}_{metric_suffix}" for joint_name in JOINT_ORDER]
 
 
 def plot_metric(
@@ -175,11 +192,12 @@ def plot_metric(
 ) -> Optional[Path]:
     metric_config = METRICS[metric_name]
     columns = leg_columns(leg_name, metric_config["suffix"])
+    walk_speeds = discover_walk_speeds(input_dir, metric_name)
 
     figure, axes = plt.subplots(len(columns), 1, figsize=(10.0, 8.0), sharex=True)
     axis_list = list(axes.flat) if hasattr(axes, "flat") else [axes]
 
-    for walk_speed in WALK_SPEEDS:
+    for walk_speed in walk_speeds:
         csv_path = metric_file(input_dir, walk_speed, metric_name)
         time_values, values = load_csv(csv_path, time_column)
 
@@ -188,7 +206,7 @@ def plot_metric(
                 raise ValueError(f"{csv_path} is missing expected column '{column}'.")
             joint_name = column.split("_")[1]
             axis.plot(time_values, values[column], linewidth=1.3, label=f"walk {walk_speed}")
-            axis.set_title(f"{leg_name} {JOINT_LABELS[joint_name]}")
+            axis.set_title(f"{leg_name} {joint_name}")
             axis.set_ylabel(metric_config["ylabel"])
             axis.grid(True, alpha=0.3)
 

@@ -61,28 +61,35 @@ try:
     import rclpy
     from rclpy.node import Node
 
-    from legged_msgs.msg import JointControlData, SimulatorStateData
+    from legged_msgs.msg import SimulatorStateData
 except ImportError as exc:  # pragma: no cover - environment-specific
     raise SystemExit(
-        "ROS 2 Python packages were not found. Source your workspace first:\n"
-        "  source /home/kaan/quad_ocs2_ws/install/setup.bash"
+        "ROS 2 Python packages were not found. Source ROS 2 and the generated legged_msgs setup first:\n"
+        "  source /opt/ros/humble/setup.bash\n"
+        "  source /home/kaan/OCS2_quad_mini/src/Quadruped-Control-OCS2-ROS2/install/legged_msgs/share/legged_msgs/local_setup.bash"
     ) from exc
 
 
 RPM_PER_RAD_PER_SEC = 60.0 / (2.0 * math.pi)
+LEG_NAME_ALIASES = {
+    "LF": "FL",
+    "RF": "FR",
+    "LH": "HL",
+    "RH": "HR",
+}
 DEFAULT_JOINT_ORDER = [
-    "LF_HAA",
-    "LF_HFE",
-    "LF_KFE",
-    "LH_HAA",
-    "LH_HFE",
-    "LH_KFE",
-    "RF_HAA",
-    "RF_HFE",
-    "RF_KFE",
-    "RH_HAA",
-    "RH_HFE",
-    "RH_KFE",
+    "FL_hipx",
+    "FL_hipy",
+    "FL_knee",
+    "HL_hipx",
+    "HL_hipy",
+    "HL_knee",
+    "FR_hipx",
+    "FR_hipy",
+    "FR_knee",
+    "HR_hipx",
+    "HR_hipy",
+    "HR_knee",
 ]
 DEFAULT_ROBOT_XML = WORKSPACE_ROOT / (
     "src/Quadruped-Control-OCS2-ROS2/legged_control/"
@@ -95,13 +102,6 @@ DEFAULT_SIM_CONFIG = WORKSPACE_ROOT / (
 FLOAT_PATTERN = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
 
 
-@dataclass
-class ControlSnapshot:
-    joint_torque: List[float]
-    joint_position: List[float]
-    joint_velocity: List[float]
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -112,12 +112,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--state-topic",
         default="simulator_state_data",
-        help="Simulator state topic carrying measured joint position and velocity.",
-    )
-    parser.add_argument(
-        "--control-topic",
-        default="joint_control_data",
-        help="Controller command topic carrying feedforward torque and desired joints.",
+        help="Simulator state topic carrying measured joint torque, position, and velocity.",
     )
     parser.add_argument(
         "--robot-xml",
@@ -208,6 +203,7 @@ def build_leg_map(joint_order: Sequence[str]) -> Tuple[List[str], Dict[str, List
     leg_map: Dict[str, List[int]] = {}
     for index, joint_name in enumerate(joint_order):
         leg_name = joint_name.split("_", 1)[0]
+        leg_name = LEG_NAME_ALIASES.get(leg_name, leg_name)
         if leg_name not in leg_map:
             leg_map[leg_name] = []
             leg_order.append(leg_name)
@@ -260,8 +256,6 @@ class LegMetricPlotter(Node):
         control_topic: str,
         leg_order: Sequence[str],
         leg_map: Dict[str, List[int]],
-        kp: float,
-        kd: float,
         window_seconds: float,
         refresh_hz: float,
         signed: bool,
@@ -269,45 +263,30 @@ class LegMetricPlotter(Node):
         super().__init__("leg_metric_plotter")
         self.leg_order = list(leg_order)
         self.leg_map = leg_map
-        self.kp = kp
-        self.kd = kd
         self.window_seconds = max(window_seconds, 1.0)
         self.signed = signed
-        self.latest_command: Optional[ControlSnapshot] = None
         self.times: Deque[float] = deque()
         self.torque_history: Dict[str, Deque[float]] = {leg: deque() for leg in self.leg_order}
         self.speed_history: Dict[str, Deque[float]] = {leg: deque() for leg in self.leg_order}
 
         self._setup_plots()
 
-        self.create_subscription(JointControlData, control_topic, self.control_callback, 10)
         self.create_subscription(SimulatorStateData, state_topic, self.state_callback, 10)
         self.create_timer(1.0 / max(refresh_hz, 1.0), self.refresh_plots)
 
         self.get_logger().info(
-            f"Listening on '{state_topic}' and '{control_topic}'. "
-            f"Using kp={self.kp:.3f}, kd={self.kd:.3f}, legs={', '.join(self.leg_order)}."
-        )
-
-    def control_callback(self, msg: JointControlData) -> None:
-        expected = max(index for indices in self.leg_map.values() for index in indices) + 1
-        if len(msg.joint_torque) < expected or len(msg.joint_position) < expected or len(msg.joint_velocity) < expected:
-            self.get_logger().warning("Ignoring control sample with incomplete joint arrays.")
-            return
-
-        self.latest_command = ControlSnapshot(
-            joint_torque=list(msg.joint_torque[:expected]),
-            joint_position=list(msg.joint_position[:expected]),
-            joint_velocity=list(msg.joint_velocity[:expected]),
+            f"Listening on '{state_topic}'. Using measured MuJoCo torque and speed "
+            f"for legs={', '.join(self.leg_order)}."
         )
 
     def state_callback(self, msg: SimulatorStateData) -> None:
-        if self.latest_command is None:
-            return
-
         expected = max(index for indices in self.leg_map.values() for index in indices) + 1
-        if len(msg.joint_position_values) < expected or len(msg.joint_velocity_values) < expected:
-            self.get_logger().warning("Ignoring state sample with incomplete joint arrays.")
+        if (
+            len(msg.joint_torque_values) < expected
+            or len(msg.joint_position_values) < expected
+            or len(msg.joint_velocity_values) < expected
+        ):
+            self.get_logger().warning("Ignoring state sample with incomplete torque/position/velocity arrays.")
             return
 
         sim_time = float(msg.simulation_time)
@@ -315,17 +294,10 @@ class LegMetricPlotter(Node):
             self.get_logger().info("Simulation time moved backwards. Clearing history.")
             self.clear_history()
 
-        applied_torque: List[float] = []
-        for index in range(expected):
-            torque = self.latest_command.joint_torque[index]
-            torque += self.kp * (self.latest_command.joint_position[index] - msg.joint_position_values[index])
-            torque += self.kd * (self.latest_command.joint_velocity[index] - msg.joint_velocity_values[index])
-            applied_torque.append(torque)
-
         self.times.append(sim_time)
         for leg_name in self.leg_order:
             joint_indices = self.leg_map[leg_name]
-            leg_torque = [applied_torque[index] for index in joint_indices]
+            leg_torque = [msg.joint_torque_values[index] for index in joint_indices]
             leg_speed = [msg.joint_velocity_values[index] * RPM_PER_RAD_PER_SEC for index in joint_indices]
 
             if not self.signed:
@@ -455,24 +427,12 @@ class LegMetricPlotter(Node):
 def main() -> int:
     args = parse_args()
 
-    sim_config = args.sim_config
-    if sim_config is None and args.robot_xml is not None:
-        inferred = infer_sim_config_from_robot_xml(args.robot_xml)
-        if inferred is not None:
-            sim_config = inferred
-
     try:
         joint_order = extract_joint_order(args.robot_xml)
         leg_order, leg_map = build_leg_map(joint_order)
-        kp, kd, resolved_sim_config = load_pid_gains(sim_config, args.kp, args.kd)
     except (FileNotFoundError, ValueError, ET.ParseError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-
-    if resolved_sim_config is not None:
-        print(f"Using simulation gains from: {resolved_sim_config}")
-    elif args.kp is None or args.kd is None:
-        print("Warning: no simulation config found, using zero PID gains.", file=sys.stderr)
 
     if args.robot_xml is not None:
         print(f"Detected joint order from: {args.robot_xml}")
@@ -484,11 +444,8 @@ def main() -> int:
     rclpy.init()
     node = LegMetricPlotter(
         state_topic=args.state_topic,
-        control_topic=args.control_topic,
         leg_order=leg_order,
         leg_map=leg_map,
-        kp=kp,
-        kd=kd,
         window_seconds=args.window_seconds,
         refresh_hz=args.refresh_hz,
         signed=args.signed,

@@ -1,26 +1,30 @@
 #!/usr/bin/env python3
 
 """Compare one joint across walk captures at multiple commanded speeds."""
+#python3 tools/plot_walk_joint_comparison.py \
+#  --input-dir sim_capture/quad_mini/new \
+#  --leg FL \
+#  --joint hipx
 
 import argparse
 import csv
 import importlib.util
 import os
 from pathlib import Path
+import re
 import site
 import sys
 from typing import Dict, List, Optional, Tuple
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INPUT_DIR = WORKSPACE_ROOT / "sim_capture/quad_mini/new_motors"
+DEFAULT_INPUT_DIR = WORKSPACE_ROOT / "sim_capture/quad_mini/new"
 MPL_CONFIG_DIR = Path("/tmp/quad_ocs2_matplotlib")
 MPL_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 os.environ.setdefault("MPLCONFIGDIR", str(MPL_CONFIG_DIR))
 
 TIME_COLUMNS = ("elapsed_simulation_time_sec", "elapsed_time_sec", "simulation_time_sec")
-LEGS = ("LF", "LH", "RF", "RH")
+LEGS = ("FL", "HL", "FR", "HR")
 JOINT_NAMES = ("HAA", "HFE", "KFE")
-WALK_SPEEDS = ("0.5", "1.0", "1.5", "2.0")
 JOINT_LABELS = {
     "HAA": "hipx",
     "HFE": "hipy",
@@ -178,8 +182,23 @@ def metric_file(input_dir: Path, walk_speed: str, metric_name: str) -> Path:
     return input_dir.expanduser().resolve() / f"walk_{walk_speed}_{metric_name}.csv"
 
 
+def discover_walk_speeds(input_dir: Path, metric_name: str) -> List[str]:
+    pattern = re.compile(rf"walk_(.+)_{re.escape(metric_name)}\.csv$")
+    discovered = []
+    for path in sorted(input_dir.expanduser().resolve().glob(f"walk_*_{metric_name}.csv")):
+        match = pattern.match(path.name)
+        if match:
+            discovered.append(match.group(1))
+    if not discovered:
+        raise FileNotFoundError(
+            f"No walk capture files matching 'walk_*_{metric_name}.csv' were found in {input_dir.expanduser().resolve()}."
+        )
+    return discovered
+
+
 def metric_column(leg_name: str, joint_name: str, metric_name: str) -> str:
-    return f"{leg_name}_{joint_name}_{METRICS[metric_name]['suffix']}"
+    normalized_joint_name = JOINT_LABELS.get(joint_name, joint_name.lower())
+    return f"{leg_name}_{normalized_joint_name}_{METRICS[metric_name]['suffix']}"
 
 
 def plot_metric(
@@ -193,10 +212,11 @@ def plot_metric(
 ) -> Optional[Path]:
     metric_config = METRICS[metric_name]
     column_name = metric_column(leg_name, joint_name, metric_name)
+    walk_speeds = discover_walk_speeds(input_dir, metric_name)
 
     figure, axis = plt.subplots(1, 1, figsize=(10.0, 4.8))
 
-    for walk_speed in WALK_SPEEDS:
+    for walk_speed in walk_speeds:
         csv_path = metric_file(input_dir, walk_speed, metric_name)
         time_values, values = load_csv(csv_path, time_column)
         if column_name not in values:

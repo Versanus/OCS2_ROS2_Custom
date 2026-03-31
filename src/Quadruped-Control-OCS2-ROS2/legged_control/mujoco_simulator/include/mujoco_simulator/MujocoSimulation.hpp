@@ -33,6 +33,7 @@ public:
     void run();
     void publish_state_data();
     void publish_sensor_data();
+    void populate_state_message(legged_msgs::msg::SimulatorStateData& state);
     void start_control_service(const std::shared_ptr<legged_msgs::srv::StartControl::Request> request,
         std::shared_ptr<legged_msgs::srv::StartControl::Response> response);
 
