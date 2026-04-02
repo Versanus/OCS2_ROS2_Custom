@@ -1,7 +1,7 @@
 controller
 {
     timestep  0.001
-    mpc_control_frequency  50
+    mpc_control_frequency  40
     wbc_control_frequency  500
 }
 

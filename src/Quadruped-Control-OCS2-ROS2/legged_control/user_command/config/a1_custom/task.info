@@ -21,7 +21,7 @@ model_settings
 swing_trajectory_config
 {
   liftOffVelocity               0.1
-  touchDownVelocity            -0.05
+  touchDownVelocity            -0.2
   swingHeight                   0.04
   swingTimeScale                0.15
 }
@@ -185,16 +185,16 @@ Q
   (1,1)   100.0     ; vcom_y
   (2,2)   100.0    ; vcom_z
   (3,3)   200.0     ; L_x / robotMass
-  (4,4)   200.0     ; L_y / robotMass
+  (4,4)   100.0     ; L_y / robotMass
   (5,5)   200.0     ; L_z / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   3000.0   ; p_base_x
-  (7,7)   3000.0   ; p_base_y
-  (8,8)   3000.0   ; p_base_z
-  (9,9)   5000.0    ; theta_base_z
-  (10,10) 5000.0    ; theta_base_y
-  (11,11) 5000.0    ; theta_base_x
+  (6,6)   1500.0   ; p_base_x
+  (7,7)   1500.0   ; p_base_y
+  (8,8)   1500.0   ; p_base_z
+  (9,9)   2000.0    ; theta_base_z
+  (10,10) 500.0    ; theta_base_y
+  (11,11) 2000.0    ; theta_base_x
 
   ;; Leg Joint Positions: [LF, LH, RF, RH] ;;
   (12,12) 20.0     ; LF_HAA
@@ -266,11 +266,11 @@ selfCollision
   {
   }
 
-  minimumDistance  0.05
+  minimumDistance  0.10
 
   ; relaxed log barrier parameters
-  mu      1e-2
-  delta   1e-3
+  mu      10.0
+  delta   10.0
 }
 
 ; Whole body control

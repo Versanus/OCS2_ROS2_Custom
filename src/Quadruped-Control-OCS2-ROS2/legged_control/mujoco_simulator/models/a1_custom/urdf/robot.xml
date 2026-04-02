@@ -162,18 +162,18 @@
   </sensor>
 
   <actuator>
-    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>
-    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-22.0 22.0" ctrllimited="true"/>  
+    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>
+    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-75.0 75.0" ctrllimited="true"/>  
   </actuator>
   
 </mujoco>

@@ -182,6 +182,8 @@ std::string gaitCommandFromKey(char key) {
       return "dynamic_walk";
     case '5':
       return "pawup";
+    case '6':
+      return "fast_flying_trot";
     default:
       return "";
   }
@@ -216,6 +218,7 @@ void printVelocityModeHelp() {
       << "  3 : flying_trot\n"
       << "  4 : dynamic_walk\n"
       << "  5 : pawup\n"
+      << "  6 : fast_flying_trot\n"
       << "  o/l : raise/lower desired height slowly\n"
       << "  +/- : increase/decrease speeds\n"
       << "  space : switch to stance with safe clamped motion\n"
