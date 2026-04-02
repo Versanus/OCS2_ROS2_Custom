@@ -1,7 +1,7 @@
 controller
 {
     timestep  0.001
-    mpc_control_frequency  40
+    mpc_control_frequency  50
     wbc_control_frequency  500
 }
 
@@ -16,7 +16,7 @@ render
 
 pid
 {
-    kp                   10.0
+    kp                   5.0
     kd                   0.5
 }
 
