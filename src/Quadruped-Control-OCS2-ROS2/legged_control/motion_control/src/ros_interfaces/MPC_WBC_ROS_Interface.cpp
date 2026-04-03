@@ -35,6 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "motion_control/legged_wbc/HierarchicalWbc.h"
 #include "motion_control/legged_estimation/LinearKalmanFilter.h"
 
+#include <algorithm>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
@@ -57,6 +58,10 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
   
   //legged_interface
   leggedInterface_ = std::make_shared<LeggedRobotInterface>(taskFile, urdfFile, referenceFile);
+  ocs2::loadData::loadEigenMatrix(referenceFile, "defaultJointState", recoveryJointState_);
+  estopHoldJointState_ = recoveryJointState_;
+  emergencyOverrideReleaseDelay_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideReleaseDelay_);
+  emergencyOverrideBlendDuration_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideBlendDuration_);
 
   // mpc
   ocs2::loadData::loadCppDataType(simulatorFile, "controller.mpc_control_frequency", Mpc_control_frequency_);
@@ -138,6 +143,12 @@ void MPC_WBC_ROS_Interface::launchNodes()
 
   // Joint control publisher
   jointControlPublisher_ = node_->create_publisher<legged_msgs::msg::JointControlData>("joint_control_data", 1);
+  emergencyOverrideStatePublisher_ = node_->create_publisher<std_msgs::msg::Int32>(
+      robotName_ + "_emergency_override_state", 1);
+  emergencyOverrideSubscriber_ = node_->create_subscription<std_msgs::msg::Int32>(
+      robotName_ + "_emergency_override", 1,
+      std::bind(&MPC_WBC_ROS_Interface::emergencyOverrideCallback, this, std::placeholders::_1));
+  publishEmergencyOverrideState();
 
   if (StateEstimate_) // state estimate from imu data
   {
@@ -558,18 +569,108 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, const ocs2::vector_t& posDes, const ocs2::vector_t& velDes)
 {
+  if (emergencyOverrideReleasePending_ && currentObservation_.time >= emergencyOverrideReleaseTime_) {
+    emergencyOverrideReleasePending_ = false;
+    emergencyOverrideBlendActive_ = emergencyOverrideBlendDuration_ > 1e-6;
+    emergencyOverrideBlendStartTime_ = currentObservation_.time;
+    if (emergencyOverrideBlendActive_) {
+      RCLCPP_INFO(node_->get_logger(),
+                  "Emergency override release delay completed. Blending back to MPC/WBC over %.2f s.",
+                  emergencyOverrideBlendDuration_);
+    } else {
+      emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
+      RCLCPP_INFO(node_->get_logger(), "Emergency override release delay completed. Returning joint control to MPC/WBC.");
+    }
+  }
+
   auto msg = legged_msgs::msg::JointControlData();
   msg.joint_torque.resize(12);
   msg.joint_position.resize(12);
   msg.joint_velocity.resize(12);
 
+  const bool useEmergencyOverride = emergencyOverrideMode_ != EmergencyOverrideMode::Normal;
+  const ocs2::vector_t& overrideJointState =
+      emergencyOverrideMode_ == EmergencyOverrideMode::RecoveryPose ? recoveryJointState_ : estopHoldJointState_;
+  const ocs2::scalar_t blendAlpha = emergencyOverrideBlendActive_
+                                        ? std::clamp((currentObservation_.time - emergencyOverrideBlendStartTime_) /
+                                                         emergencyOverrideBlendDuration_,
+                                                     ocs2::scalar_t(0.0), ocs2::scalar_t(1.0))
+                                        : ocs2::scalar_t(0.0);
+
   for (size_t i = 0; i < 12; ++i) {
-      msg.joint_torque[i] = torque[i];
-      msg.joint_position[i] = posDes[i];
-      msg.joint_velocity[i] = velDes[i];
+      if (emergencyOverrideBlendActive_) {
+        msg.joint_torque[i] = blendAlpha * torque[i];
+        msg.joint_position[i] = (1.0 - blendAlpha) * overrideJointState[i] + blendAlpha * posDes[i];
+        msg.joint_velocity[i] = blendAlpha * velDes[i];
+      } else {
+        msg.joint_torque[i] = useEmergencyOverride ? 0.0 : torque[i];
+        msg.joint_position[i] = useEmergencyOverride ? overrideJointState[i] : posDes[i];
+        msg.joint_velocity[i] = useEmergencyOverride ? 0.0 : velDes[i];
+      }
+  }
+
+  if (emergencyOverrideBlendActive_ && blendAlpha >= 1.0 - 1e-6) {
+    emergencyOverrideBlendActive_ = false;
+    emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
+    RCLCPP_INFO(node_->get_logger(), "Emergency override blend completed. Returning joint control to MPC/WBC.");
   }
 
   jointControlPublisher_->publish(msg);
+  publishEmergencyOverrideState();
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr msg) {
+  const int command = msg->data;
+  if (command == static_cast<int>(EmergencyOverrideMode::Hold)) {
+    emergencyOverrideReleasePending_ = false;
+    emergencyOverrideBlendActive_ = false;
+    if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
+      estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
+          currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+    } else {
+      estopHoldJointState_ = recoveryJointState_;
+    }
+    emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
+    RCLCPP_WARN(node_->get_logger(), "Emergency override active: HOLD current joint positions.");
+  } else if (command == static_cast<int>(EmergencyOverrideMode::RecoveryPose)) {
+    if (emergencyOverrideMode_ == EmergencyOverrideMode::Normal) {
+      RCLCPP_WARN(node_->get_logger(), "Ignoring recovery pose request because emergency override is not active.");
+      return;
+    }
+    emergencyOverrideReleasePending_ = false;
+    emergencyOverrideBlendActive_ = false;
+    emergencyOverrideMode_ = EmergencyOverrideMode::RecoveryPose;
+    RCLCPP_WARN(node_->get_logger(), "Emergency override active: RECOVERY pose.");
+  } else {
+    emergencyOverrideReleasePending_ = true;
+    emergencyOverrideBlendActive_ = false;
+    emergencyOverrideReleaseTime_ = currentObservation_.time + emergencyOverrideReleaseDelay_;
+    emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
+    if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
+      estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
+          currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+    }
+    RCLCPP_INFO(node_->get_logger(),
+                "Emergency override clear requested. Holding current joints for %.2f s before returning control to MPC/WBC.",
+                emergencyOverrideReleaseDelay_);
+  }
+  publishEmergencyOverrideState();
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::publishEmergencyOverrideState() {
+  if (!emergencyOverrideStatePublisher_) {
+    return;
+  }
+
+  auto msg = std_msgs::msg::Int32();
+  msg.data = static_cast<int>(emergencyOverrideMode_);
+  emergencyOverrideStatePublisher_->publish(msg);
 }
 
 /******************************************************************************************************/

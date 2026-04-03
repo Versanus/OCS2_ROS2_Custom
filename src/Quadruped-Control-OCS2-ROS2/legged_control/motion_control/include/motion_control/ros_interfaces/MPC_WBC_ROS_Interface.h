@@ -74,6 +74,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/joint_control_data.hpp"
 #include "legged_msgs/srv/start_control.hpp"
+#include "std_msgs/msg/int32.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -83,6 +84,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 class MPC_WBC_ROS_Interface {
 public:
+  enum class EmergencyOverrideMode {
+    Normal = 0,
+    Hold = 1,
+    RecoveryPose = 2,
+  };
+
   MPC_WBC_ROS_Interface(
     const rclcpp::Node::SharedPtr& node, 
     const std::string& urdfFile,
@@ -105,6 +112,8 @@ protected:
     void simulatorSensorCallback(const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg);
     void updateStateEstimationFromSensor(const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg);
     void publishJointControl(const ocs2::vector_t& torque, const ocs2::vector_t& posDes, const ocs2::vector_t& velDes);
+    void emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr msg);
+    void publishEmergencyOverrideState();
     void publishCurrentObservation();
     legged_msgs::msg::MpcObservation createObservationMsg(const ocs2::SystemObservation& observation);
     std::string eigenToString(const ocs2::vector_t& vec);
@@ -134,6 +143,8 @@ protected:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<legged_msgs::msg::MpcObservation>::SharedPtr observationPublisher_;
     rclcpp::Publisher<legged_msgs::msg::JointControlData>::SharedPtr jointControlPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr emergencyOverrideStatePublisher_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;
     rclcpp::Subscription<legged_msgs::msg::SimulatorStateData>::SharedPtr simulatorStateSubscriber_;
     rclcpp::Subscription<legged_msgs::msg::SimulatorSensorData>::SharedPtr simulatorSensorSubscriber_;
     rclcpp::Client<legged_msgs::srv::StartControl>::SharedPtr controlStartingClient_; 
@@ -144,6 +155,15 @@ private:
     ocs2::benchmark::RepeatedTimer wbcTimer_;
     int MpcCount_; // using count to control different frequency of mpc and wbc
     bool StateEstimate_; //use state estimate (true) or use real state from simulator (false)
+    EmergencyOverrideMode emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
+    ocs2::vector_t estopHoldJointState_ = ocs2::vector_t::Zero(12);
+    ocs2::vector_t recoveryJointState_ = ocs2::vector_t::Zero(12);
+    bool emergencyOverrideReleasePending_ = false;
+    ocs2::scalar_t emergencyOverrideReleaseTime_ = 0.0;
+    ocs2::scalar_t emergencyOverrideReleaseDelay_ = 0.25;
+    bool emergencyOverrideBlendActive_ = false;
+    ocs2::scalar_t emergencyOverrideBlendStartTime_ = 0.0;
+    ocs2::scalar_t emergencyOverrideBlendDuration_ = 0.50;
     
 
   /*
@@ -182,4 +202,3 @@ private:
 //     zyx(2) = std::atan2(2 * (q.y() * q.z() + q.w() * q.x()), q.w() * q.w() - q.x() * q.x() - q.y() * q.y() + q.z() * q.z());
 //     return zyx;
 // }
-

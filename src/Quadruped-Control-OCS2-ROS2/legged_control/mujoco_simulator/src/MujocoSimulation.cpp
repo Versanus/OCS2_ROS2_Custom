@@ -52,6 +52,9 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     sensor_pub_ = node_->create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
     joint_control_sub_ = node_->create_subscription<legged_msgs::msg::JointControlData>(
         "joint_control_data", 1, std::bind(&MujocoSimulation::control_callback, this, std::placeholders::_1));
+    emergency_override_state_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
+        "legged_robot_emergency_override_state", 1,
+        std::bind(&MujocoSimulation::emergencyOverrideStateCallback, this, std::placeholders::_1));
     start_control_server_ = node_->create_service<legged_msgs::srv::StartControl>("start_control", 
             std::bind(&MujocoSimulation::start_control_service, this, std::placeholders::_1, std::placeholders::_2));
 
@@ -78,10 +81,14 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     // pid
     ocs2::loadData::loadCppDataType(configFile, "pid.kp", Kp_);
     ocs2::loadData::loadCppDataType(configFile, "pid.kd", Kd_);
-
-    // disturbance with optional config override
     boost::property_tree::ptree pt;
     boost::property_tree::read_info(configFile, pt);
+    estopKp_ = pt.get<double>("pid.estop_kp", estopKp_);
+    estopKd_ = pt.get<double>("pid.estop_kd", estopKd_);
+    estopKp_ = std::max(Kp_, estopKp_);
+    estopKd_ = std::max(Kd_, estopKd_);
+
+    // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
     disturbance_force_max_ = pt.get<double>("disturbance.force_max", disturbance_force_max_);
     disturbance_vertical_scale_ = pt.get<double>("disturbance.vertical_scale", disturbance_vertical_scale_);
@@ -105,6 +112,12 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     model_->opt.timestep = timestep_; //simulation timestep
 
     data_ = mj_makeData(model_);
+    if (model_->nq >= 7) {
+        initial_base_quat_[0] = data_->qpos[3];
+        initial_base_quat_[1] = data_->qpos[4];
+        initial_base_quat_[2] = data_->qpos[5];
+        initial_base_quat_[3] = data_->qpos[6];
+    }
 
     mjv_makeScene(model_, &scene_, 2000); 
     // Create MuJoCo context for rendering
@@ -182,6 +195,13 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
         instance_->clearDisturbanceForce();
         instance_->disturbance_enabled_ = false;
         mj_forward(instance_->model_, instance_->data_);
+        return;
+    }
+
+    if (key == GLFW_KEY_R) {
+        instance_->resetRobotPose();
+        RCLCPP_INFO(instance_->node_->get_logger(),
+                    "Robot reset to start pose at x=0.00 y=0.00 z=0.30.");
         return;
     }
 
@@ -310,6 +330,8 @@ void MujocoSimulation::simulateStep() {
 
     if (!Start_simulate_)
     {
+        const double effectiveKp = emergency_override_active_ ? estopKp_ : Kp_;
+        const double effectiveKd = emergency_override_active_ ? estopKd_ : Kd_;
         double joint_position_value[12];
         double joint_velocity_value[12];
         double control_torque[12];
@@ -318,8 +340,8 @@ void MujocoSimulation::simulateStep() {
             joint_position_value[i] = data_->sensordata[i+10];
             joint_velocity_value[i] = data_->sensordata[i+22];
             control_torque[i] = static_cast<double>(Joint_torque_[i]) +
-                Kp_ * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
-                Kd_ * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
+                effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
+                effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
             data_->ctrl[i] = control_torque[i];
             //std::cout << "data_->ctrl[" << i << "] = " << data_->ctrl[i] << std::endl;
         }
@@ -495,6 +517,36 @@ void MujocoSimulation::appendDisturbanceArrowToScene() {
     disturbanceGeom->transparent = 1;
     disturbanceGeom->emission = 1.0f;
     scene_.ngeom++;
+}
+
+void MujocoSimulation::resetRobotPose() {
+    if (model_ == nullptr || data_ == nullptr) {
+        return;
+    }
+
+    clearDisturbanceForce();
+    disturbance_enabled_ = false;
+
+    if (model_->nq >= 7) {
+        data_->qpos[0] = 0.0;
+        data_->qpos[1] = 0.0;
+        data_->qpos[2] = 0.30;
+        data_->qpos[3] = initial_base_quat_[0];
+        data_->qpos[4] = initial_base_quat_[1];
+        data_->qpos[5] = initial_base_quat_[2];
+        data_->qpos[6] = initial_base_quat_[3];
+    }
+
+    const int baseVelocityDim = std::min(model_->nv, 6);
+    for (int i = 0; i < baseVelocityDim; ++i) {
+        data_->qvel[i] = 0.0;
+    }
+
+    mj_forward(model_, data_);
+}
+
+void MujocoSimulation::emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg) {
+    emergency_override_active_ = msg->data != 0;
 }
 
 

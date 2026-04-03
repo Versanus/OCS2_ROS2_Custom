@@ -4,6 +4,7 @@ project(motion_control)
 
 set(dependencies
   rclcpp
+  std_msgs
   tf2_ros
   urdf
   kdl_parser
@@ -45,6 +46,7 @@ find_package(legged_msgs REQUIRED)
 #find_package(ocs2_msgs REQUIRED)
 #find_package(ocs2_legged_robot REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(angles REQUIRED)
 find_package(nav_msgs REQUIRED)
 

@@ -9,6 +9,7 @@
 #include <random>
 #include <ocs2_core/misc/LoadData.h>
 //#include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/int32.hpp"
 #include "legged_msgs/msg/simulator_state_data.hpp"
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/joint_control_data.hpp"
@@ -43,6 +44,8 @@ public:
     void scheduleNextDisturbance();
     void sampleDisturbanceForce();
     void appendDisturbanceArrowToScene();
+    void resetRobotPose();
+    void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
     static void mouse_button(GLFWwindow* window, int button, int act, int mods);
@@ -76,6 +79,7 @@ private:
     rclcpp::Publisher<legged_msgs::msg::SimulatorStateData>::SharedPtr state_pub_; //real state
     rclcpp::Publisher<legged_msgs::msg::SimulatorSensorData>::SharedPtr sensor_pub_; // sensor date
     rclcpp::Subscription<legged_msgs::msg::JointControlData>::SharedPtr joint_control_sub_;
+    rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergency_override_state_sub_;
     rclcpp::Service<legged_msgs::srv::StartControl>::SharedPtr start_control_server_;
 
     // motor control
@@ -89,6 +93,9 @@ private:
     double control_frequency_;
     double Kp_;
     double Kd_;
+    double estopKp_ = 20.0;
+    double estopKd_ = 0.60;
+    bool emergency_override_active_ = false;
     bool Start_control_=false;
     bool Start_simulate_=false;
 
@@ -106,6 +113,7 @@ private:
     double disturbance_active_until_time_ = 0.0;
     std::array<double, 6> current_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
     std::mt19937 disturbance_rng_;
+    std::array<double, 4> initial_base_quat_{{1.0, 0.0, 0.0, 0.0}};
 
     // contact flag
     std::vector<int> geom_ids_; // floor, LF_FOOT, RF_FOOT, LH_FOOT, RH_FOOT
