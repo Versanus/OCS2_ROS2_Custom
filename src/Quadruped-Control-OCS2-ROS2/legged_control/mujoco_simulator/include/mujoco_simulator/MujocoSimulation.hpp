@@ -95,7 +95,10 @@ private:
     double Kd_;
     double estopKp_ = 20.0;
     double estopKd_ = 0.60;
+    double recoveryKp_ = 35.0;
+    double recoveryKd_ = 0.80;
     bool emergency_override_active_ = false;
+    int emergency_override_mode_ = 0;
     bool Start_control_=false;
     bool Start_simulate_=false;
 

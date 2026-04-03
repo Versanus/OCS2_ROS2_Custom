@@ -1,4 +1,5 @@
-targetDisplacementVelocity          0.5;
+targetDisplacementVelocityForward   0.5;
+targetDisplacementVelocityLateral   0.25;
 targetRotationVelocity              0.5;
 
 comHeight                           0.19
@@ -8,6 +9,10 @@ teleop
   velocity_accel_limit_vx          1.50
   velocity_accel_limit_vy          1.50
   velocity_accel_limit_yaw         1.50
+  velocity_preview_distance_low_speed   1.0
+  velocity_preview_distance_high_speed  2.0
+  velocity_preview_speed_low            0.5
+  velocity_preview_speed_high           5.0
 }
 
 defaultJointState

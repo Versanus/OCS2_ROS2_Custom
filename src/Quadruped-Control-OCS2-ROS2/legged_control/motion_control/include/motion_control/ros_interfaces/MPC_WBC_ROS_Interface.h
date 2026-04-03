@@ -160,10 +160,10 @@ private:
     ocs2::vector_t recoveryJointState_ = ocs2::vector_t::Zero(12);
     bool emergencyOverrideReleasePending_ = false;
     ocs2::scalar_t emergencyOverrideReleaseTime_ = 0.0;
-    ocs2::scalar_t emergencyOverrideReleaseDelay_ = 0.25;
+    ocs2::scalar_t emergencyOverrideReleaseDelay_ = 0.02;
     bool emergencyOverrideBlendActive_ = false;
     ocs2::scalar_t emergencyOverrideBlendStartTime_ = 0.0;
-    ocs2::scalar_t emergencyOverrideBlendDuration_ = 0.50;
+    ocs2::scalar_t emergencyOverrideBlendDuration_ = 0.08;
     
 
   /*

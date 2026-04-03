@@ -31,6 +31,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "user_command/goal/TargetTrajectoriesKeyboardPublisher.h"
 
 #include <algorithm>
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <ocs2_core/misc/CommandLine.h>
 #include <ocs2_core/misc/Display.h>
 // #include <ocs2_ros_interfaces/common/RosMsgConversions.h>
@@ -56,8 +58,24 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
                             defaultJointState_);
   ocs2::loadData::loadCppDataType(referenceFile, "targetRotationVelocity",
                             targetRotationVelocity_);
-  ocs2::loadData::loadCppDataType(referenceFile, "targetDisplacementVelocity",
-                            targetDisplacementVelocity_);
+  boost::property_tree::ptree referenceInfoTree;
+  boost::property_tree::read_info(referenceFile, referenceInfoTree);
+  const double fallbackDisplacementVelocity =
+      referenceInfoTree.get<double>("targetDisplacementVelocity", 0.5);
+  targetDisplacementVelocityForward_ =
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>(
+          "targetDisplacementVelocityForward", fallbackDisplacementVelocity));
+  targetDisplacementVelocityLateral_ =
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>(
+          "targetDisplacementVelocityLateral", fallbackDisplacementVelocity));
+  velocityPreviewDistanceLowSpeed_ = static_cast<ocs2::scalar_t>(
+      referenceInfoTree.get<double>("teleop.velocity_preview_distance_low_speed", 1.0));
+  velocityPreviewDistanceHighSpeed_ = static_cast<ocs2::scalar_t>(
+      referenceInfoTree.get<double>("teleop.velocity_preview_distance_high_speed", 2.0));
+  velocityPreviewSpeedLow_ = static_cast<ocs2::scalar_t>(
+      referenceInfoTree.get<double>("teleop.velocity_preview_speed_low", 0.5));
+  velocityPreviewSpeedHigh_ = static_cast<ocs2::scalar_t>(
+      referenceInfoTree.get<double>("teleop.velocity_preview_speed_high", 4.5));
   
   // observation subscriber
   auto observationCallback =
@@ -273,15 +291,36 @@ void TargetTrajectoriesKeyboardPublisher::resetVelocityReference() {
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::computeVelocityPreviewDistance(
+    const ocs2::vector_t& velocityCommand) const {
+  const ocs2::scalar_t planarSpeed = velocityCommand.head<2>().norm();
+  const ocs2::scalar_t clampedSpeed =
+      std::clamp(planarSpeed, velocityPreviewSpeedLow_, velocityPreviewSpeedHigh_);
+
+  ocs2::scalar_t interpolation = 0.0;
+  if (velocityPreviewSpeedHigh_ > velocityPreviewSpeedLow_) {
+    interpolation = (clampedSpeed - velocityPreviewSpeedLow_) /
+                    (velocityPreviewSpeedHigh_ - velocityPreviewSpeedLow_);
+  }
+
+  return
+      velocityPreviewDistanceLowSpeed_ +
+      interpolation * (velocityPreviewDistanceHighSpeed_ - velocityPreviewDistanceLowSpeed_);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::estimateTimeToTarget(const ocs2::vector_t& desiredBaseDisplacement) {
   const ocs2::scalar_t& dx = desiredBaseDisplacement(0);
   const ocs2::scalar_t& dy = desiredBaseDisplacement(1);
   const ocs2::scalar_t& dz = desiredBaseDisplacement(2);
   const ocs2::scalar_t& dyaw = desiredBaseDisplacement(3);
   const ocs2::scalar_t rotationTime = std::abs(dyaw) / targetRotationVelocity_;
-  const ocs2::scalar_t displacement = std::sqrt(dx * dx + dy * dy + dz * dz);
-  const ocs2::scalar_t displacementTime = displacement / targetDisplacementVelocity_;
-  return std::max({rotationTime, displacementTime, minGoalTrajectoryDuration_});
+  const ocs2::scalar_t forwardTime = std::abs(dx) / targetDisplacementVelocityForward_;
+  const ocs2::scalar_t lateralTime = std::abs(dy) / targetDisplacementVelocityLateral_;
+  const ocs2::scalar_t verticalTime = std::abs(dz) / targetDisplacementVelocityForward_;
+  return std::max({rotationTime, forwardTime, lateralTime, verticalTime, minGoalTrajectoryDuration_});
 }
 
 /**
@@ -359,20 +398,28 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
   velocityReferencePose_(5) = 0.0;
   lastVelocityReferenceTime_ = observation.time;
 
+  const ocs2::scalar_t velocityPreviewDistance =
+      computeVelocityPreviewDistance(velocityCommand);
+  const ocs2::scalar_t planarSpeed = velocityCommand.head<2>().norm();
+  const ocs2::scalar_t yawSpeed = std::abs(velocityCommand(2));
+  const ocs2::scalar_t equivalentProgressSpeed =
+      std::max({planarSpeed, ocs2::scalar_t(0.5) * yawSpeed, ocs2::scalar_t(1e-3)});
+  const ocs2::scalar_t velocityPreviewTime =
+      std::max(velocityPreviewDistance / equivalentProgressSpeed, minGoalTrajectoryDuration_);
   ocs2::vector_t targetPose = velocityReferencePose_;
   const ocs2::scalar_t previewYaw = targetPose(3);
-  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityPreviewTime_;
-  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityPreviewTime_;
+  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityPreviewTime;
+  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityPreviewTime;
   const ocs2::scalar_t previewWorldDx = std::cos(previewYaw) * previewBodyDx - std::sin(previewYaw) * previewBodyDy;
   const ocs2::scalar_t previewWorldDy = std::sin(previewYaw) * previewBodyDx + std::cos(previewYaw) * previewBodyDy;
   targetPose(0) += previewWorldDx;
   targetPose(1) += previewWorldDy;
   targetPose(2) = comHeight_;
-  targetPose(3) += velocityCommand(2) * velocityPreviewTime_;
+  targetPose(3) += velocityCommand(2) * velocityPreviewTime;
   targetPose(4) = 0.0;
   targetPose(5) = 0.0;
 
-  const ocs2::scalar_t targetReachingTime = observation.time + velocityPreviewTime_;
+  const ocs2::scalar_t targetReachingTime = observation.time + velocityPreviewTime;
   const ocs2::scalar_array_t timeTrajectory{observation.time, targetReachingTime};
 
   ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));

@@ -18,5 +18,8 @@ pid
 {
     kp                   10
     kd                   1
+    estop_kp             20.0
+    estop_kd             1.0
+    recovery_kp          35.0
+    recovery_kd          1.2
 }
-

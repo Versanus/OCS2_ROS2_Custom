@@ -18,6 +18,8 @@ pid
 {
     kp                   5.0
     kd                   0.5
+    estop_kp             20.0
+    estop_kd             0.60
 }
 
 disturbance

@@ -104,6 +104,7 @@ class TargetTrajectoriesKeyboardPublisher {
   ocs2::SystemObservation getLatestObservation();
   void publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose = true);
   void resetVelocityReference();
+  ocs2::scalar_t computeVelocityPreviewDistance(const ocs2::vector_t& velocityCommand) const;
   ocs2::TargetTrajectories commandLineToTargetTrajectories(
     const ocs2::vector_t& commadLineTarget, const ocs2::SystemObservation& observation);
   ocs2::TargetTrajectories velocityCommandToTargetTrajectories(
@@ -122,13 +123,17 @@ class TargetTrajectoriesKeyboardPublisher {
   mutable std::mutex latestObservationMutex_;
   ocs2::SystemObservation latestObservation_;
 
-  ocs2::scalar_t targetDisplacementVelocity_;
+  ocs2::scalar_t targetDisplacementVelocityForward_;
+  ocs2::scalar_t targetDisplacementVelocityLateral_;
   ocs2::scalar_t targetRotationVelocity_;
   ocs2::scalar_t comHeight_;
   ocs2::vector_t defaultJointState_;
   ocs2::scalar_t minGoalTrajectoryDuration_ = 0.3;
   ocs2::scalar_t holdTrajectoryDuration_ = 0.3;
-  ocs2::scalar_t velocityPreviewTime_ = 1.50;
+  ocs2::scalar_t velocityPreviewDistanceLowSpeed_ = 1.0;
+  ocs2::scalar_t velocityPreviewDistanceHighSpeed_ = 0.5;
+  ocs2::scalar_t velocityPreviewSpeedLow_ = 0.5;
+  ocs2::scalar_t velocityPreviewSpeedHigh_ = 4.5;
   bool velocityReferenceInitialized_ = false;
   ocs2::vector_t velocityReferencePose_ = ocs2::vector_t::Zero(6);
   ocs2::scalar_t lastVelocityReferenceTime_ = 0.0;

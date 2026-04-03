@@ -520,9 +520,14 @@ int main(int argc, char* argv[]) {
     std::cerr << "Loading reference file from launch: " << referenceFile << std::endl;
   boost::property_tree::ptree referenceInfoTree;
   boost::property_tree::read_info(referenceFile, referenceInfoTree);
+  const double fallbackDisplacementVelocity =
+      referenceInfoTree.get<double>("targetDisplacementVelocity", 0.20);
   const ocs2::scalar_t initialLinearSpeed =
-      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>("targetDisplacementVelocity", 0.20));
-  const ocs2::scalar_t initialLateralSpeed = initialLinearSpeed;
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>(
+          "targetDisplacementVelocityForward", fallbackDisplacementVelocity));
+  const ocs2::scalar_t initialLateralSpeed =
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>(
+          "targetDisplacementVelocityLateral", fallbackDisplacementVelocity));
   const ocs2::scalar_t initialYawSpeed =
       static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>("targetRotationVelocity", 0.60));
   const ocs2::vector_t accelerationLimits =
