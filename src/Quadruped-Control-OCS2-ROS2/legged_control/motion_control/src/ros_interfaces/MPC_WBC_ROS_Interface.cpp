@@ -60,6 +60,7 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
   leggedInterface_ = std::make_shared<LeggedRobotInterface>(taskFile, urdfFile, referenceFile);
   ocs2::loadData::loadEigenMatrix(referenceFile, "defaultJointState", recoveryJointState_);
   estopHoldJointState_ = recoveryJointState_;
+  emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
   emergencyOverrideReleaseDelay_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideReleaseDelay_);
   emergencyOverrideBlendDuration_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideBlendDuration_);
 
@@ -348,6 +349,12 @@ void MPC_WBC_ROS_Interface::setInitialState(
   ocs2::scalar_t yawLast = currentObservation_.state(9);
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
+
+  if (emergencyOverrideMode_ == EmergencyOverrideMode::Hold &&
+      currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
+    estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
+        currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+  }
 
   for (size_t i = 0; i < msg->contact_flags.size(); ++i) {
     contactFlag_[i] = msg->contact_flags[i];

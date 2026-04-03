@@ -14,6 +14,8 @@
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include "std_msgs/msg/int32.hpp"
 #include "user_command/goal/TargetTrajectoriesKeyboardPublisher.h"
 #include "user_command/gait/GaitKeyboardPublisher.h"
@@ -236,6 +238,7 @@ void printVelocityModeHelp() {
       << "  4 : dynamic_walk\n"
       << "  5 : pawup\n"
       << "  6 : fast_flying_trot\n"
+      << "  startup: system begins in E-stop, press 1 to enable MPC stance\n"
       << "  0 : raw recovery pose (only while E-stop is active)\n"
       << "      while E-stop is active, 1 clears it back to stance\n"
       << "  y : stabilize in place using current x/y reference\n"
@@ -265,10 +268,27 @@ ocs2::vector_t composeVelocityCommand(const TeleopCommandState& teleopState, ocs
   return velocityCommand;
 }
 
+ocs2::vector_t stepTowardVelocityCommand(const ocs2::vector_t& currentVelocityCommand,
+                                         const ocs2::vector_t& targetVelocityCommand,
+                                         const ocs2::vector_t& accelerationLimits,
+                                         ocs2::scalar_t dt) {
+  ocs2::vector_t nextVelocityCommand = currentVelocityCommand;
+  for (int i = 0; i < currentVelocityCommand.size(); ++i) {
+    const ocs2::scalar_t maxStep = accelerationLimits(i) * dt;
+    const ocs2::scalar_t velocityError = targetVelocityCommand(i) - currentVelocityCommand(i);
+    nextVelocityCommand(i) = currentVelocityCommand(i) + std::clamp(velocityError, -maxStep, maxStep);
+  }
+  return nextVelocityCommand;
+}
+
 void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseCommand,
                              GaitKeyboardPublisher& gaitCommand,
                              UserCommandMode& currentMode,
                              std::string& activeGaitCommand,
+                             ocs2::scalar_t initialLinearSpeed,
+                             ocs2::scalar_t initialLateralSpeed,
+                             ocs2::scalar_t initialYawSpeed,
+                             const ocs2::vector_t& accelerationLimits,
                              const rclcpp::Node::SharedPtr& node,
                              const rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr& emergencyOverridePublisher,
                              bool& estopActive) {
@@ -276,15 +296,17 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
 
   ScopedRawTerminalMode rawTerminalMode;
 
-  ocs2::scalar_t linearSpeed = 0.2;
-  ocs2::scalar_t lateralSpeed = 0.15;
-  ocs2::scalar_t yawSpeed = 0.6;
+  ocs2::scalar_t linearSpeed = initialLinearSpeed;
+  ocs2::scalar_t lateralSpeed = initialLateralSpeed;
+  ocs2::scalar_t yawSpeed = initialYawSpeed;
   const ocs2::scalar_t linearStep = 0.05;
   const ocs2::scalar_t yawStep = 0.1;
   const ocs2::scalar_t heightStep = 0.005;
   const ocs2::scalar_t minLinearSpeed = 0.05;
   const ocs2::scalar_t minYawSpeed = 0.1;
-  ocs2::vector_t currentVelocityCommand = ocs2::vector_t::Zero(3);
+  ocs2::vector_t targetVelocityCommand = ocs2::vector_t::Zero(3);
+  ocs2::vector_t filteredVelocityCommand = ocs2::vector_t::Zero(3);
+  auto lastVelocityUpdateTime = std::chrono::steady_clock::now();
   TeleopCommandState teleopState;
   teleopState.resetAxes();
   teleopState.estopActive = estopActive;
@@ -299,14 +321,16 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       if (teleopState.estopActive) {
         if (key == '0') {
           publishEmergencyOverrideCommand(emergencyOverridePublisher, EmergencyOverrideCommand::RecoveryPose);
-          currentVelocityCommand.setZero();
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
           teleopState.holdPositionActive = true;
           std::cout << "\nEmergency recovery pose active.\n";
         } else if (key == '1') {
           std::string stanceCommand = "stance";
           gaitCommand.publishKeyboardCommand(stanceCommand);
           activeGaitCommand = "stance";
-          currentVelocityCommand.setZero();
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
           teleopState.resetAxes();
           teleopState.holdPositionActive = true;
           teleopState.stabilizeModeActive = false;
@@ -326,7 +350,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         publishEmergencyOverrideCommand(emergencyOverridePublisher, EmergencyOverrideCommand::Hold);
         teleopState.estopActive = true;
         estopActive = true;
-        currentVelocityCommand.setZero();
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
@@ -339,7 +364,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         std::string gaitCommandValue = gaitCommandString;
         gaitCommand.publishKeyboardCommand(gaitCommandValue);
         activeGaitCommand = gaitCommandString;
-        currentVelocityCommand.setZero();
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
@@ -355,26 +381,27 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
               std::cout << "\rStance velocity clamp active.                      " << std::flush;
             }
           }
-          currentVelocityCommand = velocityCommand;
+          targetVelocityCommand = velocityCommand;
           teleopState.holdPositionActive = false;
         } else {
-          currentVelocityCommand.setZero();
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
           teleopState.holdPositionActive = true;
         }
       } else if (key == 'y') {
-        currentVelocityCommand.setZero();
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
         teleopState.stabilizeModeActive = true;
         teleopState.holdPositionActive = true;
         std::cout << "\nStabilize mode active. Reference x/y follows current state.\n";
       } else if (key == 't') {
         teleopState.stabilizeModeActive = false;
-        const ocs2::vector_t resumedVelocityCommand =
+        targetVelocityCommand =
             composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
-        if (resumedVelocityCommand.isZero(1e-6)) {
-          currentVelocityCommand.setZero();
+        if (targetVelocityCommand.isZero(1e-6)) {
+          filteredVelocityCommand.setZero();
           teleopState.holdPositionActive = true;
         } else {
-          currentVelocityCommand = resumedVelocityCommand;
           teleopState.holdPositionActive = false;
         }
         std::cout << "\nWalking mode resumed inside velocity mode.\n";
@@ -403,7 +430,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         std::cout << "\rSpeeds updated -> linear: " << linearSpeed << " lateral: " << lateralSpeed << " yaw: " << yawSpeed
                   << "            " << std::flush;
       } else if (key == 'c') {
-        currentVelocityCommand.setZero();
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
         std::string stanceCommand = "stance";
         gaitCommand.publishKeyboardCommand(stanceCommand);
         activeGaitCommand = "stance";
@@ -413,7 +441,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.stabilizeModeActive = false;
         std::cout << "Switched to stance. Motion stays enabled with stance safety limits.\n";
       } else if (key == 'g') {
-        currentVelocityCommand.setZero();
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
         targetPoseCommand.publishHoldPositionCommand();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
@@ -424,21 +453,32 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       }
     }
 
+    const auto now = std::chrono::steady_clock::now();
+    const ocs2::scalar_t dt = std::clamp(
+        static_cast<ocs2::scalar_t>(std::chrono::duration<double>(now - lastVelocityUpdateTime).count()),
+        ocs2::scalar_t(0.0), ocs2::scalar_t(0.1));
+    lastVelocityUpdateTime = now;
+
     if (teleopState.stabilizeModeActive) {
-      currentVelocityCommand.setZero();
+      targetVelocityCommand.setZero();
+      filteredVelocityCommand.setZero();
       teleopState.holdPositionActive = true;
     } else {
       ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
 
-      if (velocityCommand.isZero(1e-6)) {
-        currentVelocityCommand.setZero();
+      if (activeGaitCommand == "stance") {
+        bool wasClamped = false;
+        velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
+      }
+
+      targetVelocityCommand = velocityCommand;
+      filteredVelocityCommand =
+          stepTowardVelocityCommand(filteredVelocityCommand, targetVelocityCommand, accelerationLimits, dt);
+
+      if (targetVelocityCommand.isZero(1e-6) && filteredVelocityCommand.isZero(1e-4)) {
+        filteredVelocityCommand.setZero();
         teleopState.holdPositionActive = true;
       } else {
-        if (activeGaitCommand == "stance") {
-          bool wasClamped = false;
-          velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
-        }
-        currentVelocityCommand = velocityCommand;
         teleopState.holdPositionActive = false;
       }
     }
@@ -446,7 +486,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
     if (teleopState.holdPositionActive) {
       targetPoseCommand.publishHoldPositionCommand(false);
     } else {
-      targetPoseCommand.publishVelocityCommand(currentVelocityCommand, false);
+      targetPoseCommand.publishVelocityCommand(filteredVelocityCommand, false);
     }
   }
   estopActive = teleopState.estopActive;
@@ -478,12 +518,25 @@ int main(int argc, char* argv[]) {
   const std::string referenceFile =
       node->get_parameter("referenceFile").as_string();
     std::cerr << "Loading reference file from launch: " << referenceFile << std::endl;
+  boost::property_tree::ptree referenceInfoTree;
+  boost::property_tree::read_info(referenceFile, referenceInfoTree);
+  const ocs2::scalar_t initialLinearSpeed =
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>("targetDisplacementVelocity", 0.20));
+  const ocs2::scalar_t initialLateralSpeed = initialLinearSpeed;
+  const ocs2::scalar_t initialYawSpeed =
+      static_cast<ocs2::scalar_t>(referenceInfoTree.get<double>("targetRotationVelocity", 0.60));
+  const ocs2::vector_t accelerationLimits =
+      (ocs2::vector_t(3)
+           << referenceInfoTree.get<double>("teleop.velocity_accel_limit_vx", 0.30),
+              referenceInfoTree.get<double>("teleop.velocity_accel_limit_vy", 0.20),
+              referenceInfoTree.get<double>("teleop.velocity_accel_limit_yaw", 0.60))
+              .finished();
   TargetTrajectoriesKeyboardPublisher targetPoseCommand(node, robotName, relativeBaseLimit, referenceFile);
   auto emergencyOverridePublisher =
       node->create_publisher<std_msgs::msg::Int32>(robotName + "_emergency_override", 1);
   UserCommandMode currentMode = UserCommandMode::Goal;
   std::string activeGaitCommand = "stance";
-  bool estopActive = false;
+  bool estopActive = true;
   auto emergencyOverrideStateSubscriber =
       node->create_subscription<std_msgs::msg::Int32>(
           robotName + "_emergency_override_state", 1,
@@ -494,6 +547,7 @@ int main(int argc, char* argv[]) {
 
   const std::string commadMsg =
     "Current mode starts as 'goal'.\n"
+    "System starts latched in E-stop. Enter 'mode:vel' and press '1' to enable MPC stance.\n"
     "Enter 'mode:goal' or 'mode:vel' to switch modes,\n"
     "Enter 'gait:xxx' for the desired gait,\n"
     "Enter 'gait:list' for the list of available gaits,\n"
@@ -506,7 +560,8 @@ int main(int argc, char* argv[]) {
     if (currentMode == UserCommandMode::Velocity) {
       try {
         runVelocityKeyboardMode(targetPoseCommand, gaitCommand, currentMode, activeGaitCommand,
-                                node, emergencyOverridePublisher, estopActive);
+                                initialLinearSpeed, initialLateralSpeed, initialYawSpeed,
+                                accelerationLimits, node, emergencyOverridePublisher, estopActive);
       } catch (const std::exception& e) {
         RCLCPP_ERROR(node->get_logger(), "Velocity keyboard mode failed: %s", e.what());
         currentMode = UserCommandMode::Goal;
