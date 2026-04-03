@@ -12,3 +12,4 @@ __pycache__/
 tmp/
 MUJOCO_LOG.TXT
 sim_capture/
+ros_message_flow.tex
