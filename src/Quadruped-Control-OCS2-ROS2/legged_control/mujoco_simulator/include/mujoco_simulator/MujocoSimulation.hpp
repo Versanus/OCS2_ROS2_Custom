@@ -4,7 +4,9 @@
 #include <mujoco/mujoco.h>
 #include <rclcpp/rclcpp.hpp>
 #include <GLFW/glfw3.h>  // For rendering and window handling
+#include <array>
 #include <mutex>
+#include <random>
 #include <ocs2_core/misc/LoadData.h>
 //#include "std_msgs/msg/float32.hpp"
 #include "legged_msgs/msg/simulator_state_data.hpp"
@@ -36,6 +38,11 @@ public:
     void populate_state_message(legged_msgs::msg::SimulatorStateData& state);
     void start_control_service(const std::shared_ptr<legged_msgs::srv::StartControl::Request> request,
         std::shared_ptr<legged_msgs::srv::StartControl::Response> response);
+    void updateDisturbanceForce();
+    void clearDisturbanceForce();
+    void scheduleNextDisturbance();
+    void sampleDisturbanceForce();
+    void appendDisturbanceArrowToScene();
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
     static void mouse_button(GLFWwindow* window, int button, int act, int mods);
@@ -84,6 +91,21 @@ private:
     double Kd_;
     bool Start_control_=false;
     bool Start_simulate_=false;
+
+    // random base disturbance
+    bool disturbance_enabled_ = false;
+    int disturbance_body_id_ = -1;
+    double disturbance_force_min_ = 20.0;
+    double disturbance_force_max_ = 60.0;
+    double disturbance_vertical_scale_ = 0.35;
+    double disturbance_interval_min_ = 0.50;
+    double disturbance_interval_max_ = 1.20;
+    double disturbance_impulse_duration_ = 0.05;
+    double disturbance_arrow_scale_ = 0.005;
+    double next_disturbance_update_time_ = 0.0;
+    double disturbance_active_until_time_ = 0.0;
+    std::array<double, 6> current_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+    std::mt19937 disturbance_rng_;
 
     // contact flag
     std::vector<int> geom_ids_; // floor, LF_FOOT, RF_FOOT, LH_FOOT, RH_FOOT

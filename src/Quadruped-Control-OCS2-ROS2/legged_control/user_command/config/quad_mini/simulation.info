@@ -20,3 +20,13 @@ pid
     kd                   0.30
 }
 
+disturbance
+{
+    force_min            20.0
+    force_max            30.0
+    vertical_scale       0.20
+    interval_min         1.0
+    interval_max         1.5
+    impulse_duration     0.25
+    arrow_scale          0.015
+}

@@ -71,6 +71,7 @@ struct TeleopCommandState {
   ocs2::scalar_t lateralAxis = 0.0;
   ocs2::scalar_t yawAxis = 0.0;
   bool holdPositionActive = true;
+  bool stabilizeModeActive = false;
 
   void resetAxes() {
     forwardAxis = 0.0;
@@ -219,6 +220,8 @@ void printVelocityModeHelp() {
       << "  4 : dynamic_walk\n"
       << "  5 : pawup\n"
       << "  6 : fast_flying_trot\n"
+      << "  y : stabilize in place using current x/y reference\n"
+      << "  t : resume walking mode inside vel mode\n"
       << "  o/l : raise/lower desired height slowly\n"
       << "  +/- : increase/decrease speeds\n"
       << "  space : switch to stance with safe clamped motion\n"
@@ -275,19 +278,42 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         currentVelocityCommand.setZero();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
+        teleopState.stabilizeModeActive = false;
         std::cout << "Switched gait to '" << gaitCommandString << "'.\n";
       } else if (isMotionKey(key)) {
         updateTeleopAxisFromKeyboard(teleopState, key);
-        ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
-        if (activeGaitCommand == "stance") {
-          bool wasClamped = false;
-          velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
-          if (wasClamped) {
-            std::cout << "\rStance velocity clamp active.                      " << std::flush;
+        if (!teleopState.stabilizeModeActive) {
+          ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+          if (activeGaitCommand == "stance") {
+            bool wasClamped = false;
+            velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
+            if (wasClamped) {
+              std::cout << "\rStance velocity clamp active.                      " << std::flush;
+            }
           }
+          currentVelocityCommand = velocityCommand;
+          teleopState.holdPositionActive = false;
+        } else {
+          currentVelocityCommand.setZero();
+          teleopState.holdPositionActive = true;
         }
-        currentVelocityCommand = velocityCommand;
-        teleopState.holdPositionActive = false;
+      } else if (key == 'y') {
+        currentVelocityCommand.setZero();
+        teleopState.stabilizeModeActive = true;
+        teleopState.holdPositionActive = true;
+        std::cout << "\nStabilize mode active. Reference x/y follows current state.\n";
+      } else if (key == 't') {
+        teleopState.stabilizeModeActive = false;
+        const ocs2::vector_t resumedVelocityCommand =
+            composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+        if (resumedVelocityCommand.isZero(1e-6)) {
+          currentVelocityCommand.setZero();
+          teleopState.holdPositionActive = true;
+        } else {
+          currentVelocityCommand = resumedVelocityCommand;
+          teleopState.holdPositionActive = false;
+        }
+        std::cout << "\nWalking mode resumed inside velocity mode.\n";
       } else if (key == 'o') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(heightStep);
         if (teleopState.holdPositionActive) {
@@ -320,30 +346,37 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         targetPoseCommand.publishHoldPositionCommand();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
+        teleopState.stabilizeModeActive = false;
         std::cout << "Switched to stance. Motion stays enabled with stance safety limits.\n";
       } else if (key == 'g') {
         currentVelocityCommand.setZero();
         targetPoseCommand.publishHoldPositionCommand();
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
+        teleopState.stabilizeModeActive = false;
         currentMode = UserCommandMode::Goal;
         std::cout << "\nExited velocity mode. Back to goal mode.\n\n";
         break;
       }
     }
 
-    ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
-
-    if (velocityCommand.isZero(1e-6)) {
+    if (teleopState.stabilizeModeActive) {
       currentVelocityCommand.setZero();
       teleopState.holdPositionActive = true;
     } else {
-      if (activeGaitCommand == "stance") {
-        bool wasClamped = false;
-        velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
+      ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+
+      if (velocityCommand.isZero(1e-6)) {
+        currentVelocityCommand.setZero();
+        teleopState.holdPositionActive = true;
+      } else {
+        if (activeGaitCommand == "stance") {
+          bool wasClamped = false;
+          velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
+        }
+        currentVelocityCommand = velocityCommand;
+        teleopState.holdPositionActive = false;
       }
-      currentVelocityCommand = velocityCommand;
-      teleopState.holdPositionActive = false;
     }
 
     if (teleopState.holdPositionActive) {

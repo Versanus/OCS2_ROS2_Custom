@@ -2,7 +2,7 @@ controller
 {
     timestep  0.001
     mpc_control_frequency  40
-    wbc_control_frequency  500
+    wbc_control_frequency  200
 }
 
 render
@@ -20,3 +20,13 @@ pid
     kd                   0.5
 }
 
+disturbance
+{
+    force_min            40.0
+    force_max            50.0
+    vertical_scale       0.35
+    interval_min         1.0
+    interval_max         1.5
+    impulse_duration     0.25
+    arrow_scale          0.020
+}

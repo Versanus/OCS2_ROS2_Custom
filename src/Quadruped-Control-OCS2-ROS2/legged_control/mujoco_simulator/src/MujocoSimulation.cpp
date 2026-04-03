@@ -1,5 +1,12 @@
 #include "mujoco_simulator/MujocoSimulation.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <ctime>
+
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+
 MujocoSimulation* MujocoSimulation::instance_ = nullptr;
 bool MujocoSimulation::button_left = false;
 bool MujocoSimulation::button_middle = false;
@@ -10,7 +17,8 @@ double MujocoSimulation::lasty = 0.0;
 MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     const std::string& xmlFile,
     const std::string& simulatorFile)
-    : node_(node), model_(nullptr), data_(nullptr), window_(nullptr)
+    : node_(node), model_(nullptr), data_(nullptr), window_(nullptr),
+      disturbance_rng_(static_cast<std::mt19937::result_type>(std::time(nullptr)))
 {   
     instance_ = this;
     // Initialize MuJoCo visualization
@@ -71,6 +79,24 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     ocs2::loadData::loadCppDataType(configFile, "pid.kp", Kp_);
     ocs2::loadData::loadCppDataType(configFile, "pid.kd", Kd_);
 
+    // disturbance with optional config override
+    boost::property_tree::ptree pt;
+    boost::property_tree::read_info(configFile, pt);
+    disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
+    disturbance_force_max_ = pt.get<double>("disturbance.force_max", disturbance_force_max_);
+    disturbance_vertical_scale_ = pt.get<double>("disturbance.vertical_scale", disturbance_vertical_scale_);
+    disturbance_interval_min_ = pt.get<double>("disturbance.interval_min", disturbance_interval_min_);
+    disturbance_interval_max_ = pt.get<double>("disturbance.interval_max", disturbance_interval_max_);
+    disturbance_impulse_duration_ = pt.get<double>("disturbance.impulse_duration", disturbance_impulse_duration_);
+    disturbance_arrow_scale_ = pt.get<double>("disturbance.arrow_scale", disturbance_arrow_scale_);
+    disturbance_force_min_ = std::max(0.0, disturbance_force_min_);
+    disturbance_force_max_ = std::max(disturbance_force_min_, disturbance_force_max_);
+    disturbance_vertical_scale_ = std::max(0.0, disturbance_vertical_scale_);
+    disturbance_interval_min_ = std::max(timestep_, disturbance_interval_min_);
+    disturbance_interval_max_ = std::max(disturbance_interval_min_, disturbance_interval_max_);
+    disturbance_impulse_duration_ = std::max(timestep_, disturbance_impulse_duration_);
+    disturbance_arrow_scale_ = std::max(0.0, disturbance_arrow_scale_);
+
     // Load MuJoCo model and data
     model_ = mj_loadXML(modelPath.c_str(), nullptr, nullptr, 0);
     if (!model_) {
@@ -88,6 +114,11 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
         Joint_position_[i] = 0.0;
         Joint_velocity_[i] = 0.0;
         Joint_torque_[i] = 0.0;
+    }
+
+    disturbance_body_id_ = mj_name2id(model_, mjOBJ_BODY, "trunk");
+    if (disturbance_body_id_ < 0) {
+        RCLCPP_WARN(node_->get_logger(), "Base disturbance body 'trunk' not found. Disturbance toggle will be disabled.");
     }
     
     Start_simulate_=true;
@@ -142,10 +173,35 @@ void MujocoSimulation::renderSetting(const std::string& configFile)
 
 void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int act, int mods)
 {
-    if (act == GLFW_PRESS && key == GLFW_KEY_BACKSPACE)
-    {
+    if (act != GLFW_PRESS || instance_ == nullptr) {
+        return;
+    }
+
+    if (key == GLFW_KEY_BACKSPACE) {
         mj_resetData(instance_->model_, instance_->data_);
+        instance_->clearDisturbanceForce();
+        instance_->disturbance_enabled_ = false;
         mj_forward(instance_->model_, instance_->data_);
+        return;
+    }
+
+    if (key == GLFW_KEY_H) {
+        if (instance_->disturbance_body_id_ < 0) {
+            RCLCPP_WARN(instance_->node_->get_logger(), "Cannot toggle disturbances because the base body was not found.");
+            return;
+        }
+
+        instance_->disturbance_enabled_ = !instance_->disturbance_enabled_;
+        if (instance_->disturbance_enabled_) {
+            instance_->clearDisturbanceForce();
+            instance_->next_disturbance_update_time_ =
+                instance_->data_ ? instance_->data_->time : 0.0;
+            RCLCPP_INFO(instance_->node_->get_logger(),
+                        "Random base impulses enabled. Press 'h' again to turn them off.");
+        } else {
+            instance_->clearDisturbanceForce();
+            RCLCPP_INFO(instance_->node_->get_logger(), "Random base impulses disabled.");
+        }
     }
 }
 
@@ -250,6 +306,8 @@ void MujocoSimulation::run()
 }
 
 void MujocoSimulation::simulateStep() {
+    updateDisturbanceForce();
+
     if (!Start_simulate_)
     {
         double joint_position_value[12];
@@ -268,6 +326,104 @@ void MujocoSimulation::simulateStep() {
     }
     // Perform a simulation step
     mj_step(model_, data_);
+}
+
+void MujocoSimulation::clearDisturbanceForce() {
+    current_disturbance_wrench_.fill(0.0);
+    disturbance_active_until_time_ = data_ ? data_->time : 0.0;
+    if (data_ == nullptr || disturbance_body_id_ < 0) {
+        return;
+    }
+
+    double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+    for (int i = 0; i < 6; ++i) {
+        appliedWrench[i] = 0.0;
+    }
+}
+
+void MujocoSimulation::scheduleNextDisturbance() {
+    if (data_ == nullptr) {
+        return;
+    }
+
+    std::uniform_real_distribution<double> intervalDistribution(
+        disturbance_interval_min_, disturbance_interval_max_);
+    next_disturbance_update_time_ = data_->time + intervalDistribution(disturbance_rng_);
+}
+
+void MujocoSimulation::sampleDisturbanceForce() {
+    if (data_ == nullptr || disturbance_body_id_ < 0) {
+        return;
+    }
+
+    constexpr double kPi = 3.14159265358979323846;
+    std::uniform_real_distribution<double> angleDistribution(-kPi, kPi);
+    std::uniform_real_distribution<double> magnitudeDistribution(
+        disturbance_force_min_, disturbance_force_max_);
+    std::uniform_real_distribution<double> verticalDistribution(
+        -disturbance_vertical_scale_, disturbance_vertical_scale_);
+
+    const double planarMagnitude = magnitudeDistribution(disturbance_rng_);
+    const double planarAngle = angleDistribution(disturbance_rng_);
+
+    current_disturbance_wrench_[0] = planarMagnitude * std::cos(planarAngle);
+    current_disturbance_wrench_[1] = planarMagnitude * std::sin(planarAngle);
+    current_disturbance_wrench_[2] =
+        magnitudeDistribution(disturbance_rng_) * verticalDistribution(disturbance_rng_);
+    current_disturbance_wrench_[3] = 0.0;
+    current_disturbance_wrench_[4] = 0.0;
+    current_disturbance_wrench_[5] = 0.0;
+
+    double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+    for (int i = 0; i < 6; ++i) {
+        appliedWrench[i] = current_disturbance_wrench_[i];
+    }
+    disturbance_active_until_time_ = data_->time + disturbance_impulse_duration_;
+
+    RCLCPP_INFO(node_->get_logger(),
+                "Applied base impulse: fx=%.2f fy=%.2f fz=%.2f duration=%.3f",
+                current_disturbance_wrench_[0], current_disturbance_wrench_[1],
+                current_disturbance_wrench_[2], disturbance_impulse_duration_);
+}
+
+void MujocoSimulation::updateDisturbanceForce() {
+    if (!disturbance_enabled_) {
+        if (disturbance_body_id_ >= 0) {
+            clearDisturbanceForce();
+        }
+        return;
+    }
+
+    if (data_ == nullptr || disturbance_body_id_ < 0) {
+        return;
+    }
+
+    const bool impulseActive = data_->time < disturbance_active_until_time_;
+    if (impulseActive) {
+        double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+        for (int i = 0; i < 6; ++i) {
+            appliedWrench[i] = current_disturbance_wrench_[i];
+        }
+        return;
+    }
+
+    const double currentForceNorm = std::abs(current_disturbance_wrench_[0]) +
+                                    std::abs(current_disturbance_wrench_[1]) +
+                                    std::abs(current_disturbance_wrench_[2]);
+    if (currentForceNorm > 1e-9) {
+        clearDisturbanceForce();
+        scheduleNextDisturbance();
+        return;
+    }
+
+    if (data_->time >= next_disturbance_update_time_) {
+        sampleDisturbanceForce();
+    } else {
+        double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+        for (int i = 0; i < 6; ++i) {
+            appliedWrench[i] = 0.0;
+        }
+    }
 }
 
 void MujocoSimulation::render() {
@@ -291,6 +447,7 @@ void MujocoSimulation::render() {
         }
 
         mjv_updateScene(model_, data_, &opt_, nullptr, &cam_, mjCAT_ALL, &scene_);
+        appendDisturbanceArrowToScene();
 
         // Render the scene
         mjr_render(viewport, &scene_, &context_);
@@ -302,6 +459,42 @@ void MujocoSimulation::render() {
         glfwPollEvents();
         //printf("Hello, World!\n");
     }
+}
+
+void MujocoSimulation::appendDisturbanceArrowToScene() {
+    if (!disturbance_enabled_ || data_ == nullptr || disturbance_body_id_ < 0 || disturbance_arrow_scale_ <= 0.0) {
+        return;
+    }
+
+    const double fx = current_disturbance_wrench_[0];
+    const double fy = current_disturbance_wrench_[1];
+    const double fz = current_disturbance_wrench_[2];
+    const double forceNorm = std::sqrt(fx * fx + fy * fy + fz * fz);
+    if (forceNorm < 1e-6 || scene_.ngeom >= scene_.maxgeom) {
+        return;
+    }
+
+    constexpr mjtNum kArrowHeightOffset = 0.12;
+    const mjtNum from[3] = {
+        data_->xpos[3 * disturbance_body_id_ + 0],
+        data_->xpos[3 * disturbance_body_id_ + 1],
+        data_->xpos[3 * disturbance_body_id_ + 2] + kArrowHeightOffset
+    };
+    const mjtNum to[3] = {
+        from[0] + disturbance_arrow_scale_ * fx,
+        from[1] + disturbance_arrow_scale_ * fy,
+        from[2] + disturbance_arrow_scale_ * fz
+    };
+    const float rgba[4] = {1.0f, 0.2f, 0.2f, 0.6f};
+    mjvGeom* disturbanceGeom = &scene_.geoms[scene_.ngeom];
+    mjv_initGeom(disturbanceGeom, mjGEOM_ARROW, nullptr, nullptr, nullptr, rgba);
+    mjv_connector(disturbanceGeom, mjGEOM_ARROW, 0.02, from, to);
+    disturbanceGeom->category = mjCAT_DECOR;
+    disturbanceGeom->segid = -1;
+    disturbanceGeom->objid = -1;
+    disturbanceGeom->transparent = 1;
+    disturbanceGeom->emission = 1.0f;
+    scene_.ngeom++;
 }
 
 
