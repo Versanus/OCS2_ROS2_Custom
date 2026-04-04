@@ -278,6 +278,28 @@ Commands are entered in the **User Command terminal**.
 
 ---
 
+## User Command Modes
+
+The command interface supports two main modes:
+
+```
+mode:goal
+mode:vel
+```
+
+* `mode:goal` is used for relative pose commands such as `goal:x y z yaw`
+* `mode:vel` enters keyboard teleoperation for gait and velocity control
+
+On startup, the system begins in a latched emergency hold state.
+To enable controller-side stance from keyboard teleop:
+
+```
+mode:vel
+press 1
+```
+
+---
+
 ## List Available Gaits
 
 ```
@@ -327,6 +349,83 @@ Meaning:
 | y         | sideways motion |
 | z         | body height     |
 | yaw       | robot rotation  |
+
+---
+
+## Velocity Keyboard Teleop
+
+Enter:
+
+```
+mode:vel
+```
+
+Velocity mode uses keyboard teleoperation with filtered velocity commands.
+
+Main keys:
+
+| Key | Action |
+| --- | ------ |
+| `w/s` | forward / backward |
+| `a/d` | lateral left / right |
+| `q/e` | yaw left / right |
+| `1` | stance |
+| `2` | standing_trot |
+| `3` | flying_trot |
+| `4` | dynamic_walk |
+| `5` | pawup |
+| `6` | fast_flying_trot |
+| `+/-` | increase / decrease teleop speed |
+| `o/l` | raise / lower desired body height |
+| `y` | stabilize in place using current state |
+| `t` | return from stabilize mode to walking |
+| `c` | soft switch to stance |
+| `g` | exit velocity mode back to `mode:goal` |
+
+Notes:
+
+* velocity commands are rate-limited before being sent to MPC
+* teleop startup speeds and acceleration limits are loaded from `reference.info`
+* look-ahead preview distance is also configured from `reference.info`
+
+---
+
+## Emergency Override Keys
+
+Inside `mode:vel`, the emergency override flow is:
+
+| Key | Action |
+| --- | ------ |
+| `space` | latched emergency hold at current joint positions |
+| `0` | move to `defaultJointState` recovery pose |
+| `1` | clear emergency override and return to MPC stance |
+
+Important behavior:
+
+* `0` only works while emergency override is already active
+* `1` does not jump directly back to locomotion; it returns through stance
+* emergency override is implemented in `motion_control`, not only in the UI
+
+Typical recovery sequence:
+
+1. Press `space`
+2. Lift or stabilize the robot
+3. Press `0` to move to recovery pose
+4. Place the robot back down
+5. Press `1` to return to MPC stance
+
+---
+
+## MuJoCo Window Shortcuts
+
+The MuJoCo window also has direct keyboard shortcuts:
+
+| Key | Action |
+| --- | ------ |
+| `h` | toggle random base disturbances on / off |
+| `r` | reposition the robot base back to the start pose |
+
+Disturbances are impulse-based and are configured in each robot's `simulation.info`.
 
 ---
 
@@ -615,4 +714,3 @@ This project inherits licenses from the upstream repositories used in this work.
 Please refer to the original repositories for licensing information.
 
 ---
-
