@@ -87,10 +87,6 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     estopKd_ = pt.get<double>("pid.estop_kd", estopKd_);
     estopKp_ = std::max(Kp_, estopKp_);
     estopKd_ = std::max(Kd_, estopKd_);
-    recoveryKp_ = pt.get<double>("pid.recovery_kp", recoveryKp_);
-    recoveryKd_ = pt.get<double>("pid.recovery_kd", recoveryKd_);
-    recoveryKp_ = std::max(estopKp_, recoveryKp_);
-    recoveryKd_ = std::max(estopKd_, recoveryKd_);
 
     // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
@@ -334,9 +330,10 @@ void MujocoSimulation::simulateStep() {
 
     if (!Start_simulate_)
     {
-        const bool recovery_pose_active = emergency_override_mode_ == 2;
-        const double effectiveKp = recovery_pose_active ? recoveryKp_ : (emergency_override_active_ ? estopKp_ : Kp_);
-        const double effectiveKd = recovery_pose_active ? recoveryKd_ : (emergency_override_active_ ? estopKd_ : Kd_);
+        const bool strongPdMode = actuator_mode_ == 1;
+        const bool zeroTorqueMode = actuator_mode_ == 2;
+        const double effectiveKp = strongPdMode ? estopKp_ : Kp_;
+        const double effectiveKd = strongPdMode ? estopKd_ : Kd_;
         double joint_position_value[12];
         double joint_velocity_value[12];
         double control_torque[12];
@@ -344,9 +341,13 @@ void MujocoSimulation::simulateStep() {
         for (int i = 0; i < 12; ++i) {
             joint_position_value[i] = data_->sensordata[i+10];
             joint_velocity_value[i] = data_->sensordata[i+22];
-            control_torque[i] = static_cast<double>(Joint_torque_[i]) +
-                effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
-                effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
+            if (zeroTorqueMode) {
+                control_torque[i] = 0.0;
+            } else {
+                control_torque[i] = static_cast<double>(Joint_torque_[i]) +
+                    effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
+                    effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
+            }
             data_->ctrl[i] = control_torque[i];
             //std::cout << "data_->ctrl[" << i << "] = " << data_->ctrl[i] << std::endl;
         }
@@ -551,20 +552,24 @@ void MujocoSimulation::resetRobotPose() {
 }
 
 void MujocoSimulation::emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg) {
-    emergency_override_mode_ = msg->data;
-    emergency_override_active_ = msg->data != 0;
+    (void)msg;
 }
 
 
 void MujocoSimulation::control_callback(legged_msgs::msg::JointControlData::SharedPtr msg)
 {
-    if (msg->joint_position.size() != 12) {
-        RCLCPP_ERROR(node_->get_logger(), "Error: joint size is not 12. Current size: %zu", msg->joint_position.size());
-        // rclcpp::shutdown();  // 结束程序
-        // return;
+    const bool valid_position_size = msg->joint_position.size() == 12;
+    const bool valid_velocity_size = msg->joint_velocity.size() == 12;
+    const bool valid_torque_size = msg->joint_torque.size() == 12;
+    if (!valid_position_size || !valid_velocity_size || !valid_torque_size) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Invalid joint command sizes. position=%zu velocity=%zu torque=%zu (expected 12 each). Ignoring command.",
+                     msg->joint_position.size(), msg->joint_velocity.size(), msg->joint_torque.size());
+        return;
     }
     Start_simulate_=false;
     Start_control_=true;
+    actuator_mode_ = static_cast<int>(msg->actuator_mode);
 
     // std::lock_guard<std::mutex> lock(bufferMutex_);
     for (size_t i = 0; i < msg->joint_position.size(); ++i) {

@@ -84,10 +84,27 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 class MPC_WBC_ROS_Interface {
 public:
-  enum class EmergencyOverrideMode {
-    Normal = 0,
+  enum class ControlCommand {
+    ActivateMpc = 0,
     Hold = 1,
     RecoveryPose = 2,
+    SitDown = 3,
+    ZeroTorque = 4,
+  };
+
+  enum class ControlState {
+    Mpc = 0,
+    Hold = 1,
+    RecoveryPose = 2,
+    SitDown = 3,
+    Sitting = 4,
+    ZeroTorque = 5,
+  };
+
+  enum class ActuatorMode : uint8_t {
+    NormalPd = 0,
+    StrongPd = 1,
+    ZeroTorque = 2,
   };
 
   MPC_WBC_ROS_Interface(
@@ -155,15 +172,20 @@ private:
     ocs2::benchmark::RepeatedTimer wbcTimer_;
     int MpcCount_; // using count to control different frequency of mpc and wbc
     bool StateEstimate_; //use state estimate (true) or use real state from simulator (false)
-    EmergencyOverrideMode emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
+    ControlState controlState_ = ControlState::Mpc;
     ocs2::vector_t estopHoldJointState_ = ocs2::vector_t::Zero(12);
+    ocs2::vector_t standJointState_ = ocs2::vector_t::Zero(12);
+    ocs2::vector_t sitJointState_ = ocs2::vector_t::Zero(12);
     ocs2::vector_t recoveryJointState_ = ocs2::vector_t::Zero(12);
-    bool emergencyOverrideReleasePending_ = false;
-    ocs2::scalar_t emergencyOverrideReleaseTime_ = 0.0;
-    ocs2::scalar_t emergencyOverrideReleaseDelay_ = 0.02;
-    bool emergencyOverrideBlendActive_ = false;
-    ocs2::scalar_t emergencyOverrideBlendStartTime_ = 0.0;
-    ocs2::scalar_t emergencyOverrideBlendDuration_ = 0.08;
+    ocs2::vector_t sitDownStartJointState_ = ocs2::vector_t::Zero(12);
+    bool mpcReleasePending_ = false;
+    ocs2::scalar_t mpcReleaseTime_ = 0.0;
+    ocs2::scalar_t mpcReleaseDelay_ = 0.02;
+    bool mpcBlendActive_ = false;
+    ocs2::scalar_t mpcBlendStartTime_ = 0.0;
+    ocs2::scalar_t mpcBlendDuration_ = 0.08;
+    ocs2::scalar_t sitDownStartTime_ = 0.0;
+    ocs2::scalar_t sitDownDuration_ = 1.0;
     
 
   /*

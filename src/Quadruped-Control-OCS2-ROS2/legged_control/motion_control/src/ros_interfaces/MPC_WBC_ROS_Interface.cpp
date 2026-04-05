@@ -40,6 +40,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <angles/angles.h>
 
+namespace {
+
+bool tryLoadJointState(const std::string& referenceFile, const std::string& field, ocs2::vector_t& jointState) {
+  try {
+    ocs2::loadData::loadEigenMatrix(referenceFile, field, jointState);
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+}  // namespace
+
 
 /******************************************************************************************************/
 /******************************************************************************************************/
@@ -58,11 +71,17 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
   
   //legged_interface
   leggedInterface_ = std::make_shared<LeggedRobotInterface>(taskFile, urdfFile, referenceFile);
-  ocs2::loadData::loadEigenMatrix(referenceFile, "defaultJointState", recoveryJointState_);
-  estopHoldJointState_ = recoveryJointState_;
-  emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
-  emergencyOverrideReleaseDelay_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideReleaseDelay_);
-  emergencyOverrideBlendDuration_ = std::max<ocs2::scalar_t>(0.0, emergencyOverrideBlendDuration_);
+  ocs2::loadData::loadEigenMatrix(referenceFile, "defaultJointState", standJointState_);
+  sitJointState_.setZero(standJointState_.size());
+  recoveryJointState_ = standJointState_;
+  tryLoadJointState(referenceFile, "standJointState", standJointState_);
+  tryLoadJointState(referenceFile, "sitJointState", sitJointState_);
+  tryLoadJointState(referenceFile, "recoveryJointState", recoveryJointState_);
+  estopHoldJointState_ = standJointState_;
+  controlState_ = ControlState::Hold;
+  mpcReleaseDelay_ = std::max<ocs2::scalar_t>(0.0, mpcReleaseDelay_);
+  mpcBlendDuration_ = std::max<ocs2::scalar_t>(0.0, mpcBlendDuration_);
+  sitDownDuration_ = std::max<ocs2::scalar_t>(0.1, sitDownDuration_);
 
   // mpc
   ocs2::loadData::loadCppDataType(simulatorFile, "controller.mpc_control_frequency", Mpc_control_frequency_);
@@ -350,7 +369,7 @@ void MPC_WBC_ROS_Interface::setInitialState(
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
 
-  if (emergencyOverrideMode_ == EmergencyOverrideMode::Hold &&
+  if (controlState_ == ControlState::Hold &&
       currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
     estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
         currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
@@ -576,17 +595,17 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, const ocs2::vector_t& posDes, const ocs2::vector_t& velDes)
 {
-  if (emergencyOverrideReleasePending_ && currentObservation_.time >= emergencyOverrideReleaseTime_) {
-    emergencyOverrideReleasePending_ = false;
-    emergencyOverrideBlendActive_ = emergencyOverrideBlendDuration_ > 1e-6;
-    emergencyOverrideBlendStartTime_ = currentObservation_.time;
-    if (emergencyOverrideBlendActive_) {
+  if (mpcReleasePending_ && currentObservation_.time >= mpcReleaseTime_) {
+    mpcReleasePending_ = false;
+    mpcBlendActive_ = mpcBlendDuration_ > 1e-6;
+    mpcBlendStartTime_ = currentObservation_.time;
+    if (mpcBlendActive_) {
       RCLCPP_INFO(node_->get_logger(),
-                  "Emergency override release delay completed. Blending back to MPC/WBC over %.2f s.",
-                  emergencyOverrideBlendDuration_);
+                  "Controller release delay completed. Blending back to MPC/WBC over %.2f s.",
+                  mpcBlendDuration_);
     } else {
-      emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
-      RCLCPP_INFO(node_->get_logger(), "Emergency override release delay completed. Returning joint control to MPC/WBC.");
+      controlState_ = ControlState::Mpc;
+      RCLCPP_INFO(node_->get_logger(), "Controller release delay completed. Returning joint control to MPC/WBC.");
     }
   }
 
@@ -594,32 +613,81 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
   msg.joint_torque.resize(12);
   msg.joint_position.resize(12);
   msg.joint_velocity.resize(12);
+  msg.actuator_mode = static_cast<uint8_t>(ActuatorMode::NormalPd);
 
-  const bool useEmergencyOverride = emergencyOverrideMode_ != EmergencyOverrideMode::Normal;
-  const ocs2::vector_t& overrideJointState =
-      emergencyOverrideMode_ == EmergencyOverrideMode::RecoveryPose ? recoveryJointState_ : estopHoldJointState_;
-  const ocs2::scalar_t blendAlpha = emergencyOverrideBlendActive_
-                                        ? std::clamp((currentObservation_.time - emergencyOverrideBlendStartTime_) /
-                                                         emergencyOverrideBlendDuration_,
+  const ocs2::scalar_t blendAlpha = mpcBlendActive_
+                                        ? std::clamp((currentObservation_.time - mpcBlendStartTime_) /
+                                                         mpcBlendDuration_,
                                                      ocs2::scalar_t(0.0), ocs2::scalar_t(1.0))
                                         : ocs2::scalar_t(0.0);
 
-  for (size_t i = 0; i < 12; ++i) {
-      if (emergencyOverrideBlendActive_) {
-        msg.joint_torque[i] = blendAlpha * torque[i];
-        msg.joint_position[i] = (1.0 - blendAlpha) * overrideJointState[i] + blendAlpha * posDes[i];
-        msg.joint_velocity[i] = blendAlpha * velDes[i];
-      } else {
-        msg.joint_torque[i] = useEmergencyOverride ? 0.0 : torque[i];
-        msg.joint_position[i] = useEmergencyOverride ? overrideJointState[i] : posDes[i];
-        msg.joint_velocity[i] = useEmergencyOverride ? 0.0 : velDes[i];
+  ocs2::vector_t rawTargetJointState = standJointState_;
+  ocs2::vector_t rawTargetJointVelocity = ocs2::vector_t::Zero(standJointState_.size());
+  ActuatorMode actuatorMode = ActuatorMode::NormalPd;
+
+  switch (controlState_) {
+    case ControlState::Hold:
+      rawTargetJointState = estopHoldJointState_;
+      actuatorMode = ActuatorMode::StrongPd;
+      break;
+    case ControlState::RecoveryPose:
+      rawTargetJointState = recoveryJointState_;
+      actuatorMode = ActuatorMode::StrongPd;
+      break;
+    case ControlState::SitDown: {
+      const ocs2::scalar_t sitAlpha = std::clamp((currentObservation_.time - sitDownStartTime_) / sitDownDuration_,
+                                                 ocs2::scalar_t(0.0), ocs2::scalar_t(1.0));
+      rawTargetJointState = (1.0 - sitAlpha) * sitDownStartJointState_ + sitAlpha * sitJointState_;
+      rawTargetJointVelocity = (sitJointState_ - sitDownStartJointState_) / sitDownDuration_;
+      actuatorMode = ActuatorMode::StrongPd;
+      if (sitAlpha >= 1.0 - 1e-6) {
+        controlState_ = ControlState::Sitting;
+        rawTargetJointState = sitJointState_;
+        rawTargetJointVelocity.setZero();
+        RCLCPP_INFO(node_->get_logger(), "Sit-down completed. Holding sitting pose.");
       }
+      break;
+    }
+    case ControlState::Sitting:
+      rawTargetJointState = sitJointState_;
+      actuatorMode = ActuatorMode::StrongPd;
+      break;
+    case ControlState::ZeroTorque:
+      rawTargetJointState.setZero();
+      rawTargetJointVelocity.setZero();
+      actuatorMode = ActuatorMode::ZeroTorque;
+      break;
+    case ControlState::Mpc:
+      actuatorMode = ActuatorMode::NormalPd;
+      break;
   }
 
-  if (emergencyOverrideBlendActive_ && blendAlpha >= 1.0 - 1e-6) {
-    emergencyOverrideBlendActive_ = false;
-    emergencyOverrideMode_ = EmergencyOverrideMode::Normal;
-    RCLCPP_INFO(node_->get_logger(), "Emergency override blend completed. Returning joint control to MPC/WBC.");
+  for (size_t i = 0; i < 12; ++i) {
+    if (mpcBlendActive_) {
+      msg.joint_torque[i] = blendAlpha * torque[i];
+      msg.joint_position[i] = (1.0 - blendAlpha) * estopHoldJointState_[i] + blendAlpha * posDes[i];
+      msg.joint_velocity[i] = blendAlpha * velDes[i];
+    } else if (controlState_ == ControlState::Mpc) {
+      msg.joint_torque[i] = torque[i];
+      msg.joint_position[i] = posDes[i];
+      msg.joint_velocity[i] = velDes[i];
+    } else if (controlState_ == ControlState::ZeroTorque) {
+      msg.joint_torque[i] = 0.0;
+      msg.joint_position[i] = 0.0;
+      msg.joint_velocity[i] = 0.0;
+    } else {
+      msg.joint_torque[i] = 0.0;
+      msg.joint_position[i] = rawTargetJointState[i];
+      msg.joint_velocity[i] = rawTargetJointVelocity[i];
+    }
+  }
+
+  msg.actuator_mode = static_cast<uint8_t>(mpcBlendActive_ ? ActuatorMode::StrongPd : actuatorMode);
+
+  if (mpcBlendActive_ && blendAlpha >= 1.0 - 1e-6) {
+    mpcBlendActive_ = false;
+    controlState_ = ControlState::Mpc;
+    RCLCPP_INFO(node_->get_logger(), "Controller blend completed. Returning joint control to MPC/WBC.");
   }
 
   jointControlPublisher_->publish(msg);
@@ -631,38 +699,55 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr msg) {
   const int command = msg->data;
-  if (command == static_cast<int>(EmergencyOverrideMode::Hold)) {
-    emergencyOverrideReleasePending_ = false;
-    emergencyOverrideBlendActive_ = false;
+  if (command == static_cast<int>(ControlCommand::Hold)) {
+    mpcReleasePending_ = false;
+    mpcBlendActive_ = false;
     if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
       estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
           currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
     } else {
-      estopHoldJointState_ = recoveryJointState_;
+      estopHoldJointState_ = standJointState_;
     }
-    emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
-    RCLCPP_WARN(node_->get_logger(), "Emergency override active: HOLD current joint positions.");
-  } else if (command == static_cast<int>(EmergencyOverrideMode::RecoveryPose)) {
-    if (emergencyOverrideMode_ == EmergencyOverrideMode::Normal) {
-      RCLCPP_WARN(node_->get_logger(), "Ignoring recovery pose request because emergency override is not active.");
-      return;
+    controlState_ = ControlState::Hold;
+    RCLCPP_WARN(node_->get_logger(), "Controller state active: HOLD current joint positions.");
+  } else if (command == static_cast<int>(ControlCommand::RecoveryPose)) {
+    mpcReleasePending_ = false;
+    mpcBlendActive_ = false;
+    controlState_ = ControlState::RecoveryPose;
+    RCLCPP_WARN(node_->get_logger(), "Controller state active: RECOVERY pose.");
+  } else if (command == static_cast<int>(ControlCommand::SitDown)) {
+    if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
+      sitDownStartJointState_ = ocs2::centroidal_model::getJointAngles(
+          currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+    } else if (controlState_ == ControlState::RecoveryPose) {
+      sitDownStartJointState_ = recoveryJointState_;
+    } else if (controlState_ == ControlState::Hold) {
+      sitDownStartJointState_ = estopHoldJointState_;
+    } else {
+      sitDownStartJointState_ = sitJointState_;
     }
-    emergencyOverrideReleasePending_ = false;
-    emergencyOverrideBlendActive_ = false;
-    emergencyOverrideMode_ = EmergencyOverrideMode::RecoveryPose;
-    RCLCPP_WARN(node_->get_logger(), "Emergency override active: RECOVERY pose.");
-  } else {
-    emergencyOverrideReleasePending_ = true;
-    emergencyOverrideBlendActive_ = false;
-    emergencyOverrideReleaseTime_ = currentObservation_.time + emergencyOverrideReleaseDelay_;
-    emergencyOverrideMode_ = EmergencyOverrideMode::Hold;
+    mpcReleasePending_ = false;
+    mpcBlendActive_ = false;
+    sitDownStartTime_ = currentObservation_.time;
+    controlState_ = ControlState::SitDown;
+    RCLCPP_INFO(node_->get_logger(), "Controller state active: SIT_DOWN.");
+  } else if (command == static_cast<int>(ControlCommand::ZeroTorque)) {
+    mpcReleasePending_ = false;
+    mpcBlendActive_ = false;
+    controlState_ = ControlState::ZeroTorque;
+    RCLCPP_WARN(node_->get_logger(), "Controller state active: ZERO_TORQUE.");
+  } else if (command == static_cast<int>(ControlCommand::ActivateMpc)) {
+    mpcReleasePending_ = true;
+    mpcBlendActive_ = false;
+    mpcReleaseTime_ = currentObservation_.time + mpcReleaseDelay_;
+    controlState_ = ControlState::Hold;
     if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
       estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
           currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
     }
     RCLCPP_INFO(node_->get_logger(),
-                "Emergency override clear requested. Holding current joints for %.2f s before returning control to MPC/WBC.",
-                emergencyOverrideReleaseDelay_);
+                "MPC activation requested. Holding current joints for %.2f s before returning control to MPC/WBC.",
+                mpcReleaseDelay_);
   }
   publishEmergencyOverrideState();
 }
@@ -676,7 +761,7 @@ void MPC_WBC_ROS_Interface::publishEmergencyOverrideState() {
   }
 
   auto msg = std_msgs::msg::Int32();
-  msg.data = static_cast<int>(emergencyOverrideMode_);
+  msg.data = static_cast<int>(controlState_);
   emergencyOverrideStatePublisher_->publish(msg);
 }
 
