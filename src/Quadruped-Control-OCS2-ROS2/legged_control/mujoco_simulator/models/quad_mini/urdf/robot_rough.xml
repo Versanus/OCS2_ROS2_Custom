@@ -131,7 +131,7 @@
                     mass="0.3"
                     diaginertia="4.8323e-06 1.731e-05 1.675e-05"/>
           <joint name="RF_KFE"
-                        axis="0 1 0"
+                        axis="0 -1 0"
                         range="-1.745529 1.745529"
                         damping="0.01"
                         frictionloss="0.2"/>
@@ -180,7 +180,7 @@
                   mass="0.91"
                   diaginertia="4.7766e-05 8.801e-05 7.0548e-05"/>
         <joint name="LF_HFE"
-       axis="0 1 0"
+       axis="0 -1 0"
        range="-1.380997 3.054326"
        damping="0.01"
        frictionloss="0.2"/>
@@ -193,7 +193,7 @@
                     mass="0.3"
                     diaginertia="4.833e-06 1.731e-05 1.6749e-05"/>
                   <joint name="LF_KFE"
-                    axis="0 1 0"
+                    axis="0 -1 0"
                     range="-1.745529 1.745529"
                     damping="0.01"
                     frictionloss="0.2"/>
@@ -228,7 +228,7 @@
                 mass="0.39"
                 diaginertia="2.4675e-05 2.4611e-05 2.5355e-05"/>
       <joint name="RH_HAA"
-                            axis="1 0 0"
+                            axis="-1 0 0"
                             range="-0.436332 0.436332"
                             damping="0.01"
                             frictionloss="0.2"/>
@@ -257,7 +257,7 @@
                     mass="0.3"
                     diaginertia="4.8024e-06 1.7308e-05 1.672e-05"/>
           <joint name="RH_KFE"
-                                axis="0 1 0"
+                                axis="0 -1 0"
                                 range="-1.745529 1.745529"
                                 damping="0.01"
                                 frictionloss="0.2"/>
@@ -291,7 +291,7 @@
                 mass="0.39"
                 diaginertia="2.4675e-05 2.4611e-05 2.5355e-05"/>
       <joint name="LH_HAA"
-                        axis="1 0 0"
+                        axis="-1 0 0"
                         range="-0.436332 0.436332"
                         damping="0.01"
                         frictionloss="0.2"/>
@@ -307,7 +307,7 @@
                   mass="0.91"
                   diaginertia="4.7384e-05 8.9933e-05 7.1001e-05"/>
         <joint name="LH_HFE"
-                          axis="0 1 0"
+                          axis="0 -1 0"
                           range="-1.3008997 3.054326"
                           damping="0.01"
                           frictionloss="0.2"/>
@@ -320,7 +320,7 @@
                     mass="0.3"
                     diaginertia="4.833e-06 1.731e-05 1.6749e-05"/>
           <joint name="LH_KFE"
-                            axis="0 1 0"
+                            axis="0 -1 0"
                             range="-1.745529 1.745529"
                             damping="0.01"
                             frictionloss="0.2"/>
