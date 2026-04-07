@@ -16,8 +16,10 @@ double MujocoSimulation::lasty = 0.0;
 
 MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     const std::string& xmlFile,
-    const std::string& simulatorFile)
+    const std::string& simulatorFile,
+    bool exposeRosInterface)
     : node_(node), model_(nullptr), data_(nullptr), window_(nullptr),
+      exposeRosInterface_(exposeRosInterface),
       disturbance_rng_(static_cast<std::mt19937::result_type>(std::time(nullptr)))
 {   
     instance_ = this;
@@ -47,16 +49,17 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     // set redering;
     renderSetting(simulatorFile);
 
-    // ros node
-    state_pub_ = node_->create_publisher<legged_msgs::msg::SimulatorStateData>("simulator_state_data", 1);
-    sensor_pub_ = node_->create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
-    joint_control_sub_ = node_->create_subscription<legged_msgs::msg::JointControlData>(
-        "joint_control_data", 1, std::bind(&MujocoSimulation::control_callback, this, std::placeholders::_1));
-    emergency_override_state_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
-        "legged_robot_emergency_override_state", 1,
-        std::bind(&MujocoSimulation::emergencyOverrideStateCallback, this, std::placeholders::_1));
-    start_control_server_ = node_->create_service<legged_msgs::srv::StartControl>("start_control", 
-            std::bind(&MujocoSimulation::start_control_service, this, std::placeholders::_1, std::placeholders::_2));
+    if (exposeRosInterface_) {
+        state_pub_ = node_->create_publisher<legged_msgs::msg::SimulatorStateData>("simulator_state_data", 1);
+        sensor_pub_ = node_->create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
+        joint_control_sub_ = node_->create_subscription<legged_msgs::msg::JointControlData>(
+            "joint_control_data", 1, std::bind(&MujocoSimulation::control_callback, this, std::placeholders::_1));
+        emergency_override_state_sub_ = node_->create_subscription<std_msgs::msg::Int32>(
+            "legged_robot_emergency_override_state", 1,
+            std::bind(&MujocoSimulation::emergencyOverrideStateCallback, this, std::placeholders::_1));
+        start_control_server_ = node_->create_service<legged_msgs::srv::StartControl>("start_control",
+                std::bind(&MujocoSimulation::start_control_service, this, std::placeholders::_1, std::placeholders::_2));
+    }
 
 }
 
@@ -118,6 +121,8 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
         initial_base_quat_[2] = data_->qpos[5];
         initial_base_quat_[3] = data_->qpos[6];
     }
+    initial_qpos_.assign(data_->qpos, data_->qpos + model_->nq);
+    initial_qvel_.assign(data_->qvel, data_->qvel + model_->nv);
 
     mjv_makeScene(model_, &scene_, 2000); 
     // Create MuJoCo context for rendering
@@ -533,7 +538,9 @@ void MujocoSimulation::resetRobotPose() {
     clearDisturbanceForce();
     disturbance_enabled_ = false;
 
-    if (model_->nq >= 7) {
+    if (static_cast<int>(initial_qpos_.size()) == model_->nq) {
+        std::copy(initial_qpos_.begin(), initial_qpos_.end(), data_->qpos);
+    } else if (model_->nq >= 7) {
         data_->qpos[0] = 0.0;
         data_->qpos[1] = 0.0;
         data_->qpos[2] = 0.30;
@@ -543,9 +550,13 @@ void MujocoSimulation::resetRobotPose() {
         data_->qpos[6] = initial_base_quat_[3];
     }
 
-    const int baseVelocityDim = std::min(model_->nv, 6);
-    for (int i = 0; i < baseVelocityDim; ++i) {
-        data_->qvel[i] = 0.0;
+    if (static_cast<int>(initial_qvel_.size()) == model_->nv) {
+        std::copy(initial_qvel_.begin(), initial_qvel_.end(), data_->qvel);
+    } else {
+        const int baseVelocityDim = std::min(model_->nv, 6);
+        for (int i = 0; i < baseVelocityDim; ++i) {
+            data_->qvel[i] = 0.0;
+        }
     }
 
     mj_forward(model_, data_);
@@ -558,28 +569,32 @@ void MujocoSimulation::emergencyOverrideStateCallback(const std_msgs::msg::Int32
 
 void MujocoSimulation::control_callback(legged_msgs::msg::JointControlData::SharedPtr msg)
 {
-    const bool valid_position_size = msg->joint_position.size() == 12;
-    const bool valid_velocity_size = msg->joint_velocity.size() == 12;
-    const bool valid_torque_size = msg->joint_torque.size() == 12;
+    applyJointControl(*msg);
+    publish_state_data();
+    publish_sensor_data();
+}
+
+void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlData& msg)
+{
+    const bool valid_position_size = msg.joint_position.size() == 12;
+    const bool valid_velocity_size = msg.joint_velocity.size() == 12;
+    const bool valid_torque_size = msg.joint_torque.size() == 12;
     if (!valid_position_size || !valid_velocity_size || !valid_torque_size) {
         RCLCPP_ERROR(node_->get_logger(),
                      "Invalid joint command sizes. position=%zu velocity=%zu torque=%zu (expected 12 each). Ignoring command.",
-                     msg->joint_position.size(), msg->joint_velocity.size(), msg->joint_torque.size());
+                     msg.joint_position.size(), msg.joint_velocity.size(), msg.joint_torque.size());
         return;
     }
-    Start_simulate_=false;
-    Start_control_=true;
-    actuator_mode_ = static_cast<int>(msg->actuator_mode);
 
-    // std::lock_guard<std::mutex> lock(bufferMutex_);
-    for (size_t i = 0; i < msg->joint_position.size(); ++i) {
-        Joint_position_[i] = msg->joint_position[i];
-        Joint_velocity_[i] = msg->joint_velocity[i];
-        Joint_torque_[i] = msg->joint_torque[i];
-        //RCLCPP_INFO(node_->get_logger(), "  %f", Joint_torque_[i]);
+    Start_simulate_ = false;
+    Start_control_ = true;
+    actuator_mode_ = static_cast<int>(msg.actuator_mode);
+
+    for (size_t i = 0; i < msg.joint_position.size(); ++i) {
+        Joint_position_[i] = msg.joint_position[i];
+        Joint_velocity_[i] = msg.joint_velocity[i];
+        Joint_torque_[i] = msg.joint_torque[i];
     }
-    publish_state_data();
-    publish_sensor_data();
 }
 
 
@@ -640,6 +655,10 @@ void MujocoSimulation::publish_state_data()
     auto message = legged_msgs::msg::SimulatorStateData();
     populate_state_message(message);
 
+    if (!state_pub_) {
+        return;
+    }
+
     RCLCPP_INFO(node_->get_logger(),
             "Simulation time = [%f], \n"
             "Publishing base quat data: [%f, %f, %f, %f], \n"
@@ -679,46 +698,45 @@ void MujocoSimulation::publish_state_data()
     RCLCPP_INFO(node_->get_logger(),
             "Simulation time = [%f]",message.simulation_time);
 
-    state_pub_->publish(message);  
+    state_pub_->publish(message);
 }
 
 
-void MujocoSimulation::publish_sensor_data()
+void MujocoSimulation::populate_sensor_message(legged_msgs::msg::SimulatorSensorData& message)
 {
-    auto message = legged_msgs::msg::SimulatorSensorData();
     message.simulation_time = data_->time;
 
     message.imu_quat_values.clear();
     message.imu_angvel_values.clear();
     message.imu_linacc_values.clear();
     for (int i = 0; i < 4; ++i) {
-        double imu_quat_value;
-        imu_quat_value=static_cast<double>(data_->sensordata[i]);
-        message.imu_quat_values.push_back(imu_quat_value);
+        message.imu_quat_values.push_back(static_cast<double>(data_->sensordata[i]));
     }
     for (int i = 0; i < 3; ++i) {
-        double imu_angvel_value;
-        double imu_linacc_value;
-        imu_angvel_value = static_cast<double>(data_->sensordata[i + 4]);
-        imu_linacc_value = static_cast<double>(data_->sensordata[i + 7]);
-        message.imu_angvel_values.push_back(imu_angvel_value);
-        message.imu_linacc_values.push_back(imu_linacc_value);
+        message.imu_angvel_values.push_back(static_cast<double>(data_->sensordata[i + 4]));
+        message.imu_linacc_values.push_back(static_cast<double>(data_->sensordata[i + 7]));
     }
 
     message.joint_position_values.clear();
     message.joint_velocity_values.clear();
     for (int i = 0; i < 12; ++i) {
-        double joint_position_value;
-        double joint_velocity_value;
-        joint_position_value = static_cast<double>(data_->sensordata[i + 10]);
-        message.joint_position_values.push_back(joint_position_value);
-        joint_velocity_value = static_cast<double>(data_->sensordata[i + 22]);
-        message.joint_velocity_values.push_back(joint_velocity_value);
+        message.joint_position_values.push_back(static_cast<double>(data_->sensordata[i + 10]));
+        message.joint_velocity_values.push_back(static_cast<double>(data_->sensordata[i + 22]));
     }
 
-    message.contact_flags.resize(geom_ids_.size()-1);
-    for (size_t i = 0; i < (geom_ids_.size()-1); ++i) {
-        message.contact_flags[i] = checkCollision(data_, geom_ids_[0], geom_ids_[i+1]);
+    message.contact_flags.resize(geom_ids_.size() - 1);
+    for (size_t i = 0; i < (geom_ids_.size() - 1); ++i) {
+        message.contact_flags[i] = checkCollision(data_, geom_ids_[0], geom_ids_[i + 1]);
+    }
+}
+
+void MujocoSimulation::publish_sensor_data()
+{
+    auto message = legged_msgs::msg::SimulatorSensorData();
+    populate_sensor_message(message);
+
+    if (!sensor_pub_) {
+        return;
     }
 
     // RCLCPP_INFO(node_->get_logger(),
@@ -749,7 +767,15 @@ void MujocoSimulation::publish_sensor_data()
     //         static_cast<size_t>(message.contact_flags[0]), static_cast<size_t>(message.contact_flags[1]),
     //         static_cast<size_t>(message.contact_flags[2]), static_cast<size_t>(message.contact_flags[3]));
 
-    sensor_pub_->publish(message);  
+    sensor_pub_->publish(message);
+}
+
+void MujocoSimulation::stepControlPeriod()
+{
+    const mjtNum simstart = data_->time;
+    while (data_->time - simstart < 1.0 / control_frequency_) {
+        simulateStep();
+    }
 }
 
 

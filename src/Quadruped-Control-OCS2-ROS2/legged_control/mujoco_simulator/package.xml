@@ -13,6 +13,7 @@
   <depend>std_msgs</depend>
   <depend>legged_msgs</depend>
   <depend>ocs2_core</depend>
+  <depend>glfw3</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

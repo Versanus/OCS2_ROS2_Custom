@@ -122,6 +122,7 @@ protected:
     void setupMrt();
     void setupWbc(const std::string& taskFile, bool verbose);
     void setupStateEstimate(const std::string& taskFile, bool verbose);
+    void initializeObservationBuffers();
     void simulatorStartControlLoop();
     void setInitialState(const legged_msgs::msg::SimulatorStateData::ConstSharedPtr msg);
     void simulatorStateCallback(const legged_msgs::msg::SimulatorStateData::ConstSharedPtr msg);
@@ -134,6 +135,8 @@ protected:
     void publishCurrentObservation();
     legged_msgs::msg::MpcObservation createObservationMsg(const ocs2::SystemObservation& observation);
     std::string eigenToString(const ocs2::vector_t& vec);
+    bool hasValidCurrentObservationState() const;
+    void relatchHoldJointStateFromObservation();
     
     std::string robotName_;
     // Interface
@@ -186,6 +189,7 @@ private:
     ocs2::scalar_t mpcBlendDuration_ = 0.08;
     ocs2::scalar_t sitDownStartTime_ = 0.0;
     ocs2::scalar_t sitDownDuration_ = 1.0;
+    bool initialStateReady_ = false;
     
 
   /*

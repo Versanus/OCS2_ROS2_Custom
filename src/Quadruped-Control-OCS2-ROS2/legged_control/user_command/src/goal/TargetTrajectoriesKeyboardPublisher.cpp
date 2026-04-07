@@ -135,7 +135,7 @@ void TargetTrajectoriesKeyboardPublisher::publishHoldPositionCommand(bool verbos
 /******************************************************************************************************/
 /******************************************************************************************************/
 ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::adjustDesiredHeight(ocs2::scalar_t deltaHeight) {
-  comHeight_ = std::clamp(comHeight_ + deltaHeight, ocs2::scalar_t(0.12), ocs2::scalar_t(0.30));
+  comHeight_ = std::clamp(comHeight_ + deltaHeight, ocs2::scalar_t(0.12), ocs2::scalar_t(0.40));
   return comHeight_;
 }
 

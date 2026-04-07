@@ -8,6 +8,7 @@ log/
 *.pyc
 __pycache__/
 .idea/
+.vscode/
 .ros/
 tmp/
 MUJOCO_LOG.TXT

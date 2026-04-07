@@ -35,14 +35,38 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
 )
 
-add_executable(mujoco_simulator src/SimulatorNode.cpp src/MujocoSimulation.cpp)
-ament_target_dependencies(mujoco_simulator rclcpp std_msgs legged_msgs ocs2_core Boost) #ros2 link library
-target_link_libraries(mujoco_simulator ${MUJOCO_LIBRARIES} glfw) #cmake link library
+add_library(mujoco_simulator_core SHARED
+  src/MujocoSimulation.cpp
+)
+target_include_directories(mujoco_simulator_core
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+    ${MUJOCO_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIRS}
+)
+ament_target_dependencies(mujoco_simulator_core rclcpp std_msgs legged_msgs ocs2_core Boost)
+target_link_libraries(mujoco_simulator_core ${MUJOCO_LIBRARIES} glfw)
 
-install(TARGETS mujoco_simulator
-  DESTINATION lib/${PROJECT_NAME})
+add_executable(mujoco_simulator src/SimulatorNode.cpp)
+ament_target_dependencies(mujoco_simulator rclcpp std_msgs legged_msgs ocs2_core Boost)
+target_link_libraries(mujoco_simulator mujoco_simulator_core)
 
-install(DIRECTORY models DESTINATION share/${PROJECT_NAME}/)
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
 
+install(TARGETS mujoco_simulator_core mujoco_simulator
+  EXPORT export_${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY models config DESTINATION share/${PROJECT_NAME}/)
+
+ament_export_include_directories(include)
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(rclcpp std_msgs legged_msgs ocs2_core Boost Eigen3)
 
 ament_package()

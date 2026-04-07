@@ -14,6 +14,7 @@
   <depend>launch_ros</depend>
   <depend>motion_control</depend>
   <depend>mujoco_simulator</depend>
+  <depend>real_robot_bridge</depend>
   <depend>user_command</depend>
 
   <test_depend>ament_lint_auto</test_depend>

@@ -4,6 +4,22 @@ set -e
 
 WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+filter_existing_prefixes() {
+    local var_name="$1"
+    local current_value="${!var_name:-}"
+    local filtered_value=""
+    local entry
+
+    IFS=':' read -r -a prefix_entries <<< "${current_value}"
+    for entry in "${prefix_entries[@]}"; do
+        if [ -n "${entry}" ] && [ -d "${entry}" ]; then
+            filtered_value="${filtered_value:+${filtered_value}:}${entry}"
+        fi
+    done
+
+    export "${var_name}=${filtered_value}"
+}
+
 # Detect if running inside Docker
 if [ -f "/.dockerenv" ]; then
     echo "Running quick rebuild inside Docker"
@@ -12,11 +28,13 @@ if [ -f "/.dockerenv" ]; then
 
     echo "Cleaning selected packages..."
 
-    rm -rf build/legged_msgs install/legged_msgs
-    rm -rf build/motion_control install/motion_control
-    rm -rf build/mujoco_simulator install/mujoco_simulator
-    rm -rf build/user_command install/user_command
-    rm -rf build/launch_simulation install/launch_simulation
+    # rm -rf build/legged_msgs install/legged_msgs
+    # rm -rf build/motion_control install/motion_control
+    # rm -rf build/hardware_interface install/hardware_interface
+    # rm -rf build/mujoco_simulator install/mujoco_simulator
+    # rm -rf build/real_robot_bridge install/real_robot_bridge
+    # rm -rf build/user_command install/user_command
+    # rm -rf build/launch_simulation install/launch_simulation
 
     echo "Loading environment..."
 
@@ -27,12 +45,15 @@ if [ -f "/.dockerenv" ]; then
         source "${WS_DIR}/install/setup.bash"
     fi
 
+    filter_existing_prefixes AMENT_PREFIX_PATH
+    filter_existing_prefixes CMAKE_PREFIX_PATH
+    filter_existing_prefixes COLCON_PREFIX_PATH
+
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select legged_msgs motion_control mujoco_simulator user_command launch_simulation \
-        --symlink-install \
-        --cmake-clean-cache
+        --packages-select legged_msgs motion_control hardware_interface mujoco_simulator real_robot_bridge user_command launch_simulation
+        #--cmake-clean-cache
 
     source install/local_setup.bash
 

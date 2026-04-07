@@ -95,6 +95,7 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
   // State estimation
   ocs2::loadData::loadCppDataType(taskFile, "stateEstimate", StateEstimate_);
   setupStateEstimate(taskFile, verbose);
+  initializeObservationBuffers();
 
   MpcCount_ = 0; //control the different frequencyies between mpc and wbc
 
@@ -154,6 +155,37 @@ void MPC_WBC_ROS_Interface::setupStateEstimate(const std::string& taskFile, bool
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+void MPC_WBC_ROS_Interface::initializeObservationBuffers() {
+  const auto& info = leggedInterface_->getCentroidalModelInfo();
+  measuredRbdState_.setZero(2 * info.generalizedCoordinatesNum);
+  currentObservation_.time = 0.0;
+  currentObservation_.state.setZero(info.stateDim);
+  currentObservation_.input.setZero(info.inputDim);
+  currentObservation_.mode = ModeNumber::STANCE;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::hasValidCurrentObservationState() const {
+  return currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::relatchHoldJointStateFromObservation() {
+  if (!hasValidCurrentObservationState()) {
+    return;
+  }
+
+  estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
+      currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 void MPC_WBC_ROS_Interface::launchNodes()
 {
   RCLCPP_INFO(node_->get_logger(), "MPC node is setting up ...");
@@ -198,6 +230,7 @@ void MPC_WBC_ROS_Interface::launchNodes()
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::simulatorStartControlLoop()
 {
+  initialStateReady_ = false;
   auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
   request->start = true;
 
@@ -283,6 +316,11 @@ std::string MPC_WBC_ROS_Interface::eigenToString(const ocs2::vector_t& vec) {
 void MPC_WBC_ROS_Interface::simulatorStateCallback(
     const legged_msgs::msg::SimulatorStateData::ConstSharedPtr msg) {
   //RCLCPP_INFO(node_->get_logger(), "Message recieved");
+  if (!initialStateReady_) {
+    RCLCPP_WARN_ONCE(node_->get_logger(), "Ignoring simulator_state_data until initial state is ready.");
+    return;
+  }
+
   MpcCount_ += 1;
 
   updateStateEstimationFromState(msg);
@@ -352,7 +390,11 @@ void MPC_WBC_ROS_Interface::setInitialState(
 
 
   measuredRbdState_ = ocs2::vector_t::Zero(2 * (6 + jointPos.size()));
+  measuredRbdState_.segment<3>(0) = eulerAngles;
+  measuredRbdState_.segment<3>(3) = position;
   measuredRbdState_.segment(6, jointPos.size()) = jointPos;
+  measuredRbdState_.segment<3>(6 + jointPos.size()) = angularVel;
+  measuredRbdState_.segment<3>(9 + jointPos.size()) = linearVel;
   measuredRbdState_.segment(12 + jointPos.size(), jointVel.size()) = jointVel;
 
   currentObservation_.time = 0;
@@ -369,10 +411,8 @@ void MPC_WBC_ROS_Interface::setInitialState(
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
 
-  if (controlState_ == ControlState::Hold &&
-      currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
-    estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
-        currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+  if (controlState_ == ControlState::Hold && hasValidCurrentObservationState()) {
+    relatchHoldJointStateFromObservation();
   }
 
   for (size_t i = 0; i < msg->contact_flags.size(); ++i) {
@@ -380,6 +420,7 @@ void MPC_WBC_ROS_Interface::setInitialState(
   }
 
   currentObservation_.mode = stanceLeg2ModeNumber(contactFlag_);
+  initialStateReady_ = true;
 
 
 }
@@ -469,6 +510,11 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
 void MPC_WBC_ROS_Interface::simulatorSensorCallback(
     const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg) {
   //RCLCPP_INFO(node_->get_logger(), "Message recieved");
+  if (!initialStateReady_) {
+    RCLCPP_WARN_ONCE(node_->get_logger(), "Ignoring simulator_sensor_data until initial state is ready.");
+    return;
+  }
+
   MpcCount_ += 1;
   //RCLCPP_INFO(node_->get_logger(), "Message recieved");
 
@@ -702,9 +748,8 @@ void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32
   if (command == static_cast<int>(ControlCommand::Hold)) {
     mpcReleasePending_ = false;
     mpcBlendActive_ = false;
-    if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
-      estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
-          currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+    if (hasValidCurrentObservationState()) {
+      relatchHoldJointStateFromObservation();
     } else {
       estopHoldJointState_ = standJointState_;
     }
@@ -741,9 +786,8 @@ void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32
     mpcBlendActive_ = false;
     mpcReleaseTime_ = currentObservation_.time + mpcReleaseDelay_;
     controlState_ = ControlState::Hold;
-    if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
-      estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
-          currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+    if (hasValidCurrentObservationState()) {
+      relatchHoldJointStateFromObservation();
     }
     RCLCPP_INFO(node_->get_logger(),
                 "MPC activation requested. Holding current joints for %.2f s before returning control to MPC/WBC.",

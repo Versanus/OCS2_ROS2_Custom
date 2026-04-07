@@ -1,13 +1,88 @@
 #!/usr/bin/env bash
 set -e
+#./run.sh quad_mini sim mujoco debug rviz gui
+#./run.sh quad_mini sim mujoco nodebug norviz nogui
 
 SESSION=quad
 WS=/workspaces/quad_ocs2_ws
 
-# robot type argument (default b1)
-ROBOT_TYPE=${1:-b1}
+# robot type argument
+ROBOT_TYPE=${1:-quad_mini}
+BACKEND=${2:-sim}
+CONTACT_SOURCE=${3:-}
+DEBUG_STATE_LOGGING=${4:-false}
+RVIZ_AUTO=${5:-true}
+GUI_AUTO=${6:-true}
+
+if [ -z "$CONTACT_SOURCE" ]; then
+  if [ "$BACKEND" = "real" ]; then
+    CONTACT_SOURCE=estimated
+  else
+    CONTACT_SOURCE=mujoco
+  fi
+fi
+
+case "$BACKEND" in
+  sim|real) ;;
+  *)
+    echo "Invalid backend: $BACKEND. Use 'sim' or 'real'."
+    exit 1
+    ;;
+esac
+
+case "$CONTACT_SOURCE" in
+  mujoco|estimated) ;;
+  *)
+    echo "Invalid contact source: $CONTACT_SOURCE. Use 'mujoco' or 'estimated'."
+    exit 1
+    ;;
+esac
+
+case "$DEBUG_STATE_LOGGING" in
+  debug|true)
+    DEBUG_STATE_LOGGING=true
+    ;;
+  nodebug|false|"")
+    DEBUG_STATE_LOGGING=false
+    ;;
+  *)
+    echo "Invalid debug flag: $DEBUG_STATE_LOGGING. Use 'debug', 'nodebug', 'true', or 'false'."
+    exit 1
+    ;;
+esac
+
+case "$RVIZ_AUTO" in
+  rviz|true|"")
+    RVIZ_AUTO=true
+    ;;
+  norviz|false)
+    RVIZ_AUTO=false
+    ;;
+  *)
+    echo "Invalid RViz flag: $RVIZ_AUTO. Use 'rviz', 'norviz', 'true', or 'false'."
+    exit 1
+    ;;
+esac
+
+case "$GUI_AUTO" in
+  gui|true|"")
+    GUI_AUTO=true
+    ;;
+  nogui|false)
+    GUI_AUTO=false
+    ;;
+  *)
+    echo "Invalid GUI flag: $GUI_AUTO. Use 'gui', 'nogui', 'true', or 'false'."
+    exit 1
+    ;;
+esac
 
 echo "Launching robot: $ROBOT_TYPE"
+echo "Backend: $BACKEND"
+echo "Contact source: $CONTACT_SOURCE"
+echo "Bridge debug state logging: $DEBUG_STATE_LOGGING"
+echo "Auto launch RViz: $RVIZ_AUTO"
+echo "Auto launch GUI: $GUI_AUTO"
 
 tmux new-session -d -s $SESSION
 
@@ -17,15 +92,24 @@ tmux split-window -v -t $SESSION:0.1
 
 tmux select-layout -t $SESSION tiled
 
+if [ "$BACKEND" = "sim" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface mujoco_state_rviz.launch.py robot_type:=$ROBOT_TYPE input_topic:=simulator_state_data"
+else
+  RVIZ_COMMAND="ros2 launch hardware_interface legged_control_rviz.launch.py robot_type:=$ROBOT_TYPE input_joint_state_topic:=htdw_joint_state"
+fi
+
 
 # -------------------------
-# Mujoco simulator
+# Shared bridge backend
 # -------------------------
 tmux respawn-pane -k -t $SESSION:0.0 \
 "bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-ros2 launch launch_simulation mujoco.launch.py robot_type:=$ROBOT_TYPE
+if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
+  source $WS/mujoco_env.sh
+fi
+ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING
 '"
 
 
@@ -54,7 +138,11 @@ tmux respawn-pane -k -t $SESSION:0.2 \
 "bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-sleep 5
+echo Waiting for /start_control service...
+until ros2 service type /start_control >/dev/null 2>&1; do
+  sleep 1
+done
+echo /start_control is ready. Launching MPC...
 ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
 '"
 
@@ -70,7 +158,31 @@ echo Debug terminal ready
 bash
 '"
 
+if [ "$RVIZ_AUTO" = true ]; then
+  tmux new-window -t $SESSION -n rviz
+  tmux respawn-pane -k -t $SESSION:1 \
+  "bash -lc '
+  source /opt/ros/humble/setup.bash
+  source $WS/install/setup.bash
+  if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
+    source $WS/mujoco_env.sh
+  fi
+  $RVIZ_COMMAND
+  '"
+fi
+
+if [ "$GUI_AUTO" = true ]; then
+  tmux new-window -t $SESSION -n gui
+  tmux respawn-pane -k -t $SESSION:2 \
+  "bash -lc '
+  source /opt/ros/humble/setup.bash
+  source $WS/install/setup.bash
+  ros2 run hardware_interface gui_status.py
+  '"
+fi
+
 # Focus the interactive user-command pane when attaching.
+tmux select-window -t $SESSION:0
 tmux select-pane -t $SESSION:0.1
 
 tmux attach-session -t $SESSION

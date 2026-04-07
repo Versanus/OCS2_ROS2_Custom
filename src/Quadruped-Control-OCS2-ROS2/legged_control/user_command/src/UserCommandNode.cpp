@@ -184,7 +184,7 @@ std::string gaitCommandFromKey(char key) {
     case '3':
       return "flying_trot";
     case '4':
-      return "dynamic_walk";
+      return "static_walking";
     case '5':
       return "pawup";
     case '6':
@@ -250,7 +250,7 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  1 : stance\n"
       << "  2 : standing_trot\n"
       << "  3 : flying_trot\n"
-      << "  4 : dynamic_walk\n"
+      << "  4 : static_walking\n"
       << "  5 : pawup\n"
       << "  6 : fast_flying_trot\n"
       << "  startup: system begins in E-stop, press 1 to enable MPC stance\n"

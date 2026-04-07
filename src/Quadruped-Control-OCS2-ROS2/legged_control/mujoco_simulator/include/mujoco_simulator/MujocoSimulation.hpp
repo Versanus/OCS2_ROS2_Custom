@@ -7,6 +7,7 @@
 #include <array>
 #include <mutex>
 #include <random>
+#include <vector>
 #include <ocs2_core/misc/LoadData.h>
 //#include "std_msgs/msg/float32.hpp"
 #include "std_msgs/msg/int32.hpp"
@@ -20,7 +21,8 @@ class MujocoSimulation
 public:
     MujocoSimulation(const rclcpp::Node::SharedPtr& node, 
     const std::string& xmlFile,
-    const std::string& simulatorFile);
+    const std::string& simulatorFile,
+    bool exposeRosInterface = true);
     ~MujocoSimulation();
     
     mjData* getData() { return data_; }
@@ -32,13 +34,16 @@ public:
     void renderSetting(const std::string& configFile);
     void render();
     void control_callback(const legged_msgs::msg::JointControlData::SharedPtr msg);
+    void applyJointControl(const legged_msgs::msg::JointControlData& msg);
     bool checkCollision(const mjData* d, int geom1_id, int geom2_id);
     void run();
     void publish_state_data();
     void publish_sensor_data();
     void populate_state_message(legged_msgs::msg::SimulatorStateData& state);
+    void populate_sensor_message(legged_msgs::msg::SimulatorSensorData& sensor);
     void start_control_service(const std::shared_ptr<legged_msgs::srv::StartControl::Request> request,
         std::shared_ptr<legged_msgs::srv::StartControl::Response> response);
+    void stepControlPeriod();
     void updateDisturbanceForce();
     void clearDisturbanceForce();
     void scheduleNextDisturbance();
@@ -46,6 +51,8 @@ public:
     void appendDisturbanceArrowToScene();
     void resetRobotPose();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
+    double getControlFrequency() const { return control_frequency_; }
+    bool exposesRosInterface() const { return exposeRosInterface_; }
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
     static void mouse_button(GLFWwindow* window, int button, int act, int mods);
@@ -64,6 +71,7 @@ private:
     mjvCamera cam_;
     mjvOption opt_;
     mjrContext context_;
+    bool exposeRosInterface_;
 
     // rendering
     bool render_appearance_;
@@ -114,6 +122,8 @@ private:
     std::array<double, 6> current_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
     std::mt19937 disturbance_rng_;
     std::array<double, 4> initial_base_quat_{{1.0, 0.0, 0.0, 0.0}};
+    std::vector<double> initial_qpos_;
+    std::vector<double> initial_qvel_;
 
     // contact flag
     std::vector<int> geom_ids_; // floor, LF_FOOT, RF_FOOT, LH_FOOT, RH_FOOT
