@@ -24,6 +24,7 @@
   <depend>trajectory_msgs</depend>
   <depend>xacro</depend>
   <depend>legged_msgs</depend>
+  <depend>stm2ros</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

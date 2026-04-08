@@ -199,6 +199,7 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
         mj_resetData(instance_->model_, instance_->data_);
         instance_->clearDisturbanceForce();
         instance_->disturbance_enabled_ = false;
+        instance_->clearActuatorCommandState();
         mj_forward(instance_->model_, instance_->data_);
         return;
     }
@@ -530,6 +531,23 @@ void MujocoSimulation::appendDisturbanceArrowToScene() {
     scene_.ngeom++;
 }
 
+void MujocoSimulation::clearActuatorCommandState() {
+    for (int i = 0; i < 12; ++i) {
+        Joint_position_buffer_[i] = 0.0;
+        Joint_velocity_buffer_[i] = 0.0;
+        Joint_torque_buffer_[i] = 0.0;
+        Joint_position_[i] = 0.0;
+        Joint_velocity_[i] = 0.0;
+        Joint_torque_[i] = 0.0;
+    }
+
+    actuator_mode_ = 2;
+
+    if (data_ != nullptr) {
+        std::fill(data_->ctrl, data_->ctrl + model_->nu, 0.0);
+    }
+}
+
 void MujocoSimulation::resetRobotPose() {
     if (model_ == nullptr || data_ == nullptr) {
         return;
@@ -559,6 +577,7 @@ void MujocoSimulation::resetRobotPose() {
         }
     }
 
+    clearActuatorCommandState();
     mj_forward(model_, data_);
 }
 

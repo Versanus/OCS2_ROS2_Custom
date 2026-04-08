@@ -28,6 +28,7 @@ if [ -f "/.dockerenv" ]; then
 
     echo "Cleaning selected packages..."
 
+    # rm -rf build/stm2ros install/stm2ros
     # rm -rf build/legged_msgs install/legged_msgs
     # rm -rf build/motion_control install/motion_control
     # rm -rf build/hardware_interface install/hardware_interface
@@ -52,7 +53,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select legged_msgs motion_control hardware_interface mujoco_simulator real_robot_bridge user_command launch_simulation
+        --packages-select legged_msgs stm2ros motion_control hardware_interface mujoco_simulator real_robot_bridge user_command launch_simulation
         #--cmake-clean-cache
 
     source install/local_setup.bash

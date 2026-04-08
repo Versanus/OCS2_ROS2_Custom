@@ -50,6 +50,7 @@ public:
     void sampleDisturbanceForce();
     void appendDisturbanceArrowToScene();
     void resetRobotPose();
+    void clearActuatorCommandState();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
     double getControlFrequency() const { return control_frequency_; }
     bool exposesRosInterface() const { return exposeRosInterface_; }

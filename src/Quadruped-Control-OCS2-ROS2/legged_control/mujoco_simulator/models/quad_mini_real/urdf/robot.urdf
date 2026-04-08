@@ -132,7 +132,7 @@
     <origin xyz="0.10286 0.06915 -0.061805" rpy="0 0 0"/>
     <parent link="RF_thigh"/>
     <child link="RF_calf"/>
-    <axis xyz="0 -1 0"/>
+    <axis xyz="0 1 0"/>
     <limit lower="-1.745529" upper="1.745529" effort="12" velocity="17.80"/>
     <dynamics damping="0.1" friction="0.0"/>
   </joint>
@@ -384,7 +384,7 @@
     <origin xyz="0.10286 0.06895 -0.061805" rpy="0 0 0"/>
     <parent link="RH_thigh"/>
     <child link="RH_calf"/>
-    <axis xyz="0 -1 0"/>
+    <axis xyz="0 1 0"/>
     <limit lower="-1.745529" upper="1.745529" effort="12" velocity="17.80"/>
     <dynamics damping="0.1" friction="0.0"/>
   </joint>

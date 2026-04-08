@@ -22,7 +22,7 @@ swing_trajectory_config
 {
   liftOffVelocity               0.00
   touchDownVelocity            0.0
-  swingHeight                   0.04
+  swingHeight                   0.05
   swingTimeScale                0.15
 }
 
@@ -171,11 +171,11 @@ initialState
 
    (18,0) 0.10
    (19,0) 0.70
-   (20,0) 1.30
+   (20,0) -1.30
 
    (21,0) -0.10
    (22,0) 0.30
-   (23,0) 1.20
+   (23,0) -1.20
 }
 
 ; standard state weight matrix

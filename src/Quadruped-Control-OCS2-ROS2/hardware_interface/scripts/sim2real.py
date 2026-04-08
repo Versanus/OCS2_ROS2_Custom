@@ -2,22 +2,23 @@
 
 import rclpy
 from rclpy.node import Node
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from legged_msgs.msg import SimulatorStateData
-
+from legged_msgs.msg import JointControlData
+from stm2ros.msg import JointControlState
 #ros2 run hardware_interface sim2real.py
 
 class SimToRealBridge(Node):
     def __init__(self):
         super().__init__('sim2real_bridge')
 
-        self.declare_parameter('input_topic', 'simulator_state_data')
+        self.declare_parameter('input_topic', 'joint_control_data')
         self.declare_parameter('output_topic', 'joint_cmd')
-        self.declare_parameter('default_velocity', 5.0)
+        self.declare_parameter('default_position', 0.0)
         self.declare_parameter('default_effort', 12.0)
-        self.declare_parameter('use_input_velocity', True)
+        self.declare_parameter('use_input_position', True)
         self.declare_parameter('use_input_effort', True)
+        self.declare_parameter('kp', 1.0)
+        self.declare_parameter('kd', 1.0)
         self.declare_parameter(
             'source_joint_names',
             [
@@ -38,15 +39,17 @@ class SimToRealBridge(Node):
         )
         self.declare_parameter(
             'invert_output_joints',
-            ['FR_Knee', 'HR_Knee'],
+            [],
         )
 
         self.input_topic = self.get_parameter('input_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
-        self.default_velocity = self.get_parameter('default_velocity').get_parameter_value().double_value
+        self.default_position = self.get_parameter('default_position').get_parameter_value().double_value
         self.default_effort = self.get_parameter('default_effort').get_parameter_value().double_value
-        self.use_input_velocity = self.get_parameter('use_input_velocity').get_parameter_value().bool_value
+        self.use_input_position = self.get_parameter('use_input_position').get_parameter_value().bool_value
         self.use_input_effort = self.get_parameter('use_input_effort').get_parameter_value().bool_value
+        self.kp = self.get_parameter('kp').get_parameter_value().double_value
+        self.kd = self.get_parameter('kd').get_parameter_value().double_value
         self.source_joint_names = list(
             self.get_parameter('source_joint_names').get_parameter_value().string_array_value
         )
@@ -66,53 +69,58 @@ class SimToRealBridge(Node):
         self.target_to_source_map = {target: source for source, target in self.source_to_target_map.items()}
 
         self.subscription = self.create_subscription(
-            SimulatorStateData,
+            JointControlData,
             self.input_topic,
-            self.state_callback,
+            self.control_callback,
             10,
         )
-        self.publisher = self.create_publisher(JointTrajectory, self.output_topic, 10)
+        self.publisher = self.create_publisher(JointControlState, self.output_topic, 10)
+
+        if len(self.output_joint_names) != 12:
+            raise ValueError('output_joint_names must contain 12 joint names for JointControlState.')
 
         self.get_logger().info(
             f"Sim2Real bridge started: {self.input_topic} -> {self.output_topic}"
         )
 
-    def state_callback(self, msg: SimulatorStateData):
-        position_by_name = self._vector_to_map(msg.joint_position_values)
-        velocity_by_name = self._vector_to_map(msg.joint_velocity_values)
-        effort_by_name = self._vector_to_map(msg.joint_torque_values)
-
-        if not position_by_name:
-            self.get_logger().warn('Received SimulatorStateData without joint positions. Skipping.')
-            return
-
-        trajectory = JointTrajectory()
-        trajectory.header.stamp = self.get_clock().now().to_msg()
-        trajectory.joint_names = list(self.output_joint_names)
+    def control_callback(self, msg: JointControlData):
+        position_by_name = self._vector_to_map(msg.joint_position)
+        torque_by_name = self._vector_to_map(msg.joint_torque)
+        joint_position = []
+        joint_torque = []
 
         for target_name in self.output_joint_names:
             source_name = self.target_to_source_map.get(target_name)
             if source_name is None:
+                joint_position.append(float(self.default_position))
+                joint_torque.append(float(self.default_effort))
                 continue
 
-            position = position_by_name.get(source_name, 0.0)
-            velocity = velocity_by_name.get(source_name, self.default_velocity)
-            effort = effort_by_name.get(source_name, self.default_effort)
+            if self.use_input_position:
+                position = position_by_name.get(source_name, self.default_position)
+            else:
+                position = self.default_position
+
+            if self.use_input_effort:
+                torque = torque_by_name.get(source_name, self.default_effort)
+            else:
+                torque = self.default_effort
 
             if target_name in self.invert_output_joints:
                 position *= -1.0
-                velocity *= -1.0
-                effort *= -1.0
+                torque *= -1.0
 
-            point = JointTrajectoryPoint()
-            point.positions = [float(position)]
-            point.velocities = [0.0]
-            point.effort = [0.0]
-            point.time_from_start.sec = 0
-            point.time_from_start.nanosec = 0
-            trajectory.points.append(point)
+            joint_position.append(float(position))
+            joint_torque.append(float(torque))
 
-        self.publisher.publish(trajectory)
+        joint_cmd = JointControlState()
+        joint_cmd.joint_names = list(self.output_joint_names)
+        joint_cmd.joint_torque = joint_torque
+        joint_cmd.joint_position = joint_position
+        joint_cmd.kp = float(self.kp)
+        joint_cmd.kd = float(self.kd)
+
+        self.publisher.publish(joint_cmd)
 
     def _vector_to_map(self, values):
         return {

@@ -116,7 +116,7 @@
                     mass="0.3"
                     diaginertia="4.8323e-06 1.731e-05 1.675e-05"/>
           <joint name="RF_KFE"
-                        axis="0 -1 0"
+                        axis="0 1 0"
                         range="-1.745529 1.745529"
                         damping="0.01"
                         frictionloss="0.2"/>
@@ -242,7 +242,7 @@
                     mass="0.3"
                     diaginertia="4.8024e-06 1.7308e-05 1.672e-05"/>
           <joint name="RH_KFE"
-                                axis="0 -1 0"
+                                axis="0 1 0"
                                 range="-1.745529 1.745529"
                                 damping="0.01"
                                 frictionloss="0.2"/>
