@@ -31,6 +31,7 @@ class BridgeNodeBase : public rclcpp::Node {
   void applyConfiguredContactSource(BackendData& data);
   void logLegacyStatePublish(const legged_msgs::msg::SimulatorStateData& state) const;
   void logLegacyStateResponse(const legged_msgs::msg::SimulatorStateData& state) const;
+  void logSensorPublish(const legged_msgs::msg::SimulatorSensorData& sensor) const;
   void overwriteContactFlags(BackendData& data, const std::array<bool, 4>& contact_flags) const;
 
   std::unique_ptr<BackendBase> backend_;

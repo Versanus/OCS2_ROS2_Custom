@@ -11,10 +11,12 @@
 
   <depend>ament_index_python</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>geometry_msgs</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
   <depend>joint_state_publisher_gui</depend>
   <depend>mujoco_simulator</depend>
+  <depend>nav_msgs</depend>
   <depend>rclpy</depend>
   <depend>robot_state_publisher</depend>
   <depend>rviz2</depend>

@@ -111,8 +111,12 @@ void BridgeNodeBase::publishCallback() {
   }
 
   applyConfiguredContactSource(data);
-  if (debug_state_logging_ && !state_estimate_) {
-    logLegacyStatePublish(data.state);
+  if (debug_state_logging_) {
+    if (state_estimate_) {
+      logSensorPublish(data.sensor);
+    } else {
+      logLegacyStatePublish(data.state);
+    }
   }
 
   if (state_estimate_) {
@@ -144,7 +148,7 @@ void BridgeNodeBase::startControlService(
   }
 
   applyConfiguredContactSource(data);
-  if (debug_state_logging_ && !state_estimate_) {
+  if (debug_state_logging_) {
     logLegacyStateResponse(data.state);
   }
   response->success = true;
@@ -217,6 +221,31 @@ void BridgeNodeBase::logLegacyStateResponse(const legged_msgs::msg::SimulatorSta
               state.joint_torque_values[8], state.joint_torque_values[9], state.joint_torque_values[10], state.joint_torque_values[11],
               static_cast<size_t>(state.contact_flags[0]), static_cast<size_t>(state.contact_flags[1]),
               static_cast<size_t>(state.contact_flags[2]), static_cast<size_t>(state.contact_flags[3]));
+}
+
+void BridgeNodeBase::logSensorPublish(const legged_msgs::msg::SimulatorSensorData& sensor) const {
+  RCLCPP_INFO(get_logger(),
+              "Simulation time = [%f], \n"
+              "Publishing imu quat data: [%f, %f, %f, %f], \n"
+              "Publishing imu angvel data: [%f, %f, %f], \n"
+              "Publishing imu linacc data: [%f, %f, %f], \n"
+              "Publishing joint position data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+              "Publishing joint velocity data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+              "Publishing contact flag: [%zu, %zu, %zu, %zu]",
+              sensor.simulation_time,
+              sensor.imu_quat_values[0], sensor.imu_quat_values[1], sensor.imu_quat_values[2], sensor.imu_quat_values[3],
+              sensor.imu_angvel_values[0], sensor.imu_angvel_values[1], sensor.imu_angvel_values[2],
+              sensor.imu_linacc_values[0], sensor.imu_linacc_values[1], sensor.imu_linacc_values[2],
+              sensor.joint_position_values[0], sensor.joint_position_values[1], sensor.joint_position_values[2],
+              sensor.joint_position_values[3], sensor.joint_position_values[4], sensor.joint_position_values[5],
+              sensor.joint_position_values[6], sensor.joint_position_values[7], sensor.joint_position_values[8],
+              sensor.joint_position_values[9], sensor.joint_position_values[10], sensor.joint_position_values[11],
+              sensor.joint_velocity_values[0], sensor.joint_velocity_values[1], sensor.joint_velocity_values[2],
+              sensor.joint_velocity_values[3], sensor.joint_velocity_values[4], sensor.joint_velocity_values[5],
+              sensor.joint_velocity_values[6], sensor.joint_velocity_values[7], sensor.joint_velocity_values[8],
+              sensor.joint_velocity_values[9], sensor.joint_velocity_values[10], sensor.joint_velocity_values[11],
+              static_cast<size_t>(sensor.contact_flags[0]), static_cast<size_t>(sensor.contact_flags[1]),
+              static_cast<size_t>(sensor.contact_flags[2]), static_cast<size_t>(sensor.contact_flags[3]));
 }
 
 void BridgeNodeBase::overwriteContactFlags(BackendData& data, const std::array<bool, 4>& contact_flags) const {

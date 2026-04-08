@@ -92,7 +92,16 @@ tmux split-window -v -t $SESSION:0.1
 
 tmux select-layout -t $SESSION tiled
 
-if [ "$BACKEND" = "sim" ]; then
+TASK_FILE="$WS/install/user_command/share/user_command/config/$ROBOT_TYPE/task.info"
+STATE_ESTIMATE=false
+
+if [ -f "$TASK_FILE" ]; then
+  STATE_ESTIMATE=$(awk '$1 == "stateEstimate" {print tolower($2); exit}' "$TASK_FILE")
+fi
+
+if [ "$STATE_ESTIMATE" = "true" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor input_topic:=simulator_sensor_data odom_topic:=odom"
+elif [ "$BACKEND" = "sim" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface mujoco_state_rviz.launch.py robot_type:=$ROBOT_TYPE input_topic:=simulator_state_data"
 else
   RVIZ_COMMAND="ros2 launch hardware_interface legged_control_rviz.launch.py robot_type:=$ROBOT_TYPE input_joint_state_topic:=htdw_joint_state"

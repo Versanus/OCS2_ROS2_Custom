@@ -24,6 +24,15 @@ class DigitalTwinBridge(Node):
                 'HR_HipX', 'HR_HipY', 'HR_Knee'
             ]
         )
+        self.declare_parameter(
+            'fallback_output_joint_names',
+            [
+                'LF_HAA', 'LF_HFE', 'LF_KFE',
+                'RF_HAA', 'RF_HFE', 'RF_KFE',
+                'LH_HAA', 'LH_HFE', 'LH_KFE',
+                'RH_HAA', 'RH_HFE', 'RH_KFE'
+            ]
+        )
 
         self.input_joint_state_topic = self.get_parameter('input_joint_state_topic').get_parameter_value().string_value
         self.output_joint_state_topic = self.get_parameter('output_joint_state_topic').get_parameter_value().string_value
@@ -31,6 +40,9 @@ class DigitalTwinBridge(Node):
         self.output_legged_joint_names = self.get_parameter('output_legged_joint_names').get_parameter_value().bool_value
         self.fallback_input_joint_names = list(
             self.get_parameter('fallback_input_joint_names').get_parameter_value().string_array_value
+        )
+        self.fallback_output_joint_names = list(
+            self.get_parameter('fallback_output_joint_names').get_parameter_value().string_array_value
         )
 
         self.get_logger().info(f"Digital Twin Bridge started. Active mode: {self.mode.upper()}")
@@ -50,6 +62,11 @@ class DigitalTwinBridge(Node):
             'HL_HipX': 'LH_HAA', 'HL_HipY': 'LH_HFE', 'HL_Knee': 'LH_KFE',
             'HR_HipX': 'RH_HAA', 'HR_HipY': 'RH_HFE', 'HR_Knee': 'RH_KFE',
         }
+        self.legged_joint_names = list(self.hardware_to_legged_map.values())
+        self.legged_joint_name_set = set(self.legged_joint_names)
+        self.hardware_joint_name_set = set(self.hardware_to_legged_map.keys())
+        self._warned_unknown_joint_names = False
+        self._warned_fallback_output_joint_names = False
 
         # ==========================================
         #               OFFSET DEĞERLERİ
@@ -133,7 +150,7 @@ class DigitalTwinBridge(Node):
 
     def _source_joint_names(self, msg: JointState):
         if msg.name:
-            return list(msg.name)
+            return [self._normalize_joint_name(name) for name in msg.name]
 
         if self.fallback_input_joint_names:
             count = len(msg.position)
@@ -145,7 +162,74 @@ class DigitalTwinBridge(Node):
     def _map_to_legged_joint_names(self, joint_names):
         if not self.output_legged_joint_names:
             return list(joint_names)
-        return [self.hardware_to_legged_map.get(name, name) for name in joint_names]
+
+        mapped_joint_names = []
+        unknown_joint_names = []
+
+        for name in joint_names:
+            if name in self.legged_joint_name_set:
+                mapped_joint_names.append(name)
+            elif name in self.hardware_to_legged_map:
+                mapped_joint_names.append(self.hardware_to_legged_map[name])
+            else:
+                mapped_joint_names.append(name)
+                unknown_joint_names.append(name)
+
+        if not unknown_joint_names:
+            return mapped_joint_names
+
+        if len(self.fallback_output_joint_names) >= len(joint_names):
+            if not self._warned_fallback_output_joint_names:
+                self.get_logger().warn(
+                    'Unknown input joint names received. Falling back to canonical legged joint order for RViz.'
+                )
+                self._warned_fallback_output_joint_names = True
+            return self.fallback_output_joint_names[:len(joint_names)]
+
+        if not self._warned_unknown_joint_names:
+            self.get_logger().warn(
+                f'Unknown input joint names could not be mapped for RViz: {unknown_joint_names}'
+            )
+            self._warned_unknown_joint_names = True
+
+        return mapped_joint_names
+
+    def _normalize_joint_name(self, name):
+        cleaned_name = name.strip()
+
+        if cleaned_name in self.hardware_joint_name_set or cleaned_name in self.legged_joint_name_set:
+            return cleaned_name
+
+        uppercase_name = cleaned_name.upper()
+
+        for known_name in self.hardware_joint_name_set:
+            if known_name.upper() == uppercase_name:
+                return known_name
+
+        for known_name in self.legged_joint_name_set:
+            if known_name.upper() == uppercase_name:
+                return known_name
+
+        if '_' in cleaned_name:
+            prefix, suffix = cleaned_name.split('_', 1)
+            normalized_prefix = prefix.upper()
+            normalized_suffix = suffix.upper().replace('-', '').replace(' ', '')
+
+            if normalized_suffix in ('HIPX', 'HIP_X'):
+                candidate = f'{normalized_prefix}_HipX'
+            elif normalized_suffix in ('HIPY', 'HIP_Y'):
+                candidate = f'{normalized_prefix}_HipY'
+            elif normalized_suffix == 'KNEE':
+                candidate = f'{normalized_prefix}_Knee'
+            elif normalized_suffix in ('HAA', 'HFE', 'KFE'):
+                candidate = f'{normalized_prefix}_{normalized_suffix}'
+            else:
+                candidate = cleaned_name
+
+            if candidate in self.hardware_joint_name_set or candidate in self.legged_joint_name_set:
+                return candidate
+
+        return cleaned_name
 
     def htdw_to_sim_callback(self, msg: JointState):
         """[MODE real2sim] Forward hardware JointState into legged_control joint names."""

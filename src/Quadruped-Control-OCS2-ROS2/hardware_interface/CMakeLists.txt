@@ -25,6 +25,7 @@ install(TARGETS my_hardware
 # Install launch files
 install(DIRECTORY
   launch
+  rviz
   DESTINATION share/${PROJECT_NAME}/
 )
 
@@ -36,6 +37,9 @@ install(PROGRAMS
   scripts/digitalTwin.py
   scripts/mujoco_to_joint_state.py
   scripts/mpc_digital_twin.py
+  scripts/odom_to_tf.py
+  scripts/odom_to_path.py
+  scripts/sensor_to_joint_state.py
   scripts/sim2real.py
   scripts/read_to_csv.py
   DESTINATION lib/${PROJECT_NAME}
