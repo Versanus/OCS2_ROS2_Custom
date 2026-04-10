@@ -15,6 +15,8 @@ CONTACT_SOURCE="${3:-}"
 DEBUG_STATE_LOGGING="${4:-}"
 RVIZ_AUTO="${5:-}"
 GUI_AUTO="${6:-}"
+ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
+export ROS_DOMAIN_ID
 
 if [ "${CONTACT_SOURCE}" = "debug" ] || [ "${CONTACT_SOURCE}" = "nodebug" ] || \
    [ "${CONTACT_SOURCE}" = "true" ] || [ "${CONTACT_SOURCE}" = "false" ]; then
@@ -103,7 +105,7 @@ if [ -f "/.dockerenv" ]; then
     fi
 
     echo "Environment loaded ✅"
-    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO}..."
+    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} ros_domain_id=${ROS_DOMAIN_ID}..."
 
     ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}"
 
@@ -117,5 +119,5 @@ else
 
     echo "Attaching to container..."
 
-    docker exec -it $(docker compose ps -q quad_ocs2) ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}"
+    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" $(docker compose ps -q quad_ocs2) ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}"
 fi

@@ -30,6 +30,7 @@ services:
       __GLX_VENDOR_LIBRARY_NAME: "nvidia"
       
       ROS_DISTRO: ${ROS_DISTRO:-humble}
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-23}
       WS_DIR: /workspaces/quad_ocs2_ws
       XDG_RUNTIME_DIR: /tmp/runtime-${USER_NAME:-ros}
 

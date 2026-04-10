@@ -28,8 +28,8 @@
       <geometry>
         <mesh filename="meshes/base_link.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -52,8 +52,8 @@
       <geometry>
         <mesh filename="meshes/FR_HipX.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -84,8 +84,8 @@
       <geometry>
         <mesh filename="meshes/FR_HipY.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.69412 0.69412 0.69412 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -116,8 +116,8 @@
       <geometry>
         <mesh filename="meshes/FR_Knee.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+      <material name="knee_orange">
+        <color rgba="1.0 0.45 0.0 1"/>
       </material>
     </visual>
     <collision>
@@ -148,8 +148,8 @@
       <geometry>
         <sphere radius="0.02"/>
       </geometry>
-      <material name="black">
-        <color rgba="0 0 0 1"/>
+      <material name="foot_blue">
+        <color rgba="0.0 0.25 1.0 1"/>
       </material>
     </visual>
     <collision>
@@ -178,8 +178,8 @@
       <geometry>
         <mesh filename="meshes/FL_HipX.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -210,8 +210,8 @@
       <geometry>
         <mesh filename="meshes/FL_HipY.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -242,8 +242,8 @@
       <geometry>
         <mesh filename="meshes/FL_Knee.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+      <material name="knee_orange">
+        <color rgba="1.0 0.45 0.0 1"/>
       </material>
     </visual>
     <collision>
@@ -274,8 +274,8 @@
       <geometry>
         <sphere radius="0.02"/>
       </geometry>
-      <material name="black">
-        <color rgba="0 0 0 1"/>
+      <material name="foot_blue">
+        <color rgba="0.0 0.25 1.0 1"/>
       </material>
     </visual>
     <collision>
@@ -304,8 +304,8 @@
       <geometry>
         <mesh filename="meshes/HR_HipX.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -336,8 +336,8 @@
       <geometry>
         <mesh filename="meshes/HR_HipY.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -368,8 +368,8 @@
       <geometry>
         <mesh filename="meshes/HR_Knee.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+      <material name="knee_orange">
+        <color rgba="1.0 0.45 0.0 1"/>
       </material>
     </visual>
     <collision>
@@ -400,8 +400,8 @@
       <geometry>
         <sphere radius="0.02"/>
       </geometry>
-      <material name="black">
-        <color rgba="0 0 0 1"/>
+      <material name="foot_blue">
+        <color rgba="0.0 0.25 1.0 1"/>
       </material>
     </visual>
     <collision>
@@ -430,8 +430,8 @@
       <geometry>
         <mesh filename="meshes/HL_HipX.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -462,8 +462,8 @@
       <geometry>
         <mesh filename="meshes/HL_HipY.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+      <material name="body_white">
+        <color rgba="0.9 0.9 0.86 1"/>
       </material>
     </visual>
     <collision>
@@ -494,8 +494,8 @@
       <geometry>
         <mesh filename="meshes/HL_Knee.obj"/>
       </geometry>
-      <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+      <material name="knee_orange">
+        <color rgba="1.0 0.45 0.0 1"/>
       </material>
     </visual>
     <collision>
@@ -526,8 +526,8 @@
       <geometry>
         <sphere radius="0.02"/>
       </geometry>
-      <material name="black">
-        <color rgba="0 0 0 1"/>
+      <material name="foot_blue">
+        <color rgba="0.0 0.25 1.0 1"/>
       </material>
     </visual>
     <collision>

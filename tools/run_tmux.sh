@@ -13,6 +13,8 @@ CONTACT_SOURCE=${3:-}
 DEBUG_STATE_LOGGING=${4:-false}
 RVIZ_AUTO=${5:-true}
 GUI_AUTO=${6:-true}
+ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-23}
+export ROS_DOMAIN_ID
 
 if [ -z "$CONTACT_SOURCE" ]; then
   if [ "$BACKEND" = "real" ]; then
@@ -83,8 +85,10 @@ echo "Contact source: $CONTACT_SOURCE"
 echo "Bridge debug state logging: $DEBUG_STATE_LOGGING"
 echo "Auto launch RViz: $RVIZ_AUTO"
 echo "Auto launch GUI: $GUI_AUTO"
+echo "ROS domain ID: $ROS_DOMAIN_ID"
 
 tmux new-session -d -s $SESSION
+tmux set-environment -t $SESSION ROS_DOMAIN_ID "$ROS_DOMAIN_ID"
 
 tmux split-window -h -t $SESSION
 tmux split-window -v -t $SESSION:0.0

@@ -1,0 +1,364 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+\title{Quad Mini Mesaj ve Bridge Notlari}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Amac}
+Bu dokuman, sistemde hangi mesajin nereden geldigini, hangi bridge node'un ne yaptigini ve \texttt{sim} ile \texttt{real} calisma akislarinin nasil kullanildigini kisa ve net sekilde ozetler.
+
+\section*{Ana Mesajlar}
+\begin{itemize}
+  \item \texttt{legged\_msgs/JointControlData}: MPC/WBC tarafinin urettigi ust seviye eklem komutu.
+  \item \texttt{stm2ros/JointControlState}: alt seviye donanim tarafina giden komut.
+  \item \texttt{legged\_msgs/SimulatorSensorData}: \texttt{stateEstimate true} iken kullanilan sensor tabanli durum mesaji.
+  \item \texttt{legged\_msgs/SimulatorStateData}: eski tam-durum mesaji. Sadece \texttt{stateEstimate false} akisinda kullanilir.
+  \item \texttt{/odom}: tahmini govde pozu.
+  \item \texttt{/joint\_states}: RViz ve \texttt{robot\_state\_publisher} icin standart eklem durumu.
+  \item \texttt{/odom\_path}: \texttt{/odom}'dan uretilen iz mesaji.
+\end{itemize}
+
+\section*{Mesaj Icerikleri}
+\subsection*{\texttt{JointControlData}}
+\begin{itemize}
+  \item \texttt{joint\_torque}
+  \item \texttt{joint\_position}
+  \item \texttt{joint\_velocity}
+  \item \texttt{actuator\_mode}
+\end{itemize}
+
+Bu mesaj kontrol tarafindan uretilir.
+
+\subsection*{\texttt{JointControlState}}
+\begin{itemize}
+  \item \texttt{joint\_names[12]}
+  \item \texttt{joint\_position[12]}
+  \item \texttt{joint\_torque[12]}
+  \item \texttt{kp}
+  \item \texttt{kd}
+\end{itemize}
+
+Bu mesaj alt seviye motor tarafina giden komuttur.
+
+\subsection*{\texttt{SimulatorSensorData}}
+\begin{itemize}
+  \item \texttt{simulation\_time}
+  \item \texttt{imu\_quat\_values}
+  \item \texttt{imu\_angvel\_values}
+  \item \texttt{imu\_linacc\_values}
+  \item \texttt{joint\_position\_values}
+  \item \texttt{joint\_velocity\_values}
+  \item \texttt{contact\_flags}
+\end{itemize}
+
+Bu mesaj estimator, RViz ve tahmini durum akisinin ana mesajidir.
+
+\section*{Temel Akis Grafigi}
+\subsection*{1. Kontrol Komutu Akisi}
+\begin{center}
+\fbox{\texttt{MPC / WBC}}
+$\rightarrow$
+\fbox{\texttt{joint\_control\_data}}
+$\rightarrow$
+\fbox{\texttt{sim2real.py}}
+$\rightarrow$
+\fbox{\texttt{stm2ros/JointControlState}}
+\end{center}
+
+\subsection*{2. RViz Icin Tahmini Durum Akisi}
+\begin{center}
+\fbox{\texttt{simulator\_sensor\_data}}
+$\rightarrow$
+\fbox{\texttt{sensor\_to\_joint\_state.py}}
+$\rightarrow$
+\fbox{\texttt{/joint\_states}}
+$\rightarrow$
+\fbox{\texttt{robot\_state\_publisher}}
+\end{center}
+
+\begin{center}
+\fbox{\texttt{/odom}}
+$\rightarrow$
+\fbox{\texttt{odom\_to\_tf.py}}
+$\rightarrow$
+\fbox{\texttt{TF: odom $\rightarrow$ base}}
+\end{center}
+
+\begin{center}
+\fbox{\texttt{/odom}}
+$\rightarrow$
+\fbox{\texttt{odom\_to\_path.py}}
+$\rightarrow$
+\fbox{\texttt{/odom\_path}}
+$\rightarrow$
+\fbox{\texttt{RViz izi}}
+\end{center}
+
+\subsection*{3. Sim ve Real Icin Ortak Kural}
+\begin{center}
+\begin{tabular}{c}
+\fbox{\texttt{./run.sh quad\_mini\_real sim estimated ...}} \\
+$\downarrow$ \\
+\fbox{\texttt{simulator\_sensor\_data}} \\
+\\
+\fbox{\texttt{./run.sh quad\_mini\_real real estimated ...}} \\
+$\downarrow$ \\
+\fbox{\texttt{simulator\_sensor\_data}}
+\end{tabular}
+\end{center}
+
+Yani \texttt{stateEstimate true} iken RViz icin ortak kural sudur:
+\begin{itemize}
+  \item eklem bilgisi \texttt{simulator\_sensor\_data}'dan gelir
+  \item govde hareketi \texttt{/odom}'dan gelir
+  \item iz goruntusu \texttt{/odom\_path}'dan gelir
+\end{itemize}
+
+\section*{Bridge Scriptleri}
+\subsection*{\texttt{sim2real.py}}
+\begin{itemize}
+  \item \texttt{JointControlData} alir
+  \item \texttt{stm2ros/JointControlState} yayimlar
+  \item canli \texttt{kp/kd} oran ayari vardir
+  \item motor kapama ve feedforward torque kapama secenekleri vardir
+\end{itemize}
+
+\subsection*{\texttt{sensor\_to\_joint\_state.py}}
+\begin{itemize}
+  \item \texttt{simulator\_sensor\_data} icindeki eklem acilarini okur
+  \item bunu \texttt{/joint\_states} formatina cevirir
+  \item RViz'de bacaklarin gorunmesini saglar
+\end{itemize}
+
+\subsection*{\texttt{odom\_to\_tf.py}}
+\begin{itemize}
+  \item \texttt{/odom} mesajindan \texttt{odom $\rightarrow$ base} TF'i uretir
+  \item sifira yakin hatali zaman damgasi gelirse mevcut zamani kullanir
+  \item boylece RViz'de govde ve bacak TF zinciri duzgun oturur
+\end{itemize}
+
+\subsection*{\texttt{odom\_to\_path.py}}
+\begin{itemize}
+  \item \texttt{/odom}'dan \texttt{/odom\_path} uretir
+  \item iz zaman tabanli degil, nokta sayisi tabanlidir
+  \item ana parametreler: \texttt{max\_length} ve \texttt{min\_position\_delta}
+\end{itemize}
+
+\section*{Hardware Bridge Detayi}
+Bu kisim \texttt{real\_robot\_bridge} icindeki \texttt{HardwareBackend} tarafini anlatir. Bu notta kullanilan varsayim sudur: sizin sisteminizde \texttt{htdw\_joint\_cmd} motorlardan gelen geri besleme tarafinda kullaniliyor. Yani burada \texttt{htdw\_joint\_cmd} bir feedback konusu olarak dusunulur. Gercek robot kullaniminda Orin tarafindan ayrica \texttt{SimulatorSensorData} gondermek zorunlu degildir. En temiz akista Orin ham ROS mesajlarini yayimlar, bridge bu mesajlardan \texttt{SimulatorSensorData} uretir ve gerekiyorsa temas kestirimi de bridge icinde yapilir.
+
+\subsection*{Orin Tarafindan Yayimlanmasi Gerekenler}
+\begin{itemize}
+  \item \texttt{htdw\_joint\_cmd}: motorlardan gelen eklem geri beslemesi
+  \item \texttt{sensor\_msgs/Imu} konu basligi: varsayilan konu \texttt{imu/data}
+  \item \texttt{nav\_msgs/Odometry} konu basligi: istege bagli, parametre ile verilir
+\end{itemize}
+
+Yani bu notta bridge'in eklem geri besleme kaynagi dogrudan \texttt{htdw\_joint\_cmd} olarak dusunulur. Bridge'in ihtiyaci olan sey, bu feedback mesaji icinde eklem pozisyonu, hizi ve tork bilgilerinin bulunmasidir.
+
+\subsection*{\texttt{htdw\_joint\_cmd} Feedback Icindeki Gerekli Alanlar}
+\begin{itemize}
+  \item eklem isimleri
+  \item 12 eklem pozisyonu
+  \item 12 eklem hizi
+  \item 12 eklem torku
+\end{itemize}
+
+Tork bilgisi burada ozellikle onemlidir. Cunku bridge icindeki temas kestirimi bu feedback uzerinden gelen eklem torklarini kullanir.
+
+\subsection*{Imu Icindeki Gerekli Alanlar}
+\begin{itemize}
+  \item \texttt{orientation}
+  \item \texttt{angular\_velocity}
+  \item \texttt{linear\_acceleration}
+\end{itemize}
+
+Bu alanlar \texttt{SimulatorSensorData} icindeki IMU kismini doldurur.
+
+\subsection*{Odometry Icindeki Gerekli Alanlar}
+\begin{itemize}
+  \item \texttt{pose.pose.position}
+  \item \texttt{twist.twist.linear}
+\end{itemize}
+
+Eger \texttt{odom} varsa bridge taban pozisyonu ve lineer hizi buradan alir. Eger yoksa varsayilan taban yuksekligi ve sifir hiz kullanilir.
+
+\subsection*{Bridge Iceride Neyi Doldurur}
+\texttt{HardwareBackend} ham mesajlari alip iki farkli yapiyi doldurur:
+\begin{itemize}
+  \item \texttt{data.state}
+  \item \texttt{data.sensor}
+\end{itemize}
+
+Buradaki mantik sunudur:
+\begin{itemize}
+  \item \texttt{data.sensor}: estimator ve RViz icin kullanilan sensor tarafi
+  \item \texttt{data.state}: bridge icindeki bazi legacy ve yardimci hesaplar icin kullanilan durum tarafi
+\end{itemize}
+
+\subsection*{Bridge'in Urettigi Sensor Mesaji}
+\texttt{legged\_msgs/SimulatorSensorData} su alanlardan olusur:
+\begin{itemize}
+  \item \texttt{simulation\_time}
+  \item \texttt{imu\_quat\_values}
+  \item \texttt{imu\_angvel\_values}
+  \item \texttt{imu\_linacc\_values}
+  \item \texttt{joint\_position\_values}
+  \item \texttt{joint\_velocity\_values}
+  \item \texttt{contact\_flags}
+\end{itemize}
+
+Yani bridge su isi yapar:
+\begin{center}
+\fbox{\texttt{htdw\_joint\_cmd + Imu + Odom}}
+$\rightarrow$
+\fbox{\texttt{HardwareBackend}}
+$\rightarrow$
+\fbox{\texttt{SimulatorSensorData}}
+\end{center}
+
+\subsection*{Temas Kestirimi Nerede Yapilir}
+Temas kestirimi bridge icinde yapilabilir ve mevcut yapi buna uygundur.
+
+Akis su sekildedir:
+\begin{center}
+\fbox{\texttt{htdw\_joint\_cmd feedback torku}}
+$\rightarrow$
+\fbox{\texttt{data.state.joint\_torque\_values}}
+$\rightarrow$
+\fbox{\texttt{ContactEstimator}}
+$\rightarrow$
+\fbox{\texttt{contact\_flags}}
+$\rightarrow$
+\fbox{\texttt{SimulatorSensorData.contact\_flags}}
+\end{center}
+
+Bu nedenle gercek robotta temas kestirimi istiyorsan:
+\begin{itemize}
+  \item \texttt{contactSource = estimated} secilmelidir
+  \item \texttt{htdw\_joint\_cmd} geri beslemesi gercek tork bilgisini tasimalidir
+\end{itemize}
+
+\subsection*{Orin'den Ayrica SimulatorSensorData Gondermek Gerekir mi}
+Hayir, mevcut yapida buna mecbur degilsin.
+
+En temiz kullanim:
+\begin{itemize}
+  \item Orin ham verileri yayimlar: \texttt{htdw\_joint\_cmd} feedback, \texttt{Imu}, gerekirse \texttt{Odometry}
+  \item bridge bunlardan \texttt{SimulatorSensorData} olusturur
+  \item bridge temas bayraklarini ekler
+  \item estimator, RViz ve diger taraflar son durumda \texttt{simulator\_sensor\_data} kullanir
+\end{itemize}
+
+Bu mimari, bridge'i tek sorumlu nokta yapar ve sim ile real arasinda davranisi daha tutarli hale getirir.
+
+\subsection*{Geri Besleme ve Komut Konulari}
+Bu raporda kullanilan isimlendirme ile:
+\begin{itemize}
+  \item \texttt{htdw\_joint\_cmd}: motorlardan gelen eklem geri beslemesi
+  \item ayri bir cikis komut konusu: motorlara giden komut tarafidir
+\end{itemize}
+
+Yani ayni konuyu hem feedback hem command icin kullanmamak gerekir. Bridge tarafinda mantik su olmali:
+\begin{center}
+\fbox{\texttt{htdw\_joint\_cmd (feedback)}}
+$\rightarrow$
+\fbox{\texttt{HardwareBackend::read}}
+\end{center}
+
+\begin{center}
+\fbox{\texttt{JointControlData}}
+$\rightarrow$
+\fbox{\texttt{HardwareBackend::writeCommand}}
+$\rightarrow$
+\fbox{\texttt{ayri bir command topic}}
+\end{center}
+
+Bu ayri command topic, sistemde ne kullaniliyorsa o olabilir. Ornegin \texttt{joint\_cmd}, \texttt{motor\_command} veya baska bir ad.
+
+\subsection*{Bridge'e Gelen Ust Seviye Komut}
+Bridge sadece sensor tarafi degil, komut tarafini da yonetir. Ust seviye kontrol komutu:
+\begin{itemize}
+  \item \texttt{joint\_position}
+  \item \texttt{joint\_velocity}
+  \item \texttt{joint\_torque}
+  \item \texttt{actuator\_mode}
+\end{itemize}
+
+\texttt{JointControlData} icinde gelir ve bridge bunu alt seviye komut konusuna yazar:
+\begin{center}
+\fbox{\texttt{JointControlData}}
+$\rightarrow$
+\fbox{\texttt{HardwareBackend::writeCommand}}
+$\rightarrow$
+\fbox{\texttt{alt seviye command topic}}
+\end{center}
+
+\section*{Nasil Kullanilir}
+\subsection*{1. Rebuild}
+\texttt{run.sh} install altindaki launch ve RViz dosyalarini kullandigi icin degisiklikten sonra rebuild gerekir:
+\begin{verbatim}
+./rebuild_quick.sh
+\end{verbatim}
+
+\subsection*{2. Simulasyon}
+\begin{verbatim}
+./run.sh quad_mini_real sim estimated debug rviz gui
+\end{verbatim}
+
+Bu durumda:
+\begin{itemize}
+  \item \texttt{simulator\_sensor\_data} MuJoCo tarafindan gelir
+  \item RViz eklemleri buradan cizer
+  \item \texttt{/odom} tahmini govde hareketini tasir
+\end{itemize}
+
+\subsection*{3. Gercek Robot}
+\begin{verbatim}
+./run.sh quad_mini_real real estimated debug rviz gui
+\end{verbatim}
+
+Bu durumda:
+\begin{itemize}
+  \item gercek robot bridge'i \texttt{simulator\_sensor\_data} yayimlar
+  \item RViz yine ayni estimator akisindan beslenir
+  \item yani sim ve real icin RViz mantigi aynidir
+\end{itemize}
+
+\subsection*{4. Debug}
+\texttt{debug} aciksa:
+\begin{itemize}
+  \item \texttt{stateEstimate false} iken legacy state loglari basilir
+  \item \texttt{stateEstimate true} iken sensor mesaji loglari basilir
+\end{itemize}
+
+\section*{RViz Tarafi}
+Kalman RViz ayarlari su sekildedir:
+\begin{itemize}
+  \item \texttt{Fixed Frame = odom}
+  \item kamera hedefi \texttt{base}
+  \item TF gostergesi varsayilan olarak kapali
+  \item eski odometry eksen gostergesi kapali
+  \item bunun yerine \texttt{/odom\_path} uzerinden bir iz cizilir
+\end{itemize}
+
+\section*{Kisa Notlar}
+\begin{itemize}
+  \item \texttt{stateEstimate true} ise ana state mesaji \texttt{simulator\_sensor\_data}'dir.
+  \item \texttt{sim2real.py}, \texttt{run.sh} ile otomatik baslamaz; gerekiyorsa ayri calistirilir.
+  \item Iz goruntusunun uzunlugu esas olarak \texttt{odom\_to\_path.py} icindeki \texttt{max\_length} ile belirlenir.
+  \item Iz yogunlugu ise \texttt{min\_position\_delta} ile ayarlanir.
+  \item Gercek robotta temas kestirimi icin \texttt{htdw\_joint\_cmd} geri beslemesi icinde tork bilgisi gereklidir.
+  \item Mevcut yapiyla Orin'den dogrudan \texttt{SimulatorSensorData} gondermek yerine ham sensor mesajlarini gondermek daha temizdir.
+  \item Bu notta \texttt{htdw\_joint\_cmd} geri besleme konusu olarak kabul edilmistir.
+  \item Bu durumda motorlara giden komut icin ayri bir topic kullanilmalidir.
+\end{itemize}
+
+\end{document}
