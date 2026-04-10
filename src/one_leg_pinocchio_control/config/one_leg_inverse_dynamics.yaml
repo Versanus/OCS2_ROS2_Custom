@@ -1,0 +1,118 @@
+one_leg_inverse_dynamics_node:
+  ros__parameters:
+    # Keep false for first launch. Enable only after checking state names and topic output.
+    enabled: false
+    soft_stop: false
+    clear_faults: false
+    feedforward_torque_enabled: false
+    joint_feedforward_enabled: [0.0, 0.0, 0.0]
+
+    state_topic: "htdw_joint_state"
+    command_topic: "joint_cmd"
+    control_rate_hz: 100.0
+    max_state_age_sec: 0.15
+
+    # active_joint_names are the ROS/hardware names in htdw_joint_state and joint_cmd.
+    # model_joint_names are the matching URDF/Pinocchio joint names.
+    active_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    model_joint_names:
+      - "fl_hipx_joint"
+      - "fl_hipy_joint"
+      - "fl_knee_joint"
+
+    # joint_cmd is stm2ros/JointControlState, so it always carries 12 joint slots.
+    output_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+      - "FR_HipX"
+      - "FR_HipY"
+      - "FR_Knee"
+      - "HL_HipX"
+      - "HL_HipY"
+      - "HL_Knee"
+      - "HR_HipX"
+      - "HR_HipY"
+      - "HR_Knee"
+
+    # Your real one-leg setup uses only the first three motors.
+    # The other nine slots stay present because JointControlState is fixed at 12 joints.
+    desired_positions: [0.0, 0.0, 0.0]
+    desired_velocities: [0.0, 0.0, 0.0]
+    desired_accelerations: [0.0, 0.0, 0.0]
+
+    # Hardware/motor coordinates stay unchanged: 0.0 means your real motor zero.
+    # These offsets are added only for Pinocchio/RViz model coordinates.
+    # HipX motor zero matches the model. HipY uses -45 deg, Knee uses -90 deg.
+    # If RViz bends farther instead of straightening, flip that joint's sign.
+    model_position_offsets: [0.0, -0.7853981634, -1.5707963268]
+
+    # These gains are used inside the inverse-dynamics torque calculation.
+    id_kp: [1.5, 1.5, 1.0]
+    id_kd: [0.08, 0.08, 0.05]
+
+    # STM side applies torque_control = t_ff + kp*(q_des-q) + kd*(dq_des-dq).
+    # feedforward_torque_enabled is the master t_ff switch.
+    # joint_feedforward_enabled enables/disables t_ff independently for HipX/HipY/Knee.
+    command_kp: 0.0
+    command_kd: 0.0
+
+    # Safety clamps. Increase only after bench testing with the leg unloaded.
+    max_torque: [6.0, 6.0, 6.0]
+    max_torque_rate: [15.0, 15.0, 15.0]
+    max_position_error: [0.8, 0.8, 0.8]
+    max_velocity: [15.0, 15.0, 15.0]
+    startup_ramp_sec: 2.0
+
+one_leg_control_gui:
+  ros__parameters:
+    controller_node: "/one_leg_inverse_dynamics_node"
+    state_topic: "htdw_joint_state"
+    command_topic: "joint_cmd"
+    active_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    position_min: [-0.8, -1.2, -6.2831853072]
+    position_max: [0.8, 1.2, 6.2831853072]
+    default_desired_positions: [0.0, 0.0, 0.0]
+    default_desired_velocities: [0.0, 0.0, 0.0]
+    default_desired_accelerations: [0.0, 0.0, 0.0]
+    default_id_kp: [1.5, 1.5, 1.0]
+    default_id_kd: [0.08, 0.08, 0.05]
+    default_max_torque: 6.0
+    default_command_kp: 0.0
+    default_command_kd: 0.0
+    default_feedforward_torque_enabled: false
+    default_joint_feedforward_enabled: [0.0, 0.0, 0.0]
+
+one_leg_state_to_model_joint_state:
+  ros__parameters:
+    input_topic: "htdw_joint_state"
+    output_topic: "one_leg_model_joint_states"
+    publish_rate_hz: 30.0
+    hardware_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    model_joint_names:
+      - "fl_hipx_joint"
+      - "fl_hipy_joint"
+      - "fl_knee_joint"
+    model_position_offsets: [0.0, -0.7853981634, -1.5707963268]
+    all_model_joint_names:
+      - "fl_hipx_joint"
+      - "fl_hipy_joint"
+      - "fl_knee_joint"
+      - "fr_hipx_joint"
+      - "fr_hipy_joint"
+      - "fr_knee_joint"
+      - "hl_hipx_joint"
+      - "hl_hipy_joint"
+      - "hl_knee_joint"
+      - "hr_hipx_joint"
+      - "hr_hipy_joint"
+      - "hr_knee_joint"

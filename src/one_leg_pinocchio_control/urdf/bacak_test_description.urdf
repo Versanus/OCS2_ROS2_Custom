@@ -1,0 +1,743 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="bacak_test_description">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0030677 -0.00094114 0.0054537"
+        rpy="0 0 0" />
+      <mass
+        value="8.8168" />
+      <inertia
+        ixx="0.075252"
+        ixy="5.8125E-07"
+        ixz="1.0566E-13"
+        iyy="0.051926"
+        iyz="-3.7246E-14"
+        izz="0.10636" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="fl_hipx">
+    <inertial>
+      <origin
+        xyz="0.01115 -0.031338 0.00024992"
+        rpy="0 0 0" />
+      <mass
+        value="0.053338" />
+      <inertia
+        ixx="2.5711E-05"
+        ixy="1.1206E-06"
+        ixz="1.4049E-07"
+        iyy="2.5194E-05"
+        iyz="2.1657E-07"
+        izz="2.5937E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_hipx.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_hipx.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fl_hipx_joint"
+    type="continuous">
+    <origin
+      xyz="0.078068 -0.19814 0.0054469"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="fl_hipx" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="fl_hipy">
+    <inertial>
+      <origin
+        xyz="0.062567 0.035746 -0.035573"
+        rpy="0 0 0" />
+      <mass
+        value="0.15008" />
+      <inertia
+        ixx="0.00056386"
+        ixy="-3.6237E-05"
+        ixz="3.6466E-05"
+        iyy="0.00031716"
+        iyz="0.00026499"
+        izz="0.00031771" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_hipy.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_hipy.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fl_hipy_joint"
+    type="continuous">
+    <origin
+      xyz="0.0385 -0.034875 0"
+      rpy="0 0 0" />
+    <parent
+      link="fl_hipx" />
+    <child
+      link="fl_hipy" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="fl_knee">
+    <inertial>
+      <origin
+        xyz="0.011306 -0.093833 -0.098498"
+        rpy="0 0 0" />
+      <mass
+        value="0.030068" />
+      <inertia
+        ixx="1.0862E-05"
+        ixy="5.1026E-08"
+        ixz="3.4165E-08"
+        iyy="6.8965E-06"
+        iyz="-4.33E-06"
+        izz="7.0009E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_knee.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fl_knee.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fl_knee_joint"
+    type="continuous">
+    <origin
+      xyz="0.1195 0.12718 -0.12718"
+      rpy="0 0 0" />
+    <parent
+      link="fl_hipy" />
+    <child
+      link="fl_knee" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="fr_hipx">
+    <inertial>
+      <origin
+        xyz="-0.01115 -0.031338 -0.0002499"
+        rpy="0 0 0" />
+      <mass
+        value="0.053338" />
+      <inertia
+        ixx="2.5711E-05"
+        ixy="-1.1206E-06"
+        ixz="1.4049E-07"
+        iyy="2.5194E-05"
+        iyz="-2.1657E-07"
+        izz="2.5937E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_hipx.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_hipx.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_hipx_joint"
+    type="continuous">
+    <origin
+      xyz="-0.071932 -0.19814 0.0054469"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="fr_hipx" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="fr_hipy">
+    <inertial>
+      <origin
+        xyz="-0.064942 0.040459 -0.040347"
+        rpy="0 0 0" />
+      <mass
+        value="0.15804" />
+      <inertia
+        ixx="0.00056453"
+        ixy="3.6016E-05"
+        ixz="-3.6276E-05"
+        iyy="0.00031833"
+        iyz="0.00026499"
+        izz="0.00031777" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_hipy.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_hipy.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_hipy_joint"
+    type="continuous">
+    <origin
+      xyz="-0.0385 -0.034875 0"
+      rpy="0 0 0" />
+    <parent
+      link="fr_hipx" />
+    <child
+      link="fr_hipy" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="fr_knee">
+    <inertial>
+      <origin
+        xyz="-0.011273 -0.094745 -0.099494"
+        rpy="0 0 0" />
+      <mass
+        value="0.029617" />
+      <inertia
+        ixx="1.0853E-05"
+        ixy="-5.2711E-08"
+        ixz="-3.6116E-08"
+        iyy="6.888E-06"
+        iyz="-4.3298E-06"
+        izz="6.9939E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_knee.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/fr_knee.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="fr_knee_joint"
+    type="continuous">
+    <origin
+      xyz="-0.1195 0.12718 -0.12718"
+      rpy="0 0 0" />
+    <parent
+      link="fr_hipy" />
+    <child
+      link="fr_knee" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hl_hipx">
+    <inertial>
+      <origin
+        xyz="0.01115 0.031338 -0.0002499"
+        rpy="0 0 0" />
+      <mass
+        value="0.053338" />
+      <inertia
+        ixx="2.5711E-05"
+        ixy="-1.1206E-06"
+        ixz="-1.4049E-07"
+        iyy="2.5194E-05"
+        iyz="2.1657E-07"
+        izz="2.5937E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_hipx.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_hipx.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hl_hipx_joint"
+    type="continuous">
+    <origin
+      xyz="0.078068 0.19626 0.0054469"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="hl_hipx" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hl_hipy">
+    <inertial>
+      <origin
+        xyz="0.062567 0.035606 -0.035704"
+        rpy="0 0 0" />
+      <mass
+        value="0.15008" />
+      <inertia
+        ixx="0.00056386"
+        ixy="-3.6478E-05"
+        ixz="3.626E-05"
+        iyy="0.00031758"
+        iyz="0.00026493"
+        izz="0.00031729" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_hipy.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_hipy.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hl_hipy_joint"
+    type="continuous">
+    <origin
+      xyz="0.0385 0.034875 0"
+      rpy="0 0 0" />
+    <parent
+      link="hl_hipx" />
+    <child
+      link="hl_hipy" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hl_knee">
+    <inertial>
+      <origin
+        xyz="0.010975 -0.09415 -0.10038"
+        rpy="0 0 0" />
+      <mass
+        value="0.029617" />
+      <inertia
+        ixx="1.0849E-05"
+        ixy="5.3518E-08"
+        ixz="5.3232E-08"
+        iyy="6.8879E-06"
+        iyz="-4.3315E-06"
+        izz="6.9974E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_knee.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hl_knee.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hl_knee_joint"
+    type="continuous">
+    <origin
+      xyz="0.1195 0.12718 -0.12718"
+      rpy="0 0 0" />
+    <parent
+      link="hl_hipy" />
+    <child
+      link="hl_knee" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hr_hipx">
+    <inertial>
+      <origin
+        xyz="-0.01115 0.031338 0.00024992"
+        rpy="0 0 0" />
+      <mass
+        value="0.053338" />
+      <inertia
+        ixx="2.5711E-05"
+        ixy="1.1206E-06"
+        ixz="-1.4049E-07"
+        iyy="2.5194E-05"
+        iyz="-2.1657E-07"
+        izz="2.5937E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_hipx.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_hipx.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hr_hipx_joint"
+    type="continuous">
+    <origin
+      xyz="-0.071932 0.19626 0.0054469"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="hr_hipx" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hr_hipy">
+    <inertial>
+      <origin
+        xyz="-0.062567 0.035578 -0.035742"
+        rpy="0 0 0" />
+      <mass
+        value="0.15008" />
+      <inertia
+        ixx="0.00056386"
+        ixy="3.6462E-05"
+        ixz="-3.624E-05"
+        iyy="0.00031772"
+        iyz="0.00026499"
+        izz="0.00031715" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_hipy.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_hipy.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hr_hipy_joint"
+    type="continuous">
+    <origin
+      xyz="-0.0385 0.034875 0"
+      rpy="0 0 0" />
+    <parent
+      link="hr_hipx" />
+    <child
+      link="hr_hipy" />
+    <axis
+      xyz="-1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+  <link
+    name="hr_knee">
+    <inertial>
+      <origin
+        xyz="-0.010968 -0.09415 -0.10038"
+        rpy="0 0 0" />
+      <mass
+        value="0.029617" />
+      <inertia
+        ixx="1.0849E-05"
+        ixy="-5.513E-08"
+        ixz="-5.5416E-08"
+        iyy="6.8879E-06"
+        iyz="-4.3315E-06"
+        izz="6.9974E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_knee.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.61176 0.65882 0.67059 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://one_leg_pinocchio_control/meshes/hr_knee.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="hr_knee_joint"
+    type="continuous">
+    <origin
+      xyz="-0.1195 0.12718 -0.12718"
+      rpy="0 0 0" />
+    <parent
+      link="hr_hipy" />
+    <child
+      link="hr_knee" />
+    <axis
+      xyz="1 0 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="10"
+      velocity="10" />
+  </joint>
+</robot>
