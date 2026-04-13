@@ -19,27 +19,46 @@ echo "[2/6] Checking external dependencies..."
 cd "$SRC_DIR"
 
 clone_if_missing () {
-    if [ ! -d "$1/.git" ]; then
+    if [ -d "$1/.git" ]; then
+        echo "$1 already exists"
+    elif [ -d "$1" ]; then
+        echo "ERROR: Directory '$1' already exists but is not a git checkout."
+        echo "Remove it or convert it into a valid clone before running build.sh."
+        exit 1
+    else
         echo "Cloning $1..."
         git clone "$2"
-    else
-        echo "$1 already exists"
     fi
 }
 
-clone_if_missing "ocs2_ros2" https://github.com/zhengxiang94/ocs2_ros2.git
+clone_recursive_if_missing () {
+    if [ -d "$1/.git" ]; then
+        echo "$1 already exists"
+    elif [ -d "$1" ]; then
+        echo "ERROR: Directory '$1' already exists but is not a git checkout."
+        echo "Remove it or convert it into a valid clone before running build.sh."
+        exit 1
+    else
+        echo "Cloning $1 with submodules..."
+        git clone --recurse-submodules "$2"
+    fi
+}
+
+require_vendored_dir () {
+    if [ ! -d "$1" ]; then
+        echo "ERROR: Required vendored directory '$1' is missing."
+        echo "This workspace now vendors '$1' directly into the main repository."
+        echo "Re-clone the main repository or restore that directory before building."
+        exit 1
+    fi
+    echo "$1 is vendored in this workspace"
+}
+
+require_vendored_dir "ocs2_ros2"
 clone_if_missing "ocs2_robotic_assets" https://github.com/zhengxiang94/ocs2_robotic_assets.git
 clone_if_missing "plane_segmentation_ros2" https://github.com/zhengxiang94/plane_segmentation_ros2.git
-
-if [ ! -d pinocchio/.git ]; then
-    echo "Cloning pinocchio..."
-    git clone --recurse-submodules https://github.com/zhengxiang94/pinocchio.git
-fi
-
-if [ ! -d hpp-fcl/.git ]; then
-    echo "Cloning hpp-fcl..."
-    git clone --recurse-submodules https://github.com/zhengxiang94/hpp-fcl.git
-fi
+clone_recursive_if_missing "pinocchio" https://github.com/zhengxiang94/pinocchio.git
+clone_recursive_if_missing "hpp-fcl" https://github.com/zhengxiang94/hpp-fcl.git
 
 cd "$WS_DIR"
 
