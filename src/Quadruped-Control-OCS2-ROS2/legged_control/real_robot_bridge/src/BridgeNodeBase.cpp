@@ -36,6 +36,7 @@ BridgeNodeBase::BridgeNodeBase(const std::string& node_name, const rclcpp::NodeO
       }) {
   declare_parameter<std::string>("taskFile", "");
   declare_parameter<std::string>("contactSource", "mujoco");
+  declare_parameter<bool>("alwaysPublishStateTopic", false);
   declare_parameter<bool>("debugStateLogging", true);
   declare_parameter<double>("publishRateHz", 0.0);
 }
@@ -54,6 +55,7 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
 
   ocs2::loadData::loadCppDataType(task_file, "stateEstimate", state_estimate_);
   contact_source_ = parseContactSource(get_parameter("contactSource").as_string());
+  always_publish_state_topic_ = get_parameter("alwaysPublishStateTopic").as_bool();
   debug_state_logging_ = get_parameter("debugStateLogging").as_bool();
   publish_rate_hz_ = get_parameter("publishRateHz").as_double();
   if (publish_rate_hz_ <= 0.0) {
@@ -80,7 +82,8 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
 
   if (state_estimate_) {
     sensor_pub_ = create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
-  } else {
+  }
+  if (!state_estimate_ || always_publish_state_topic_) {
     state_pub_ = create_publisher<legged_msgs::msg::SimulatorStateData>("simulator_state_data", 1);
   }
 
@@ -119,14 +122,11 @@ void BridgeNodeBase::publishCallback() {
     }
   }
 
-  if (state_estimate_) {
-    if (sensor_pub_) {
-      sensor_pub_->publish(data.sensor);
-    }
-  } else {
-    if (state_pub_) {
-      state_pub_->publish(data.state);
-    }
+  if (sensor_pub_) {
+    sensor_pub_->publish(data.sensor);
+  }
+  if (state_pub_) {
+    state_pub_->publish(data.state);
   }
 }
 

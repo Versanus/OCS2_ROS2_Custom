@@ -14,6 +14,12 @@ def generate_launch_description():
     contact_source = LaunchConfiguration('contact_source')
     publish_rate_hz = LaunchConfiguration('publish_rate_hz')
     debug_state_logging = LaunchConfiguration('debug_state_logging')
+    joint_feedback_source = LaunchConfiguration('joint_feedback_source')
+    joint_feedback_topic = LaunchConfiguration('joint_feedback_topic')
+    joint_state_topic = LaunchConfiguration('joint_state_topic')
+    imu_topic = LaunchConfiguration('imu_topic')
+    odom_topic = LaunchConfiguration('odom_topic')
+    hardware_command_topic = LaunchConfiguration('hardware_command_topic')
 
     xml_file = PathJoinSubstitution([
         get_package_share_directory('mujoco_simulator'),
@@ -43,6 +49,12 @@ def generate_launch_description():
         DeclareLaunchArgument('contact_source', default_value='mujoco'),
         DeclareLaunchArgument('publish_rate_hz', default_value='0.0'),
         DeclareLaunchArgument('debug_state_logging', default_value='false'),
+        DeclareLaunchArgument('joint_feedback_source', default_value='joint_trajectory'),
+        DeclareLaunchArgument('joint_feedback_topic', default_value='htdw_joint_cmd'),
+        DeclareLaunchArgument('joint_state_topic', default_value='joint_states'),
+        DeclareLaunchArgument('imu_topic', default_value='imu/data'),
+        DeclareLaunchArgument('odom_topic', default_value=''),
+        DeclareLaunchArgument('hardware_command_topic', default_value='bridge_joint_command'),
 
         Node(
             package='real_robot_bridge',
@@ -55,6 +67,7 @@ def generate_launch_description():
                 {'simulatorFile': simulator_file},
                 {'taskFile': task_file},
                 {'contactSource': contact_source},
+                {'alwaysPublishStateTopic': True},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
                 {'debugStateLogging': ParameterValue(debug_state_logging, value_type=bool)},
             ]
@@ -71,6 +84,12 @@ def generate_launch_description():
                 {'contactSource': contact_source},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
                 {'debugStateLogging': ParameterValue(debug_state_logging, value_type=bool)},
+                {'jointFeedbackSource': joint_feedback_source},
+                {'jointFeedbackTopic': joint_feedback_topic},
+                {'jointStateTopic': joint_state_topic},
+                {'imuTopic': imu_topic},
+                {'odomTopic': odom_topic},
+                {'hardwareCommandTopic': hardware_command_topic},
             ]
         ),
     ])

@@ -26,7 +26,7 @@ if [ -f "/.dockerenv" ]; then
     cd "${WS_DIR}"
 
     echo "Cleaning one_leg_pinocchio_control..."
-    rm -rf build/one_leg_pinocchio_control install/one_leg_pinocchio_control log/latest_build_one_leg
+    #rm -rf build/one_leg_pinocchio_control install/one_leg_pinocchio_control log/latest_build_one_leg
 
     echo "Loading environment..."
     source /opt/ros/humble/setup.bash

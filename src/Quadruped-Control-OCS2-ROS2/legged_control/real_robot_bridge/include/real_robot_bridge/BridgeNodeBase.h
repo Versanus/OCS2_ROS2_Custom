@@ -38,6 +38,7 @@ class BridgeNodeBase : public rclcpp::Node {
   ContactEstimator contact_estimator_;
   ContactSource contact_source_{ContactSource::kEstimated};
   bool state_estimate_{false};
+  bool always_publish_state_topic_{false};
   bool debug_state_logging_{true};
   double publish_rate_hz_{200.0};
 

@@ -40,6 +40,7 @@ install(PROGRAMS
   scripts/odom_to_tf.py
   scripts/odom_to_path.py
   scripts/sensor_to_joint_state.py
+  scripts/state_to_odom.py
   scripts/sim2real.py
   scripts/read_to_csv.py
   DESTINATION lib/${PROJECT_NAME}

@@ -75,6 +75,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "legged_msgs/msg/joint_control_data.hpp"
 #include "legged_msgs/srv/start_control.hpp"
 #include "std_msgs/msg/int32.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -133,10 +134,14 @@ protected:
     void emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr msg);
     void publishEmergencyOverrideState();
     void publishCurrentObservation();
+    void publishMpcFootTrajectoryMarkers();
     legged_msgs::msg::MpcObservation createObservationMsg(const ocs2::SystemObservation& observation);
-    std::string eigenToString(const ocs2::vector_t& vec);
-    bool hasValidCurrentObservationState() const;
-    void relatchHoldJointStateFromObservation();
+	    std::string eigenToString(const ocs2::vector_t& vec);
+	    bool hasValidCurrentObservationState() const;
+	    bool activePolicyExpired() const;
+	    bool hasValidStateMessage(const legged_msgs::msg::SimulatorStateData& msg, std::string* reason = nullptr) const;
+	    bool hasValidSensorMessage(const legged_msgs::msg::SimulatorSensorData& msg, std::string* reason = nullptr) const;
+	    void relatchHoldJointStateFromObservation();
     
     std::string robotName_;
     // Interface
@@ -164,6 +169,7 @@ protected:
     rclcpp::Publisher<legged_msgs::msg::MpcObservation>::SharedPtr observationPublisher_;
     rclcpp::Publisher<legged_msgs::msg::JointControlData>::SharedPtr jointControlPublisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr emergencyOverrideStatePublisher_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mpcFootTrajectoryPublisher_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;
     rclcpp::Subscription<legged_msgs::msg::SimulatorStateData>::SharedPtr simulatorStateSubscriber_;
     rclcpp::Subscription<legged_msgs::msg::SimulatorSensorData>::SharedPtr simulatorSensorSubscriber_;

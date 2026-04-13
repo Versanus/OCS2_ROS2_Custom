@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -29,19 +30,29 @@ class HardwareBackend final : public BackendBase {
 
  private:
   void jointStateCallback(const sensor_msgs::msg::JointState::SharedPtr msg);
+  void jointTrajectoryCallback(const trajectory_msgs::msg::JointTrajectory::SharedPtr msg);
   void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
 
   static double stampToSeconds(const builtin_interfaces::msg::Time& stamp);
   static std::vector<std::string> defaultJointNames();
+  static std::vector<std::string> defaultCommandJointNames();
+  static std::string normalizeJointName(const std::string& name);
+  static std::string toLeggedJointName(const std::string& name);
+  static std::string toHardwareJointName(const std::string& name);
+  static std::vector<double> remapVectorByJointNames(const std::vector<double>& source_values,
+                                                     const std::vector<std::string>& source_names,
+                                                     const std::vector<std::string>& target_names);
   static void assignVectorByJointNames(std::vector<double>& target,
                                        const std::vector<std::string>& target_names,
                                        const sensor_msgs::msg::JointState& source,
                                        const std::vector<double>& source_values);
   static void resizeAndAssign(std::vector<double>& target, const std::vector<double>& source, std::size_t size);
+  void updateLatestJointState(const sensor_msgs::msg::JointState& msg);
 
   rclcpp::Node& node_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  rclcpp::Subscription<trajectory_msgs::msg::JointTrajectory>::SharedPtr joint_trajectory_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<trajectory_msgs::msg::JointTrajectory>::SharedPtr hardware_command_pub_;
@@ -49,6 +60,8 @@ class HardwareBackend final : public BackendBase {
   std::string odom_topic_;
   double default_base_height_{0.0};
   std::vector<std::string> configured_joint_names_;
+  std::vector<std::string> configured_command_joint_names_;
+  std::vector<std::string> latest_command_joint_names_;
 
   mutable std::mutex mutex_;
   sensor_msgs::msg::JointState latest_joint_state_;
@@ -57,6 +70,8 @@ class HardwareBackend final : public BackendBase {
   bool have_joint_state_{false};
   bool have_imu_{false};
   bool have_odom_{false};
+  bool warned_missing_trajectory_velocity_{false};
+  bool warned_missing_trajectory_effort_{false};
 };
 
 }  // namespace real_robot_bridge

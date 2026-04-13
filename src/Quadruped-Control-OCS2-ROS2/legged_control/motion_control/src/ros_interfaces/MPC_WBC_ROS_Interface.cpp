@@ -36,9 +36,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "motion_control/legged_estimation/LinearKalmanFilter.h"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
 
 namespace {
 
@@ -48,6 +52,29 @@ bool tryLoadJointState(const std::string& referenceFile, const std::string& fiel
     return true;
   } catch (const std::exception&) {
     return false;
+  }
+}
+
+geometry_msgs::msg::Point toPointMsg(const Eigen::Vector3d& position) {
+  geometry_msgs::msg::Point point;
+  point.x = position.x();
+  point.y = position.y();
+  point.z = position.z();
+  return point;
+}
+
+std::array<float, 4> footTrajectoryColor(std::size_t index) {
+  switch (index) {
+    case 0:
+      return {0.07f, 0.75f, 0.95f, 0.95f};
+    case 1:
+      return {0.95f, 0.55f, 0.15f, 0.95f};
+    case 2:
+      return {0.35f, 0.85f, 0.35f, 0.95f};
+    case 3:
+      return {0.95f, 0.25f, 0.65f, 0.95f};
+    default:
+      return {0.85f, 0.85f, 0.85f, 0.90f};
   }
 }
 
@@ -137,6 +164,7 @@ void MPC_WBC_ROS_Interface::setupWbc(const std::string& taskFile, bool verbose) 
   ocs2::CentroidalModelPinocchioMapping pinocchioMapping(leggedInterface_->getCentroidalModelInfo());
   eeKinematicsPtr_ = std::make_shared<ocs2::PinocchioEndEffectorKinematics>(leggedInterface_->getPinocchioInterface(), pinocchioMapping,
                                                                     leggedInterface_->modelSettings().contactNames3DoF);
+  eeKinematicsPtr_->setPinocchioInterface(leggedInterface_->getPinocchioInterface());
   wbc_ = std::make_shared<WeightedWbc>(leggedInterface_->getPinocchioInterface(), leggedInterface_->getCentroidalModelInfo(),
                                        *eeKinematicsPtr_);
   wbc_->loadTasksSetting(taskFile, verbose);
@@ -174,6 +202,86 @@ bool MPC_WBC_ROS_Interface::hasValidCurrentObservationState() const {
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::activePolicyExpired() const {
+  if (!mpcMrtInterface_ || !mpcMrtInterface_->initialPolicyReceived()) {
+    return true;
+  }
+
+  try {
+    const auto& policy = mpcMrtInterface_->getPolicy();
+    return policy.timeTrajectory_.empty() || currentObservation_.time >= policy.timeTrajectory_.back();
+  } catch (...) {
+    return true;
+  }
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::hasValidStateMessage(const legged_msgs::msg::SimulatorStateData& msg, std::string* reason) const {
+  const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
+
+  if (msg.base_quat_values.size() < 4) {
+    if (reason) *reason = "base_quat_values has fewer than 4 elements";
+    return false;
+  }
+  if (msg.base_pose_values.size() < 3) {
+    if (reason) *reason = "base_pose_values has fewer than 3 elements";
+    return false;
+  }
+  if (msg.base_angvel_values.size() < 3) {
+    if (reason) *reason = "base_angvel_values has fewer than 3 elements";
+    return false;
+  }
+  if (msg.base_linvel_values.size() < 3) {
+    if (reason) *reason = "base_linvel_values has fewer than 3 elements";
+    return false;
+  }
+  if (msg.joint_position_values.size() < expected_joint_count) {
+    if (reason) *reason = "joint_position_values is shorter than the robot actuated DoF count";
+    return false;
+  }
+  if (msg.joint_velocity_values.size() < expected_joint_count) {
+    if (reason) *reason = "joint_velocity_values is shorter than the robot actuated DoF count";
+    return false;
+  }
+
+  return true;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::hasValidSensorMessage(const legged_msgs::msg::SimulatorSensorData& msg, std::string* reason) const {
+  const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
+
+  if (msg.imu_quat_values.size() < 4) {
+    if (reason) *reason = "imu_quat_values has fewer than 4 elements";
+    return false;
+  }
+  if (msg.imu_angvel_values.size() < 3) {
+    if (reason) *reason = "imu_angvel_values has fewer than 3 elements";
+    return false;
+  }
+  if (msg.imu_linacc_values.size() < 3) {
+    if (reason) *reason = "imu_linacc_values has fewer than 3 elements";
+    return false;
+  }
+  if (msg.joint_position_values.size() < expected_joint_count) {
+    if (reason) *reason = "joint_position_values is shorter than the robot actuated DoF count";
+    return false;
+  }
+  if (msg.joint_velocity_values.size() < expected_joint_count) {
+    if (reason) *reason = "joint_velocity_values is shorter than the robot actuated DoF count";
+    return false;
+  }
+
+  return true;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 void MPC_WBC_ROS_Interface::relatchHoldJointStateFromObservation() {
   if (!hasValidCurrentObservationState()) {
     return;
@@ -195,6 +303,7 @@ void MPC_WBC_ROS_Interface::launchNodes()
 
   // Joint control publisher
   jointControlPublisher_ = node_->create_publisher<legged_msgs::msg::JointControlData>("joint_control_data", 1);
+  mpcFootTrajectoryPublisher_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("mpc_foot_trajectories", 1);
   emergencyOverrideStatePublisher_ = node_->create_publisher<std_msgs::msg::Int32>(
       robotName_ + "_emergency_override_state", 1);
   emergencyOverrideSubscriber_ = node_->create_subscription<std_msgs::msg::Int32>(
@@ -230,26 +339,56 @@ void MPC_WBC_ROS_Interface::launchNodes()
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::simulatorStartControlLoop()
 {
+  using namespace std::chrono_literals;
+
   initialStateReady_ = false;
-  auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
-  request->start = true;
+  while (rclcpp::ok()) {
+    auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
+    request->start = true;
 
-  if (!controlStartingClient_->wait_for_service(std::chrono::seconds(10))) {
-      RCLCPP_WARN(node_->get_logger(), "Service not available.");
-      return;
-  }
+    if (!controlStartingClient_->wait_for_service(2s)) {
+      RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                           "Waiting for /start_control service...");
+      continue;
+    }
 
-  auto result = controlStartingClient_->async_send_request(request);                                        
+    auto result = controlStartingClient_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(node_, result, 5s) != rclcpp::FutureReturnCode::SUCCESS) {
+      RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                           "Timed out while waiting for /start_control response. Retrying.");
+      rclcpp::sleep_for(500ms);
+      continue;
+    }
 
-  if (rclcpp::spin_until_future_complete(node_, result) ==
-      rclcpp::FutureReturnCode::SUCCESS)                                                    
-  {
     auto response = result.get();
+    if (!response->success) {
+      RCLCPP_WARN_THROTTLE(
+          node_->get_logger(), *node_->get_clock(), 2000,
+          "Bridge is up but no valid robot state is available yet. Waiting for hardware feedback/IMU before starting MPC.");
+      rclcpp::sleep_for(500ms);
+      continue;
+    }
+
+    std::string invalid_reason;
+    if (!hasValidStateMessage(response->state, &invalid_reason)) {
+      RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                           "Received incomplete initial state from /start_control: %s. Retrying.",
+                           invalid_reason.c_str());
+      rclcpp::sleep_for(500ms);
+      continue;
+    }
+
     RCLCPP_INFO(node_->get_logger(),"starting control request success");
     RCLCPP_INFO(node_->get_logger(), "Request success: %s", response->success ? "true" : "false");
-    auto state = response->state;
-    
-    setInitialState(std::make_shared<const legged_msgs::msg::SimulatorStateData>(state));
+
+    setInitialState(std::make_shared<const legged_msgs::msg::SimulatorStateData>(response->state));
+    if (!initialStateReady_) {
+      RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                           "Initial state was rejected as invalid. Retrying.");
+      rclcpp::sleep_for(500ms);
+      continue;
+    }
+
     ocs2::TargetTrajectories target_trajectories({currentObservation_.time}, {currentObservation_.state}, {currentObservation_.input});
     mpcMrtInterface_->setCurrentObservation(currentObservation_);
     mpcMrtInterface_->getReferenceManager().setTargetTrajectories(target_trajectories);
@@ -261,6 +400,7 @@ void MPC_WBC_ROS_Interface::simulatorStartControlLoop()
     RCLCPP_INFO(node_->get_logger(),"Initial policy has been received.");
 
     mpcMrtInterface_->updatePolicy();
+    publishMpcFootTrajectoryMarkers();
     // Evaluate the current policy
     ocs2::vector_t optimizedState, optimizedInput;
     size_t plannedMode = 0;  // The mode that is active at the time the policy is evaluated at.
@@ -284,14 +424,8 @@ void MPC_WBC_ROS_Interface::simulatorStartControlLoop()
 
     publishJointControl(torque,posDes,velDes);
     publishCurrentObservation();
-
+    return;
   }
-  else
-  {
-    RCLCPP_ERROR(node_->get_logger(), "Starting control service failed!!!");
-  }
-  
-
 }
 
 /******************************************************************************************************/
@@ -321,13 +455,27 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
     return;
   }
 
+  std::string invalid_reason;
+  if (!hasValidStateMessage(*msg, &invalid_reason)) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                         "Ignoring invalid simulator_state_data message: %s", invalid_reason.c_str());
+    return;
+  }
+
   MpcCount_ += 1;
 
   updateStateEstimationFromState(msg);
 
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
+  const bool forceMpcUpdate = activePolicyExpired();
 
-  if (MpcCount_ >= Wbc_control_frequency_/Mpc_control_frequency_)
+  if (forceMpcUpdate) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                         "Active MPC policy expired at t=%.3f. Forcing replanning from the latest state observation.",
+                         currentObservation_.time);
+  }
+
+  if (forceMpcUpdate || MpcCount_ >= Wbc_control_frequency_/Mpc_control_frequency_)
   {
     MpcCount_ = 0;
     mpcTimer_.startTimer();
@@ -338,7 +486,17 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
     << std::endl;
   }
 
-  mpcMrtInterface_->updatePolicy();
+  const bool policyUpdated = mpcMrtInterface_->updatePolicy();
+  if (policyUpdated) {
+    publishMpcFootTrajectoryMarkers();
+  }
+
+  if (activePolicyExpired()) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                         "Skipping stale MPC policy evaluation at t=%.3f while waiting for a refreshed plan.",
+                         currentObservation_.time);
+    return;
+  }
 // Evaluate the current policy
   ocs2::vector_t optimizedState, optimizedInput;
   size_t plannedMode = 0;  // The mode that is active at the time the policy is evaluated at.
@@ -369,6 +527,14 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::setInitialState(
     const legged_msgs::msg::SimulatorStateData::ConstSharedPtr msg) {
+  std::string invalid_reason;
+  if (!hasValidStateMessage(*msg, &invalid_reason)) {
+    RCLCPP_WARN(node_->get_logger(), "Ignoring invalid initial state message: %s", invalid_reason.c_str());
+    initialStateReady_ = false;
+    return;
+  }
+
+  const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
   // convert quat to eulerAngles
   Eigen::Quaternion<ocs2::scalar_t> quat(msg->base_quat_values[0], msg->base_quat_values[1], 
       msg->base_quat_values[2], msg->base_quat_values[3]);
@@ -379,12 +545,12 @@ void MPC_WBC_ROS_Interface::setInitialState(
   vector3_t position(msg->base_pose_values[0], msg->base_pose_values[1], msg->base_pose_values[2]);
   vector3_t linearVel(msg->base_linvel_values[0], msg->base_linvel_values[1], msg->base_linvel_values[2]);
 
-  ocs2::vector_t jointPos(msg->joint_position_values.size());
-  ocs2::vector_t jointVel(msg->joint_velocity_values.size());
-  for (size_t i = 0; i < msg->joint_position_values.size(); ++i) {
+  ocs2::vector_t jointPos(expected_joint_count);
+  ocs2::vector_t jointVel(expected_joint_count);
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointPos(i) = msg->joint_position_values[i];
   }
-  for (size_t i = 0; i < msg->joint_velocity_values.size(); ++i) {
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointVel(i) = msg->joint_velocity_values[i];
   }
 
@@ -415,7 +581,8 @@ void MPC_WBC_ROS_Interface::setInitialState(
     relatchHoldJointStateFromObservation();
   }
 
-  for (size_t i = 0; i < msg->contact_flags.size(); ++i) {
+  contactFlag_.fill(false);
+  for (size_t i = 0; i < std::min(contactFlag_.size(), msg->contact_flags.size()); ++i) {
     contactFlag_[i] = msg->contact_flags[i];
   }
 
@@ -430,6 +597,14 @@ void MPC_WBC_ROS_Interface::setInitialState(
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
     const legged_msgs::msg::SimulatorStateData::ConstSharedPtr msg) {
+  std::string invalid_reason;
+  if (!hasValidStateMessage(*msg, &invalid_reason)) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                         "Ignoring invalid simulator_state_data message: %s", invalid_reason.c_str());
+    return;
+  }
+
+  const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
   // convert quat to eulerAngles
   Eigen::Quaternion<ocs2::scalar_t> quat(msg->base_quat_values[0], msg->base_quat_values[1], 
       msg->base_quat_values[2], msg->base_quat_values[3]);
@@ -440,12 +615,12 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
   vector3_t position(msg->base_pose_values[0], msg->base_pose_values[1], msg->base_pose_values[2]);
   vector3_t linearVel(msg->base_linvel_values[0], msg->base_linvel_values[1], msg->base_linvel_values[2]);
 
-  ocs2::vector_t jointPos(msg->joint_position_values.size());
-  ocs2::vector_t jointVel(msg->joint_velocity_values.size());
-  for (size_t i = 0; i < msg->joint_position_values.size(); ++i) {
+  ocs2::vector_t jointPos(expected_joint_count);
+  ocs2::vector_t jointVel(expected_joint_count);
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointPos(i) = msg->joint_position_values[i];
   }
-  for (size_t i = 0; i < msg->joint_velocity_values.size(); ++i) {
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointVel(i) = msg->joint_velocity_values[i];
   }
   measuredRbdState_ = ocs2::vector_t::Zero(2 * (6 + jointPos.size()));
@@ -465,7 +640,8 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
 
-  for (size_t i = 0; i < msg->contact_flags.size(); ++i) {
+  contactFlag_.fill(false);
+  for (size_t i = 0; i < std::min(contactFlag_.size(), msg->contact_flags.size()); ++i) {
     contactFlag_[i] = msg->contact_flags[i];
   }
   // for (size_t i = 0; i < contactFlag_.size(); ++i) {
@@ -515,14 +691,28 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
     return;
   }
 
+  std::string invalid_reason;
+  if (!hasValidSensorMessage(*msg, &invalid_reason)) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                         "Ignoring invalid simulator_sensor_data message: %s", invalid_reason.c_str());
+    return;
+  }
+
   MpcCount_ += 1;
   //RCLCPP_INFO(node_->get_logger(), "Message recieved");
 
   updateStateEstimationFromSensor(msg);
 
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
+  const bool forceMpcUpdate = activePolicyExpired();
 
-  if (MpcCount_ >= Wbc_control_frequency_/Mpc_control_frequency_)
+  if (forceMpcUpdate) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                         "Active MPC policy expired at t=%.3f. Forcing replanning from the latest sensor estimate.",
+                         currentObservation_.time);
+  }
+
+  if (forceMpcUpdate || MpcCount_ >= Wbc_control_frequency_/Mpc_control_frequency_)
   {
     MpcCount_ = 0;
     mpcTimer_.startTimer();
@@ -533,7 +723,17 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
     << std::endl;
   }
 
-  mpcMrtInterface_->updatePolicy();
+  const bool policyUpdated = mpcMrtInterface_->updatePolicy();
+  if (policyUpdated) {
+    publishMpcFootTrajectoryMarkers();
+  }
+
+  if (activePolicyExpired()) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                         "Skipping stale MPC policy evaluation at t=%.3f while waiting for a refreshed plan.",
+                         currentObservation_.time);
+    return;
+  }
 // Evaluate the current policy
   ocs2::vector_t optimizedState, optimizedInput;
   size_t plannedMode = 0;  // The mode that is active at the time the policy is evaluated at.
@@ -564,11 +764,20 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
     const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg) {
+  std::string invalid_reason;
+  if (!hasValidSensorMessage(*msg, &invalid_reason)) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                         "Ignoring invalid simulator_sensor_data message: %s", invalid_reason.c_str());
+    return;
+  }
+
+  const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
 
   Eigen::Quaternion<ocs2::scalar_t> quat(msg->imu_quat_values[0], msg->imu_quat_values[1], 
       msg->imu_quat_values[2], msg->imu_quat_values[3]);
 
-  for (size_t i = 0; i < msg->contact_flags.size(); ++i) {
+  contactFlag_.fill(false);
+  for (size_t i = 0; i < std::min(contactFlag_.size(), msg->contact_flags.size()); ++i) {
     contactFlag_[i] = msg->contact_flags[i];
   }
   //vector3_t eulerAngles = quatToZyx(quat);
@@ -576,12 +785,12 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
   vector3_t angularVel(msg->imu_angvel_values[0], msg->imu_angvel_values[1], msg->imu_angvel_values[2]);
   vector3_t linearAccel(msg->imu_linacc_values[0], msg->imu_linacc_values[1], msg->imu_linacc_values[2]);
 
-  ocs2::vector_t jointPos(msg->joint_position_values.size());
-  ocs2::vector_t jointVel(msg->joint_velocity_values.size());
-  for (size_t i = 0; i < msg->joint_position_values.size(); ++i) {
+  ocs2::vector_t jointPos(expected_joint_count);
+  ocs2::vector_t jointVel(expected_joint_count);
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointPos(i) = msg->joint_position_values[i];
   }
-  for (size_t i = 0; i < msg->joint_velocity_values.size(); ++i) {
+  for (size_t i = 0; i < expected_joint_count; ++i) {
       jointVel(i) = msg->joint_velocity_values[i];
   }
 
@@ -807,6 +1016,79 @@ void MPC_WBC_ROS_Interface::publishEmergencyOverrideState() {
   auto msg = std_msgs::msg::Int32();
   msg.data = static_cast<int>(controlState_);
   emergencyOverrideStatePublisher_->publish(msg);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::publishMpcFootTrajectoryMarkers() {
+  if (!mpcFootTrajectoryPublisher_) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray markerArray;
+  const auto stamp = node_->get_clock()->now();
+
+  visualization_msgs::msg::Marker clearMarker;
+  clearMarker.header.frame_id = "odom";
+  clearMarker.header.stamp = stamp;
+  clearMarker.action = visualization_msgs::msg::Marker::DELETEALL;
+  markerArray.markers.push_back(clearMarker);
+
+  const auto& policy = mpcMrtInterface_->getPolicy();
+  if (policy.stateTrajectory_.empty()) {
+    mpcFootTrajectoryPublisher_->publish(markerArray);
+    return;
+  }
+
+  const auto& info = leggedInterface_->getCentroidalModelInfo();
+  auto& pinocchioInterface = leggedInterface_->getPinocchioInterface();
+  const auto& model = pinocchioInterface.getModel();
+  auto& data = pinocchioInterface.getData();
+  eeKinematicsPtr_->setPinocchioInterface(pinocchioInterface);
+
+  std::vector<std::vector<geometry_msgs::msg::Point>> footPoints(info.numThreeDofContacts);
+  for (const auto& state : policy.stateTrajectory_) {
+    if (state.size() != info.stateDim) {
+      continue;
+    }
+
+    pinocchio::forwardKinematics(model, data, ocs2::centroidal_model::getGeneralizedCoordinates(state, info));
+    pinocchio::updateFramePlacements(model, data);
+
+    const auto footPositions = eeKinematicsPtr_->getPosition(state);
+    const auto footCount = std::min<std::size_t>(info.numThreeDofContacts, footPositions.size());
+    for (std::size_t i = 0; i < footCount; ++i) {
+      footPoints[i].push_back(toPointMsg(footPositions[i]));
+    }
+  }
+
+  const auto& footNames = leggedInterface_->modelSettings().contactNames3DoF;
+  for (std::size_t i = 0; i < footPoints.size(); ++i) {
+    if (footPoints[i].empty()) {
+      continue;
+    }
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = "odom";
+    marker.header.stamp = stamp;
+    marker.ns = (i < footNames.size()) ? footNames[i] : "foot_" + std::to_string(i);
+    marker.id = static_cast<int>(i);
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = 0.018;
+    marker.frame_locked = false;
+    const auto color = footTrajectoryColor(i);
+    marker.color.r = color[0];
+    marker.color.g = color[1];
+    marker.color.b = color[2];
+    marker.color.a = color[3];
+    marker.points = std::move(footPoints[i]);
+    markerArray.markers.push_back(std::move(marker));
+  }
+
+  mpcFootTrajectoryPublisher_->publish(markerArray);
 }
 
 /******************************************************************************************************/

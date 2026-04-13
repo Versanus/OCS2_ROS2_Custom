@@ -14,8 +14,8 @@
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="base"/>
     <child link="trunk"/>
-  </joint> 
-  
+  </joint>
+
   <!-- BASE LINK -->
   <link name="trunk">
     <inertial>
@@ -29,7 +29,7 @@
         <mesh filename="meshes/base_link.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -53,7 +53,7 @@
         <mesh filename="meshes/FR_HipX.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -85,7 +85,7 @@
         <mesh filename="meshes/FR_HipY.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.69412 0.69412 0.69412 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -117,7 +117,7 @@
         <mesh filename="meshes/FR_Knee.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+        <color rgba="0.96 0.52 0.10 1"/>
       </material>
     </visual>
     <collision>
@@ -149,7 +149,7 @@
         <sphere radius="0.02"/>
       </geometry>
       <material name="black">
-        <color rgba="0 0 0 1"/>
+        <color rgba="0.17 0.18 0.20 1"/>
       </material>
     </visual>
     <collision>
@@ -179,7 +179,7 @@
         <mesh filename="meshes/FL_HipX.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -211,7 +211,7 @@
         <mesh filename="meshes/FL_HipY.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -243,7 +243,7 @@
         <mesh filename="meshes/FL_Knee.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+        <color rgba="0.96 0.52 0.10 1"/>
       </material>
     </visual>
     <collision>
@@ -275,7 +275,7 @@
         <sphere radius="0.02"/>
       </geometry>
       <material name="black">
-        <color rgba="0 0 0 1"/>
+        <color rgba="0.17 0.18 0.20 1"/>
       </material>
     </visual>
     <collision>
@@ -305,7 +305,7 @@
         <mesh filename="meshes/HR_HipX.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -337,7 +337,7 @@
         <mesh filename="meshes/HR_HipY.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -369,7 +369,7 @@
         <mesh filename="meshes/HR_Knee.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+        <color rgba="0.96 0.52 0.10 1"/>
       </material>
     </visual>
     <collision>
@@ -401,7 +401,7 @@
         <sphere radius="0.02"/>
       </geometry>
       <material name="black">
-        <color rgba="0 0 0 1"/>
+        <color rgba="0.17 0.18 0.20 1"/>
       </material>
     </visual>
     <collision>
@@ -431,7 +431,7 @@
         <mesh filename="meshes/HL_HipX.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -463,7 +463,7 @@
         <mesh filename="meshes/HL_HipY.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.59608 0.66667 0.68627 1"/>
+        <color rgba="0.95 0.95 0.92 1"/>
       </material>
     </visual>
     <collision>
@@ -495,7 +495,7 @@
         <mesh filename="meshes/HL_Knee.obj"/>
       </geometry>
       <material name="">
-        <color rgba="0.82353 0.41961 0.21569 1"/>
+        <color rgba="0.96 0.52 0.10 1"/>
       </material>
     </visual>
     <collision>
@@ -527,7 +527,7 @@
         <sphere radius="0.02"/>
       </geometry>
       <material name="black">
-        <color rgba="0 0 0 1"/>
+        <color rgba="0.17 0.18 0.20 1"/>
       </material>
     </visual>
     <collision>

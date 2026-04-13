@@ -1,0 +1,15 @@
+newmtl body_white
+Ka 0.80 0.80 0.78
+Kd 0.985 0.985 0.97
+Ks 0.12 0.12 0.10
+Ns 24.0
+d 1.0
+illum 2
+
+newmtl knee_orange
+Ka 0.55 0.28 0.05
+Kd 0.97 0.50 0.08
+Ks 0.18 0.10 0.03
+Ns 24.0
+d 1.0
+illum 2

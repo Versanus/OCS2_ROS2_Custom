@@ -5,6 +5,9 @@ WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 load_quad_ocs2_ws() {
     echo "Loading quad_ocs2_ws environment..."
 
+    ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
+    export ROS_DOMAIN_ID
+
     # Load ROS2
     source /opt/ros/humble/setup.bash
 
@@ -21,6 +24,7 @@ load_quad_ocs2_ws() {
     # Load MuJoCo paths
     source "${WS_DIR}/mujoco_env.sh"
 
+    echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
     echo "quad_ocs2_ws environment loaded ✅"
 }
 

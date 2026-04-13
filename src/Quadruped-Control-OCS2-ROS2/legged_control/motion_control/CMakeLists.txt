@@ -5,6 +5,7 @@ project(motion_control)
 set(dependencies
   rclcpp
   std_msgs
+  geometry_msgs
   tf2_ros
   urdf
   kdl_parser
@@ -26,6 +27,7 @@ set(dependencies
   Boost
   angles
   nav_msgs
+  visualization_msgs
 )
 
 find_package(ament_cmake REQUIRED)
@@ -47,8 +49,10 @@ find_package(legged_msgs REQUIRED)
 #find_package(ocs2_legged_robot REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(angles REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 
 

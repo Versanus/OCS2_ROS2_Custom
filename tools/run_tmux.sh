@@ -103,12 +103,15 @@ if [ -f "$TASK_FILE" ]; then
   STATE_ESTIMATE=$(awk '$1 == "stateEstimate" {print tolower($2); exit}' "$TASK_FILE")
 fi
 
-if [ "$STATE_ESTIMATE" = "true" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor input_topic:=simulator_sensor_data odom_topic:=odom"
+# Always use the moving-base RViz launcher. The source behind it changes based on backend/data availability.
+if [ "$BACKEND" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface mujoco_state_rviz.launch.py robot_type:=$ROBOT_TYPE input_topic:=simulator_state_data"
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+elif [ "$STATE_ESTIMATE" = "true" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 else
-  RVIZ_COMMAND="ros2 launch hardware_interface legged_control_rviz.launch.py robot_type:=$ROBOT_TYPE input_joint_state_topic:=htdw_joint_state"
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
 fi
 
 

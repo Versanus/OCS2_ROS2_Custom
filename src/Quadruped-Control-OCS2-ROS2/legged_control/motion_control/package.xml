@@ -15,12 +15,14 @@
 
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
   <depend>tf2</depend>
   <depend>urdf</depend>
   <depend>kdl_parser</depend>
   <depend>robot_state_publisher</depend>
   <depend>cmake_modules</depend>
   <depend>angles</depend>
+  <depend>visualization_msgs</depend>
 
   <depend>ocs2_core</depend>
   <depend>ocs2_oc</depend>

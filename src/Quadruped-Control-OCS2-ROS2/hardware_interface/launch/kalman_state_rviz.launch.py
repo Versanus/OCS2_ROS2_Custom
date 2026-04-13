@@ -15,7 +15,9 @@ def _create_nodes(context):
 
     robot_type = LaunchConfiguration('robot_type').perform(context)
     joint_source = LaunchConfiguration('joint_source')
-    input_topic = LaunchConfiguration('input_topic')
+    odom_source = LaunchConfiguration('odom_source')
+    sensor_input_topic = LaunchConfiguration('sensor_input_topic')
+    state_input_topic = LaunchConfiguration('state_input_topic')
     input_joint_state_topic = LaunchConfiguration('input_joint_state_topic')
     output_joint_state_topic = LaunchConfiguration('output_joint_state_topic')
     odom_topic = LaunchConfiguration('odom_topic')
@@ -41,6 +43,7 @@ def _create_nodes(context):
             arguments=['-d', rviz_config_file],
             remappings=[
                 ('/odom', odom_topic),
+                ('/odom_path', path_topic),
             ],
         ),
         Node(
@@ -50,9 +53,22 @@ def _create_nodes(context):
             output='screen',
             condition=IfCondition(PythonExpression(["'", joint_source, "' == 'sensor'"])),
             parameters=[
-                {'input_topic': input_topic},
+                {'input_topic': sensor_input_topic},
                 {'output_topic': output_joint_state_topic},
                 {'publish_velocity': True},
+            ],
+        ),
+        Node(
+            package='hardware_interface',
+            executable='mujoco_to_joint_state.py',
+            name='state_to_joint_state',
+            output='screen',
+            condition=IfCondition(PythonExpression(["'", joint_source, "' == 'state'"])),
+            parameters=[
+                {'input_topic': state_input_topic},
+                {'output_topic': output_joint_state_topic},
+                {'publish_velocity': True},
+                {'publish_effort': False},
             ],
         ),
         Node(
@@ -66,6 +82,17 @@ def _create_nodes(context):
                 {'input_joint_state_topic': input_joint_state_topic},
                 {'output_joint_state_topic': output_joint_state_topic},
                 {'output_legged_joint_names': True},
+            ],
+        ),
+        Node(
+            package='hardware_interface',
+            executable='state_to_odom.py',
+            name='state_to_odom_bridge',
+            output='screen',
+            condition=IfCondition(PythonExpression(["'", odom_source, "' == 'state'"])),
+            parameters=[
+                {'input_topic': state_input_topic},
+                {'output_topic': odom_topic},
             ],
         ),
         Node(
@@ -110,7 +137,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_type', default_value='quad_mini_real'),
         DeclareLaunchArgument('joint_source', default_value='sensor'),
-        DeclareLaunchArgument('input_topic', default_value='simulator_sensor_data'),
+        DeclareLaunchArgument('odom_source', default_value='topic'),
+        DeclareLaunchArgument('sensor_input_topic', default_value='simulator_sensor_data'),
+        DeclareLaunchArgument('state_input_topic', default_value='simulator_state_data'),
         DeclareLaunchArgument('input_joint_state_topic', default_value='htdw_joint_state'),
         DeclareLaunchArgument('output_joint_state_topic', default_value='joint_states'),
         DeclareLaunchArgument('odom_topic', default_value='odom'),
