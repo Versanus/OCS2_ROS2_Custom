@@ -9,7 +9,7 @@ render
 {
   render_appearance true
   render_inertia false
-  visualize_contacts false
+  visualize_contacts true
   tracking_base true
   render_frequency 60
 }

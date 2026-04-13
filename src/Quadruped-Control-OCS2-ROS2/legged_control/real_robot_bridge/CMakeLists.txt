@@ -17,11 +17,16 @@ find_package(Boost REQUIRED COMPONENTS
   log
 )
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(ocs2_centroidal_model REQUIRED)
+find_package(ocs2_pinocchio_interface REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(pinocchio REQUIRED pinocchio)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(legged_msgs REQUIRED)
 find_package(ocs2_core REQUIRED)
 find_package(mujoco_simulator REQUIRED)
@@ -36,6 +41,7 @@ target_include_directories(real_robot_bridge_common
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${EIGEN3_INCLUDE_DIRS}
+    ${pinocchio_INCLUDE_DIRS}
 )
 ament_target_dependencies(
   real_robot_bridge_common
@@ -45,8 +51,11 @@ ament_target_dependencies(
   trajectory_msgs
   nav_msgs
   std_msgs
+  visualization_msgs
   legged_msgs
   ocs2_core
+  ocs2_centroidal_model
+  ocs2_pinocchio_interface
 )
 
 add_library(real_robot_bridge_sim_backend SHARED
@@ -97,8 +106,11 @@ ament_export_dependencies(
   trajectory_msgs
   nav_msgs
   std_msgs
+  visualization_msgs
   legged_msgs
   ocs2_core
+  ocs2_centroidal_model
+  ocs2_pinocchio_interface
   Boost
   Eigen3
   mujoco_simulator

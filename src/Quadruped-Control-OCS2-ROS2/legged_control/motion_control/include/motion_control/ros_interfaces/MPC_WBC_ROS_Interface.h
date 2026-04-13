@@ -139,6 +139,7 @@ protected:
 	    std::string eigenToString(const ocs2::vector_t& vec);
 	    bool hasValidCurrentObservationState() const;
 	    bool activePolicyExpired() const;
+	    bool recoverExpiredPolicy(const char* observationSource);
 	    bool hasValidStateMessage(const legged_msgs::msg::SimulatorStateData& msg, std::string* reason = nullptr) const;
 	    bool hasValidSensorMessage(const legged_msgs::msg::SimulatorSensorData& msg, std::string* reason = nullptr) const;
 	    void relatchHoldJointStateFromObservation();
@@ -193,10 +194,12 @@ private:
     bool mpcBlendActive_ = false;
     ocs2::scalar_t mpcBlendStartTime_ = 0.0;
     ocs2::scalar_t mpcBlendDuration_ = 0.08;
-    ocs2::scalar_t sitDownStartTime_ = 0.0;
-    ocs2::scalar_t sitDownDuration_ = 1.0;
-    bool initialStateReady_ = false;
-    
+	    ocs2::scalar_t sitDownStartTime_ = 0.0;
+	    ocs2::scalar_t sitDownDuration_ = 1.0;
+	    bool initialStateReady_ = false;
+	    ocs2::scalar_t lastMpcResetTime_ = -1.0;
+	    ocs2::scalar_t mpcResetCooldown_ = 0.1;
+
 
   /*
    * Variables

@@ -15,9 +15,13 @@
   <depend>trajectory_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>visualization_msgs</depend>
   <depend>legged_msgs</depend>
   <depend>ocs2_core</depend>
+  <depend>ocs2_centroidal_model</depend>
+  <depend>ocs2_pinocchio_interface</depend>
   <depend>mujoco_simulator</depend>
+  <depend>pinocchio</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -488,7 +488,7 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
       std::max(velocityPreviewDistance / equivalentProgressSpeed, minGoalTrajectoryDuration_);
   const int numTrajectorySamples =
       std::clamp(static_cast<int>(std::ceil(velocityPreviewTime / 0.1)) + 1, 3, 25);
-  const ocs2::vector_t referenceStartPose = velocityReferencePose_;
+  const ocs2::vector_t previewStartPose = desiredPoseNow;
 
   ocs2::scalar_array_t timeTrajectory;
   timeTrajectory.reserve(numTrajectorySamples);
@@ -503,7 +503,8 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
     const ocs2::scalar_t sampleTimeOffset = interpolation * velocityPreviewTime;
     const ocs2::scalar_t sampleTime = observation.time + sampleTimeOffset;
     const ocs2::vector_t samplePose =
-        integrateBodyVelocityPose(referenceStartPose, velocityCommand, sampleTimeOffset, comHeight_);
+        (i == 0) ? previewStartPose
+                 : integrateBodyVelocityPose(previewStartPose, velocityCommand, sampleTimeOffset, comHeight_);
 
     timeTrajectory.push_back(sampleTime);
     ocs2::vector_t state = ocs2::vector_t::Zero(observation.state.size());

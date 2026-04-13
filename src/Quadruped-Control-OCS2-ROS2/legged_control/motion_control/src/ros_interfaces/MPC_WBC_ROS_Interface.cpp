@@ -218,6 +218,41 @@ bool MPC_WBC_ROS_Interface::activePolicyExpired() const {
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::recoverExpiredPolicy(const char* observationSource) {
+  if (!mpcMrtInterface_ || !activePolicyExpired()) {
+    return false;
+  }
+
+  if (lastMpcResetTime_ >= 0.0 && currentObservation_.time - lastMpcResetTime_ < mpcResetCooldown_) {
+    return false;
+  }
+
+  try {
+    const auto targetTrajectories = mpcMrtInterface_->getReferenceManager().getTargetTrajectories();
+    RCLCPP_WARN(node_->get_logger(),
+                "Resetting MPC/MRT after expired %s policy at t=%.3f to drop stale plan state and replan from the latest observation.",
+                observationSource, currentObservation_.time);
+    mpcMrtInterface_->resetMpcNode(targetTrajectories);
+    mpcMrtInterface_->setCurrentObservation(currentObservation_);
+    lastMpcResetTime_ = currentObservation_.time;
+    MpcCount_ = 0;
+    return true;
+  } catch (const std::exception& error) {
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                          "Failed to reset expired MPC policy at t=%.3f: %s",
+                          currentObservation_.time, error.what());
+  } catch (...) {
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                          "Failed to reset expired MPC policy at t=%.3f due to an unknown error.",
+                          currentObservation_.time);
+  }
+
+  return false;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 bool MPC_WBC_ROS_Interface::hasValidStateMessage(const legged_msgs::msg::SimulatorStateData& msg, std::string* reason) const {
   const auto expected_joint_count = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
 
@@ -470,6 +505,7 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
   const bool forceMpcUpdate = activePolicyExpired();
 
   if (forceMpcUpdate) {
+    recoverExpiredPolicy("state");
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
                          "Active MPC policy expired at t=%.3f. Forcing replanning from the latest state observation.",
                          currentObservation_.time);
@@ -707,6 +743,7 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
   const bool forceMpcUpdate = activePolicyExpired();
 
   if (forceMpcUpdate) {
+    recoverExpiredPolicy("sensor");
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
                          "Active MPC policy expired at t=%.3f. Forcing replanning from the latest sensor estimate.",
                          currentObservation_.time);

@@ -45,6 +45,7 @@ MPC_MRT_Interface::MPC_MRT_Interface(MPC_BASE& mpc) : mpc_(mpc) {
 /******************************************************************************************************/
 /******************************************************************************************************/
 void MPC_MRT_Interface::resetMpcNode(const TargetTrajectories& initTargetTrajectories) {
+  MRT_BASE::reset();
   mpc_.reset();
   mpc_.getSolverPtr()->getReferenceManager().setTargetTrajectories(initTargetTrajectories);
   mpcTimer_.reset();

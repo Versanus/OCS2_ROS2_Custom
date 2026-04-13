@@ -4,10 +4,16 @@
 #include <stdexcept>
 #include <string>
 
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <ocs2_core/misc/LoadData.h>
 
 namespace real_robot_bridge {
 namespace {
+
+const std::array<const char*, 4> kEstimatedContactFrameNames{{
+    "LF_FOOT", "RF_FOOT", "LH_FOOT", "RH_FOOT",
+}};
 
 ContactSource parseContactSource(const std::string& value) {
   if (value == "mujoco") {
@@ -30,11 +36,12 @@ std::chrono::nanoseconds periodFromHz(double hz) {
 BridgeNodeBase::BridgeNodeBase(const std::string& node_name, const rclcpp::NodeOptions& options)
     : rclcpp::Node(node_name, options),
       contact_estimator_(ContactEstimator::Config{
-          declare_parameter<double>("estimatedContactFilterAlpha", 0.85),
-          declare_parameter<double>("estimatedContactOnThreshold", 6.0),
+          declare_parameter<double>("estimatedContactFilterAlpha", 0.8),
+          declare_parameter<double>("estimatedContactOnThreshold", 4.0),
           declare_parameter<double>("estimatedContactOffThreshold", 3.0),
       }) {
   declare_parameter<std::string>("taskFile", "");
+  declare_parameter<std::string>("urdfFile", "");
   declare_parameter<std::string>("contactSource", "mujoco");
   declare_parameter<bool>("alwaysPublishStateTopic", false);
   declare_parameter<bool>("debugStateLogging", true);
@@ -49,9 +56,29 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
   backend_ = std::move(backend);
 
   const auto task_file = get_parameter("taskFile").as_string();
+  const auto urdf_file = get_parameter("urdfFile").as_string();
   if (task_file.empty()) {
     throw std::runtime_error("Bridge requires a non-empty 'taskFile' parameter.");
   }
+
+  boost::property_tree::ptree task_info_tree;
+  boost::property_tree::read_info(task_file, task_info_tree);
+  ContactEstimator::Config estimated_contact_config;
+  estimated_contact_config.filter_alpha = task_info_tree.get<double>(
+      "estimatedContact.filterAlpha", estimated_contact_config.filter_alpha);
+  estimated_contact_config.filter_alpha_rising = task_info_tree.get<double>(
+      "estimatedContact.filterAlphaRise", estimated_contact_config.filter_alpha);
+  estimated_contact_config.filter_alpha_falling = task_info_tree.get<double>(
+      "estimatedContact.filterAlphaFall", estimated_contact_config.filter_alpha);
+  estimated_contact_config.on_threshold = task_info_tree.get<double>(
+      "estimatedContact.onThreshold", estimated_contact_config.on_threshold);
+  estimated_contact_config.off_threshold = task_info_tree.get<double>(
+      "estimatedContact.offThreshold", estimated_contact_config.off_threshold);
+  estimated_contact_config.on_confirmation_samples = task_info_tree.get<int>(
+      "estimatedContact.onConfirmationSamples", estimated_contact_config.on_confirmation_samples);
+  estimated_contact_config.off_confirmation_samples = task_info_tree.get<int>(
+      "estimatedContact.offConfirmationSamples", estimated_contact_config.off_confirmation_samples);
+  contact_estimator_.setConfig(estimated_contact_config);
 
   ocs2::loadData::loadCppDataType(task_file, "stateEstimate", state_estimate_);
   contact_source_ = parseContactSource(get_parameter("contactSource").as_string());
@@ -67,6 +94,10 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
                 "Backend '%s' has no direct MuJoCo contact source. Falling back to estimated contacts.",
                 backend_->name().c_str());
     contact_source_ = ContactSource::kEstimated;
+  }
+
+  if (contact_source_ == ContactSource::kEstimated) {
+    contact_estimator_.initialize(urdf_file);
   }
 
   if (!state_estimate_ && !backend_->hasFullStateEstimate()) {
@@ -85,6 +116,10 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
   }
   if (!state_estimate_ || always_publish_state_topic_) {
     state_pub_ = create_publisher<legged_msgs::msg::SimulatorStateData>("simulator_state_data", 1);
+  }
+  if (contact_source_ == ContactSource::kEstimated) {
+    estimated_contact_markers_pub_ =
+        create_publisher<visualization_msgs::msg::MarkerArray>("estimated_contact_markers", 1);
   }
 
   publish_timer_ = create_wall_timer(periodFromHz(publish_rate_hz_), std::bind(&BridgeNodeBase::publishCallback, this));
@@ -128,6 +163,13 @@ void BridgeNodeBase::publishCallback() {
   if (state_pub_) {
     state_pub_->publish(data.state);
   }
+  if (contact_source_ == ContactSource::kEstimated) {
+    std::array<bool, 4> contact_flags{};
+    for (std::size_t i = 0; i < std::min<std::size_t>(contact_flags.size(), data.sensor.contact_flags.size()); ++i) {
+      contact_flags[i] = data.sensor.contact_flags[i];
+    }
+    publishEstimatedContactMarkers(data.state, contact_flags);
+  }
 }
 
 void BridgeNodeBase::startControlService(
@@ -160,7 +202,12 @@ void BridgeNodeBase::applyConfiguredContactSource(BackendData& data) {
     return;
   }
 
-  const auto estimated_contact_flags = contact_estimator_.update(data.state.joint_torque_values);
+  const auto& joint_positions =
+      data.sensor.joint_position_values.empty() ? data.state.joint_position_values : data.sensor.joint_position_values;
+  const auto& joint_velocities =
+      data.sensor.joint_velocity_values.empty() ? data.state.joint_velocity_values : data.sensor.joint_velocity_values;
+  const auto estimated_contact_flags = contact_estimator_.update(
+      joint_positions, joint_velocities, data.state.joint_torque_values);
   overwriteContactFlags(data, estimated_contact_flags);
 }
 
@@ -251,6 +298,42 @@ void BridgeNodeBase::logSensorPublish(const legged_msgs::msg::SimulatorSensorDat
 void BridgeNodeBase::overwriteContactFlags(BackendData& data, const std::array<bool, 4>& contact_flags) const {
   data.state.contact_flags.assign(contact_flags.begin(), contact_flags.end());
   data.sensor.contact_flags.assign(contact_flags.begin(), contact_flags.end());
+}
+
+void BridgeNodeBase::publishEstimatedContactMarkers(const legged_msgs::msg::SimulatorStateData& state,
+                                                    const std::array<bool, 4>& contact_flags) {
+  if (!estimated_contact_markers_pub_) {
+    return;
+  }
+
+  (void)state;
+
+  visualization_msgs::msg::MarkerArray marker_array;
+  marker_array.markers.reserve(contact_flags.size());
+
+  for (std::size_t i = 0; i < contact_flags.size(); ++i) {
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = now();
+    marker.header.frame_id = kEstimatedContactFrameNames[i];
+    marker.ns = "estimated_contact";
+    marker.id = static_cast<int>(i);
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = contact_flags[i] ? visualization_msgs::msg::Marker::ADD : visualization_msgs::msg::Marker::DELETE;
+    marker.pose.orientation.w = 1.0;
+    marker.pose.position.x = -0.025;
+    marker.pose.position.y = 0.0;
+    marker.pose.position.z = -0.010;
+    marker.scale.x = 0.05;
+    marker.scale.y = 0.05;
+    marker.scale.z = 0.05;
+    marker.color.r = 0.92f;
+    marker.color.g = 0.18f;
+    marker.color.b = 0.18f;
+    marker.color.a = 0.5f;
+    marker_array.markers.push_back(marker);
+  }
+
+  estimated_contact_markers_pub_->publish(marker_array);
 }
 
 }  // namespace real_robot_bridge

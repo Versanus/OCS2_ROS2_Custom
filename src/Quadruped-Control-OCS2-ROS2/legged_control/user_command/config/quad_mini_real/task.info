@@ -1,6 +1,17 @@
 centroidalModelType             0      // 0: FullCentroidalDynamics, 1: Single Rigid Body Dynamics
 stateEstimate true // true: use state estimate, false: use real state feedback from simulator
 
+estimatedContact
+{
+  filterAlpha                   0.80
+  filterAlphaRise               0.80
+  filterAlphaFall               0.65
+  onThreshold                   5.0
+  offThreshold                  3.3
+  onConfirmationSamples         1
+  offConfirmationSamples        3
+}
+
 legged_robot_interface
 {
   verbose                               false  // show the loaded parameters
@@ -192,8 +203,8 @@ Q
   (5,5)   100.0     ; L_x / robotMass
 
   ;; Base Pose: [position, orientation] ;;
-  (6,6)   1000.0   ; p_base_x
-  (7,7)   1000.0   ; p_base_y
+  (6,6)   500.0   ; p_base_x
+  (7,7)   500.0   ; p_base_y
   (8,8)   1000.0   ; p_base_z
   (9,9)   500.0    ; theta_base_z
   (10,10) 500.0    ; theta_base_y

@@ -36,6 +36,14 @@ def generate_launch_description():
         'simulation.info'
     ])
 
+    urdf_file = PathJoinSubstitution([
+        get_package_share_directory('mujoco_simulator'),
+        'models',
+        robot_type,
+        'urdf',
+        'robot.urdf'
+    ])
+
     task_file = PathJoinSubstitution([
         get_package_share_directory('user_command'),
         'config',
@@ -66,6 +74,7 @@ def generate_launch_description():
                 {'xmlFile': xml_file},
                 {'simulatorFile': simulator_file},
                 {'taskFile': task_file},
+                {'urdfFile': urdf_file},
                 {'contactSource': contact_source},
                 {'alwaysPublishStateTopic': True},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
@@ -81,6 +90,7 @@ def generate_launch_description():
             condition=IfCondition(PythonExpression(["'", backend, "' == 'real'"])),
             parameters=[
                 {'taskFile': task_file},
+                {'urdfFile': urdf_file},
                 {'contactSource': contact_source},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
                 {'debugStateLogging': ParameterValue(debug_state_logging, value_type=bool)},
