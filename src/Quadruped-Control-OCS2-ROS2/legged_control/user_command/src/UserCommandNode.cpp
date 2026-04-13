@@ -60,6 +60,22 @@ ocs2::vector_t parseNumericCommand(const std::string& input, size_t expectedSize
   return command;
 }
 
+ocs2::vector_t applyAxisScales(const ocs2::vector_t& command, const ocs2::vector_t& axisScales) {
+  if (command.size() != axisScales.size()) {
+    throw std::invalid_argument("Command axis scale size mismatch.");
+  }
+  return command.cwiseProduct(axisScales);
+}
+
+void applyAxisScalesToGoalCommand(ocs2::vector_t& goalCommand, const ocs2::vector_t& axisScales) {
+  if (goalCommand.size() < 4 || axisScales.size() < 3) {
+    throw std::invalid_argument("Goal command axis scale size mismatch.");
+  }
+  goalCommand(0) *= axisScales(0);
+  goalCommand(1) *= axisScales(1);
+  goalCommand(3) *= axisScales(2);
+}
+
 enum class UserCommandMode {
   Goal,
   Velocity
@@ -281,12 +297,13 @@ void updateTeleopAxisFromKeyboard(TeleopCommandState& teleopState, char key) {
 }
 
 ocs2::vector_t composeVelocityCommand(const TeleopCommandState& teleopState, ocs2::scalar_t linearSpeed,
-                                      ocs2::scalar_t lateralSpeed, ocs2::scalar_t yawSpeed) {
+                                      ocs2::scalar_t lateralSpeed, ocs2::scalar_t yawSpeed,
+                                      const ocs2::vector_t& commandAxisScales) {
   ocs2::vector_t velocityCommand = ocs2::vector_t::Zero(3);
   velocityCommand(0) = teleopState.forwardAxis * linearSpeed;
   velocityCommand(1) = teleopState.lateralAxis * lateralSpeed;
   velocityCommand(2) = teleopState.yawAxis * yawSpeed;
-  return velocityCommand;
+  return applyAxisScales(velocityCommand, commandAxisScales);
 }
 
 ocs2::vector_t stepTowardVelocityCommand(const ocs2::vector_t& currentVelocityCommand,
@@ -310,6 +327,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
                              ocs2::scalar_t initialLateralSpeed,
                              ocs2::scalar_t initialYawSpeed,
                              const ocs2::vector_t& accelerationLimits,
+                             const ocs2::vector_t& commandAxisScales,
                              const rclcpp::Node::SharedPtr& node,
                              const rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr& emergencyOverridePublisher,
                              ControlState& controlState) {
@@ -425,7 +443,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       } else if (isMotionKey(key)) {
         updateTeleopAxisFromKeyboard(teleopState, key);
         if (!teleopState.stabilizeModeActive) {
-          ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+          ocs2::vector_t velocityCommand =
+              composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed, commandAxisScales);
           if (activeGaitCommand == "stance") {
             bool wasClamped = false;
             velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
@@ -449,7 +468,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       } else if (key == 't') {
         teleopState.stabilizeModeActive = false;
         targetVelocityCommand =
-            composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+            composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed, commandAxisScales);
         if (targetVelocityCommand.isZero(1e-6)) {
           filteredVelocityCommand.setZero();
           teleopState.holdPositionActive = true;
@@ -533,7 +552,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       filteredVelocityCommand.setZero();
       teleopState.holdPositionActive = true;
     } else {
-      ocs2::vector_t velocityCommand = composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed);
+      ocs2::vector_t velocityCommand =
+          composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed, commandAxisScales);
 
       if (activeGaitCommand == "stance") {
         bool wasClamped = false;
@@ -604,6 +624,12 @@ int main(int argc, char* argv[]) {
               referenceInfoTree.get<double>("teleop.velocity_accel_limit_vy", 0.20),
               referenceInfoTree.get<double>("teleop.velocity_accel_limit_yaw", 0.60))
               .finished();
+  const ocs2::vector_t commandAxisScales =
+      (ocs2::vector_t(3)
+           << referenceInfoTree.get<double>("command_axis.x", 1.0),
+              referenceInfoTree.get<double>("command_axis.y", 1.0),
+              referenceInfoTree.get<double>("command_axis.yaw", 1.0))
+              .finished();
   TargetTrajectoriesKeyboardPublisher targetPoseCommand(node, robotName, relativeBaseLimit, referenceFile);
   auto emergencyOverridePublisher =
       node->create_publisher<std_msgs::msg::Int32>(robotName + "_emergency_override", 1);
@@ -634,7 +660,8 @@ int main(int argc, char* argv[]) {
       try {
         runVelocityKeyboardMode(targetPoseCommand, gaitCommand, currentMode, activeGaitCommand,
                                 initialLinearSpeed, initialLateralSpeed, initialYawSpeed,
-                                accelerationLimits, node, emergencyOverridePublisher, controlState);
+                                accelerationLimits, commandAxisScales, node,
+                                emergencyOverridePublisher, controlState);
       } catch (const std::exception& e) {
         RCLCPP_ERROR(node->get_logger(), "Velocity keyboard mode failed: %s", e.what());
         currentMode = UserCommandMode::Goal;
@@ -686,6 +713,7 @@ int main(int argc, char* argv[]) {
             continue;
           }
           ocs2::vector_t goalCommand = parseNumericCommand(commandValue, 4);
+          applyAxisScalesToGoalCommand(goalCommand, commandAxisScales);
           if (activeGaitCommand == "stance") {
             bool wasClamped = false;
             goalCommand = clampGoalCommandForStance(goalCommand, wasClamped);

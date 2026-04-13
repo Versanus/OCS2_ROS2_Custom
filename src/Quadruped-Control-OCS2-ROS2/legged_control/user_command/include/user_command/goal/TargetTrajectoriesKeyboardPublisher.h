@@ -33,6 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "legged_msgs/msg/mpc_target_trajectories.hpp"
 #include "legged_msgs/msg/mpc_observation.hpp"
+#include "nav_msgs/msg/path.hpp"
 #include <ocs2_core/Types.h>
 //#include <ocs2_ros_interfaces/command/TargetTrajectoriesRosPublisher.h>
 #include <ocs2_core/reference/TargetTrajectories.h>
@@ -105,6 +106,7 @@ class TargetTrajectoriesKeyboardPublisher {
   void publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose = true);
   void resetVelocityReference();
   ocs2::scalar_t computeVelocityPreviewDistance(const ocs2::vector_t& velocityCommand) const;
+  nav_msgs::msg::Path createTargetPathMsg(const ocs2::TargetTrajectories& targetTrajectories) const;
   ocs2::TargetTrajectories commandLineToTargetTrajectories(
     const ocs2::vector_t& commadLineTarget, const ocs2::SystemObservation& observation);
   ocs2::TargetTrajectories velocityCommandToTargetTrajectories(
@@ -117,6 +119,8 @@ class TargetTrajectoriesKeyboardPublisher {
   //     targetTrajectoriesPublisherPtr_;
   rclcpp::Publisher<legged_msgs::msg::MpcTargetTrajectories>::SharedPtr
       targetTrajectoriesPublisherPtr_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr
+      targetTrajectoryPathPublisherPtr_;
 
   rclcpp::Subscription<legged_msgs::msg::MpcObservation>::SharedPtr
       observationSubscriber_;
@@ -137,5 +141,6 @@ class TargetTrajectoriesKeyboardPublisher {
   bool velocityReferenceInitialized_ = false;
   ocs2::vector_t velocityReferencePose_ = ocs2::vector_t::Zero(6);
   ocs2::scalar_t lastVelocityReferenceTime_ = 0.0;
+  std::string targetPathFrameId_ = "odom";
   
 };

@@ -31,11 +31,70 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "user_command/goal/TargetTrajectoriesKeyboardPublisher.h"
 
 #include <algorithm>
+#include <cmath>
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <ocs2_core/misc/CommandLine.h>
 #include <ocs2_core/misc/Display.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 // #include <ocs2_ros_interfaces/common/RosMsgConversions.h>
+
+namespace {
+
+geometry_msgs::msg::Quaternion quaternionFromYawPitchRoll(
+    ocs2::scalar_t yaw, ocs2::scalar_t pitch, ocs2::scalar_t roll) {
+  const ocs2::scalar_t halfYaw = 0.5 * yaw;
+  const ocs2::scalar_t halfPitch = 0.5 * pitch;
+  const ocs2::scalar_t halfRoll = 0.5 * roll;
+
+  const ocs2::scalar_t cy = std::cos(halfYaw);
+  const ocs2::scalar_t sy = std::sin(halfYaw);
+  const ocs2::scalar_t cp = std::cos(halfPitch);
+  const ocs2::scalar_t sp = std::sin(halfPitch);
+  const ocs2::scalar_t cr = std::cos(halfRoll);
+  const ocs2::scalar_t sr = std::sin(halfRoll);
+
+  geometry_msgs::msg::Quaternion quaternion;
+  quaternion.w = cr * cp * cy + sr * sp * sy;
+  quaternion.x = sr * cp * cy - cr * sp * sy;
+  quaternion.y = cr * sp * cy + sr * cp * sy;
+  quaternion.z = cr * cp * sy - sr * sp * cy;
+  return quaternion;
+}
+
+ocs2::vector_t integrateBodyVelocityPose(const ocs2::vector_t& initialPose,
+                                         const ocs2::vector_t& velocityCommand,
+                                         ocs2::scalar_t duration,
+                                         ocs2::scalar_t desiredHeight) {
+  ocs2::vector_t integratedPose = initialPose;
+  const ocs2::scalar_t yaw0 = initialPose(3);
+  const ocs2::scalar_t vx = velocityCommand(0);
+  const ocs2::scalar_t vy = velocityCommand(1);
+  const ocs2::scalar_t yawRate = velocityCommand(2);
+
+  if (std::abs(yawRate) < 1e-6) {
+    const ocs2::scalar_t bodyDx = vx * duration;
+    const ocs2::scalar_t bodyDy = vy * duration;
+    integratedPose(0) += std::cos(yaw0) * bodyDx - std::sin(yaw0) * bodyDy;
+    integratedPose(1) += std::sin(yaw0) * bodyDx + std::cos(yaw0) * bodyDy;
+  } else {
+    const ocs2::scalar_t yaw1 = yaw0 + yawRate * duration;
+    integratedPose(0) +=
+        (vx / yawRate) * (std::sin(yaw1) - std::sin(yaw0)) +
+        (vy / yawRate) * (std::cos(yaw1) - std::cos(yaw0));
+    integratedPose(1) +=
+        (-vx / yawRate) * (std::cos(yaw1) - std::cos(yaw0)) +
+        (vy / yawRate) * (std::sin(yaw1) - std::sin(yaw0));
+  }
+
+  integratedPose(2) = desiredHeight;
+  integratedPose(3) = yaw0 + yawRate * duration;
+  integratedPose(4) = 0.0;
+  integratedPose(5) = 0.0;
+  return integratedPose;
+}
+
+}  // namespace
 
 
 
@@ -94,6 +153,8 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
   //     new TargetTrajectoriesRosPublisher(node, topicPrefix));
   targetTrajectoriesPublisherPtr_=
       node_->create_publisher<legged_msgs::msg::MpcTargetTrajectories>(topicPrefix + "_mpc_target", 1); 
+  targetTrajectoryPathPublisherPtr_ =
+      node_->create_publisher<nav_msgs::msg::Path>(topicPrefix + "_user_command_target_path", 1);
 
   // Initialize latestObservation_
   latestObservation_.state = Eigen::Matrix<ocs2::scalar_t, Eigen::Dynamic, 1>::Zero(24);
@@ -271,9 +332,37 @@ ocs2::SystemObservation TargetTrajectoriesKeyboardPublisher::getLatestObservatio
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+nav_msgs::msg::Path TargetTrajectoriesKeyboardPublisher::createTargetPathMsg(
+    const ocs2::TargetTrajectories& targetTrajectories) const {
+  nav_msgs::msg::Path pathMsg;
+  pathMsg.header.stamp = node_->now();
+  pathMsg.header.frame_id = targetPathFrameId_;
+  pathMsg.poses.reserve(targetTrajectories.stateTrajectory.size());
+
+  for (const auto& state : targetTrajectories.stateTrajectory) {
+    if (state.size() < 12) {
+      continue;
+    }
+
+    geometry_msgs::msg::PoseStamped poseStamped;
+    poseStamped.header = pathMsg.header;
+    poseStamped.pose.position.x = state(6);
+    poseStamped.pose.position.y = state(7);
+    poseStamped.pose.position.z = state(8);
+    poseStamped.pose.orientation = quaternionFromYawPitchRoll(state(9), state(10), state(11));
+    pathMsg.poses.push_back(poseStamped);
+  }
+
+  return pathMsg;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 void TargetTrajectoriesKeyboardPublisher::publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose) {
   const auto mpcTargetTrajectoriesMsg = createTargetTrajectoriesMsg(targetTrajectories);
   targetTrajectoriesPublisherPtr_->publish(mpcTargetTrajectoriesMsg);
+  targetTrajectoryPathPublisherPtr_->publish(createTargetPathMsg(targetTrajectories));
   if (verbose) {
     std::cout << "Target trajectory publish succeed!!!.\n";
     std::cout << std::endl;
@@ -384,49 +473,45 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
   }
 
   const ocs2::scalar_t dt = std::clamp(observation.time - lastVelocityReferenceTime_, ocs2::scalar_t(0.0), ocs2::scalar_t(0.1));
-  const ocs2::scalar_t referenceYaw = velocityReferencePose_(3);
-  const ocs2::scalar_t bodyDx = velocityCommand(0) * dt;
-  const ocs2::scalar_t bodyDy = velocityCommand(1) * dt;
-  const ocs2::scalar_t worldDx = std::cos(referenceYaw) * bodyDx - std::sin(referenceYaw) * bodyDy;
-  const ocs2::scalar_t worldDy = std::sin(referenceYaw) * bodyDx + std::cos(referenceYaw) * bodyDy;
-
-  velocityReferencePose_(0) += worldDx;
-  velocityReferencePose_(1) += worldDy;
-  velocityReferencePose_(2) = comHeight_;
-  velocityReferencePose_(3) += velocityCommand(2) * dt;
-  velocityReferencePose_(4) = 0.0;
-  velocityReferencePose_(5) = 0.0;
+  velocityReferencePose_ = integrateBodyVelocityPose(velocityReferencePose_, velocityCommand, dt, comHeight_);
   lastVelocityReferenceTime_ = observation.time;
 
   const ocs2::scalar_t velocityPreviewDistance =
       computeVelocityPreviewDistance(velocityCommand);
   const ocs2::scalar_t planarSpeed = velocityCommand.head<2>().norm();
   const ocs2::scalar_t yawSpeed = std::abs(velocityCommand(2));
+  const ocs2::scalar_t rawEquivalentProgressSpeed =
+      std::max(planarSpeed, ocs2::scalar_t(0.5) * yawSpeed);
   const ocs2::scalar_t equivalentProgressSpeed =
-      std::max({planarSpeed, ocs2::scalar_t(0.5) * yawSpeed, ocs2::scalar_t(1e-3)});
+      std::clamp(rawEquivalentProgressSpeed, velocityPreviewSpeedLow_, velocityPreviewSpeedHigh_);
   const ocs2::scalar_t velocityPreviewTime =
       std::max(velocityPreviewDistance / equivalentProgressSpeed, minGoalTrajectoryDuration_);
-  ocs2::vector_t targetPose = velocityReferencePose_;
-  const ocs2::scalar_t previewYaw = targetPose(3);
-  const ocs2::scalar_t previewBodyDx = velocityCommand(0) * velocityPreviewTime;
-  const ocs2::scalar_t previewBodyDy = velocityCommand(1) * velocityPreviewTime;
-  const ocs2::scalar_t previewWorldDx = std::cos(previewYaw) * previewBodyDx - std::sin(previewYaw) * previewBodyDy;
-  const ocs2::scalar_t previewWorldDy = std::sin(previewYaw) * previewBodyDx + std::cos(previewYaw) * previewBodyDy;
-  targetPose(0) += previewWorldDx;
-  targetPose(1) += previewWorldDy;
-  targetPose(2) = comHeight_;
-  targetPose(3) += velocityCommand(2) * velocityPreviewTime;
-  targetPose(4) = 0.0;
-  targetPose(5) = 0.0;
+  const int numTrajectorySamples =
+      std::clamp(static_cast<int>(std::ceil(velocityPreviewTime / 0.1)) + 1, 3, 25);
+  const ocs2::vector_t referenceStartPose = velocityReferencePose_;
 
-  const ocs2::scalar_t targetReachingTime = observation.time + velocityPreviewTime;
-  const ocs2::scalar_array_t timeTrajectory{observation.time, targetReachingTime};
+  ocs2::scalar_array_t timeTrajectory;
+  timeTrajectory.reserve(numTrajectorySamples);
+  ocs2::vector_array_t stateTrajectory;
+  stateTrajectory.reserve(numTrajectorySamples);
+  ocs2::vector_array_t inputTrajectory;
+  inputTrajectory.reserve(numTrajectorySamples);
 
-  ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));
-  stateTrajectory[0] << ocs2::vector_t::Zero(6), desiredPoseNow, defaultJointState_;
-  stateTrajectory[1] << ocs2::vector_t::Zero(6), targetPose, defaultJointState_;
+  for (int i = 0; i < numTrajectorySamples; ++i) {
+    const ocs2::scalar_t interpolation =
+        numTrajectorySamples == 1 ? 0.0 : static_cast<ocs2::scalar_t>(i) / static_cast<ocs2::scalar_t>(numTrajectorySamples - 1);
+    const ocs2::scalar_t sampleTimeOffset = interpolation * velocityPreviewTime;
+    const ocs2::scalar_t sampleTime = observation.time + sampleTimeOffset;
+    const ocs2::vector_t samplePose =
+        integrateBodyVelocityPose(referenceStartPose, velocityCommand, sampleTimeOffset, comHeight_);
 
-  const ocs2::vector_array_t inputTrajectory(2, ocs2::vector_t::Zero(observation.input.size()));
+    timeTrajectory.push_back(sampleTime);
+    ocs2::vector_t state = ocs2::vector_t::Zero(observation.state.size());
+    state << ocs2::vector_t::Zero(6), samplePose, defaultJointState_;
+    stateTrajectory.push_back(state);
+    inputTrajectory.emplace_back(ocs2::vector_t::Zero(observation.input.size()));
+  }
+
   return {timeTrajectory, stateTrajectory, inputTrajectory};
 }
 
