@@ -13,12 +13,9 @@ CONTACT_SOURCE=${3:-}
 DEBUG_STATE_LOGGING=${4:-false}
 RVIZ_AUTO=${5:-true}
 GUI_AUTO=${6:-true}
-RUN_ROLE=${7:-${QUAD_RUN_ROLE:-auto}}
-MPC_HOST=${8:-${QUAD_MPC_HOST:-auto}}
+RVIZ_SOURCE=${7:-auto}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-23}
 export ROS_DOMAIN_ID
-export QUAD_RUN_ROLE="$RUN_ROLE"
-export QUAD_MPC_HOST="$MPC_HOST"
 
 if [ -z "$CONTACT_SOURCE" ]; then
   if [ "$BACKEND" = "real" ]; then
@@ -83,47 +80,13 @@ case "$GUI_AUTO" in
     ;;
 esac
 
-case "$RUN_ROLE" in
-  auto|full|robot|viewer) ;;
+case "$RVIZ_SOURCE" in
+  auto|sim|hardware) ;;
   *)
-    echo "Invalid run role: $RUN_ROLE. Use 'auto', 'full', 'robot', or 'viewer'."
+    echo "Invalid RViz source: $RVIZ_SOURCE. Use 'auto', 'sim', or 'hardware'."
     exit 1
     ;;
 esac
-
-case "$MPC_HOST" in
-  auto|robot|viewer|full) ;;
-  *)
-    echo "Invalid MPC host: $MPC_HOST. Use 'auto', 'robot', 'viewer', or 'full'."
-    exit 1
-    ;;
-esac
-
-HOST_ARCH="$(uname -m)"
-RESOLVED_RUN_ROLE="$RUN_ROLE"
-if [ "$RESOLVED_RUN_ROLE" = "auto" ]; then
-  if [ "$BACKEND" = "real" ]; then
-    case "$HOST_ARCH" in
-      aarch64|arm64)
-        RESOLVED_RUN_ROLE="robot"
-        ;;
-      *)
-        RESOLVED_RUN_ROLE="viewer"
-        ;;
-    esac
-  else
-    RESOLVED_RUN_ROLE="full"
-  fi
-fi
-
-RESOLVED_MPC_HOST="$MPC_HOST"
-if [ "$RESOLVED_MPC_HOST" = "auto" ]; then
-  if [ "$BACKEND" = "real" ]; then
-    RESOLVED_MPC_HOST="robot"
-  else
-    RESOLVED_MPC_HOST="full"
-  fi
-fi
 
 echo "Launching robot: $ROBOT_TYPE"
 echo "Backend: $BACKEND"
@@ -131,10 +94,7 @@ echo "Contact source: $CONTACT_SOURCE"
 echo "Bridge debug state logging: $DEBUG_STATE_LOGGING"
 echo "Auto launch RViz: $RVIZ_AUTO"
 echo "Auto launch GUI: $GUI_AUTO"
-echo "Requested run role: $RUN_ROLE"
-echo "Resolved run role: $RESOLVED_RUN_ROLE"
-echo "Requested MPC host: $MPC_HOST"
-echo "Resolved MPC host: $RESOLVED_MPC_HOST"
+echo "RViz source: $RVIZ_SOURCE"
 echo "ROS domain ID: $ROS_DOMAIN_ID"
 
 tmux new-session -d -s $SESSION
@@ -146,12 +106,6 @@ tmux split-window -v -t $SESSION:0.1
 
 tmux select-layout -t $SESSION tiled
 
-run_note_pane () {
-  local target="$1"
-  local message="$2"
-  tmux respawn-pane -k -t "$target" "bash -lc 'printf \"%s\\n\" \"$message\"; bash'"
-}
-
 TASK_FILE="$WS/install/user_command/share/user_command/config/$ROBOT_TYPE/task.info"
 STATE_ESTIMATE=false
 
@@ -160,7 +114,13 @@ if [ -f "$TASK_FILE" ]; then
 fi
 
 # Always use the moving-base RViz launcher. The source behind it changes based on backend/data availability.
-if [ "$BACKEND" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
+if [ "$RVIZ_SOURCE" = "hardware" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_hardware_odom path_topic:=rviz_hardware_odom_path"
+elif [ "$RVIZ_SOURCE" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+elif [ "$RVIZ_SOURCE" = "sim" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+elif [ "$BACKEND" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
@@ -174,61 +134,49 @@ fi
 # -------------------------
 # Shared bridge backend
 # -------------------------
-if [ "$RESOLVED_RUN_ROLE" = "robot" ] || [ "$RESOLVED_RUN_ROLE" = "full" ]; then
-  tmux respawn-pane -k -t $SESSION:0.0 \
-  "bash -lc '
-  source /opt/ros/humble/setup.bash
-  source $WS/install/setup.bash
-  if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
-    source $WS/mujoco_env.sh
-  fi
-  ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING
-  '"
-else
-  run_note_pane "$SESSION:0.0" "Remote viewer role: bridge backend is expected to run on the robot/Orin."
+tmux respawn-pane -k -t $SESSION:0.0 \
+"bash -lc '
+source /opt/ros/humble/setup.bash
+source $WS/install/setup.bash
+if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
+  source $WS/mujoco_env.sh
 fi
+ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING
+'"
 
 
 # -------------------------
 # User command (interactive)
 # -------------------------
-if [ "$RESOLVED_RUN_ROLE" = "viewer" ] || [ "$RESOLVED_RUN_ROLE" = "full" ]; then
-  tmux respawn-pane -k -t $SESSION:0.1 \
-  "bash -lc '
-  source /opt/ros/humble/setup.bash
-  source $WS/install/setup.bash
+tmux respawn-pane -k -t $SESSION:0.1 \
+"bash -lc '
+source /opt/ros/humble/setup.bash
+source $WS/install/setup.bash
 
-  REF=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/reference.info
-  GAIT=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/gait.info
+REF=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/reference.info
+GAIT=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/gait.info
 
-  ros2 run user_command user_command_node \
-   --ros-args \
-   -p referenceFile:=\$REF \
-   -p gaitCommandFile:=\$GAIT
-  '"
-else
-  run_note_pane "$SESSION:0.1" "Robot role: user-command keyboard teleop is expected to run on the connected viewer PC."
-fi
+ros2 run user_command user_command_node \
+ --ros-args \
+ -p referenceFile:=\$REF \
+ -p gaitCommandFile:=\$GAIT
+'"
 
 
 # -------------------------
 # MPC controller
 # -------------------------
-if [ "$RESOLVED_RUN_ROLE" = "full" ] || [ "$RESOLVED_RUN_ROLE" = "$RESOLVED_MPC_HOST" ]; then
-  tmux respawn-pane -k -t $SESSION:0.2 \
-  "bash -lc '
-  source /opt/ros/humble/setup.bash
-  source $WS/install/setup.bash
-  echo Waiting for /start_control service...
-  until ros2 service type /start_control >/dev/null 2>&1; do
-    sleep 1
-  done
-  echo /start_control is ready. Launching MPC...
-  ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
-  '"
-else
-  run_note_pane "$SESSION:0.2" "MPC is expected to run on the '$RESOLVED_MPC_HOST' side for this session."
-fi
+tmux respawn-pane -k -t $SESSION:0.2 \
+"bash -lc '
+source /opt/ros/humble/setup.bash
+source $WS/install/setup.bash
+echo Waiting for /start_control service...
+until ros2 service type /start_control >/dev/null 2>&1; do
+  sleep 1
+done
+echo /start_control is ready. Launching MPC...
+ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
+'"
 
 
 # -------------------------
@@ -238,11 +186,14 @@ tmux respawn-pane -k -t $SESSION:0.3 \
 "bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
+if [ \"$BACKEND\" = \"real\" ]; then
+  ros2 run hardware_interface odom_relay.py --ros-args -p input_topic:=odom -p output_topic:=rviz_hardware_odom >/tmp/rviz_hardware_odom.log 2>&1 &
+fi
 echo Debug terminal ready
 bash
 '"
 
-if [ "$RVIZ_AUTO" = true ] && { [ "$RESOLVED_RUN_ROLE" = "viewer" ] || [ "$RESOLVED_RUN_ROLE" = "full" ]; }; then
+if [ "$RVIZ_AUTO" = true ]; then
   tmux new-window -t $SESSION -n rviz
   tmux respawn-pane -k -t $SESSION:1 \
   "bash -lc '
@@ -255,7 +206,7 @@ if [ "$RVIZ_AUTO" = true ] && { [ "$RESOLVED_RUN_ROLE" = "viewer" ] || [ "$RESOL
   '"
 fi
 
-if [ "$GUI_AUTO" = true ] && { [ "$RESOLVED_RUN_ROLE" = "viewer" ] || [ "$RESOLVED_RUN_ROLE" = "full" ]; }; then
+if [ "$GUI_AUTO" = true ]; then
   tmux new-window -t $SESSION -n gui
   tmux respawn-pane -k -t $SESSION:2 \
   "bash -lc '
@@ -267,14 +218,6 @@ fi
 
 # Focus the interactive user-command pane when attaching.
 tmux select-window -t $SESSION:0
-if [ "$RESOLVED_RUN_ROLE" = "robot" ]; then
-  if [ "$RESOLVED_MPC_HOST" = "robot" ]; then
-    tmux select-pane -t $SESSION:0.2
-  else
-    tmux select-pane -t $SESSION:0.0
-  fi
-else
-  tmux select-pane -t $SESSION:0.1
-fi
+tmux select-pane -t $SESSION:0.1
 
 tmux attach-session -t $SESSION

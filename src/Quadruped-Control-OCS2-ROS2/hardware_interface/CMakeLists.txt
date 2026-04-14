@@ -39,6 +39,7 @@ install(PROGRAMS
   scripts/mpc_digital_twin.py
   scripts/odom_to_tf.py
   scripts/odom_to_path.py
+  scripts/odom_relay.py
   scripts/sensor_to_joint_state.py
   scripts/state_to_odom.py
   scripts/sim2real.py

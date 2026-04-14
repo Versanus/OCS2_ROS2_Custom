@@ -1,716 +1,256 @@
-# Quadruped-Control-OCS2-ROS2
+# OCS2 Quad Mini
 
-A **complete quadruped robot simulation and control framework** built with:
+This repository contains the current `quad_mini_real` workflow for:
 
-* **ROS 2 (Humble Hawksbill)**
-* **OCS2 (Optimal Control for Switched Systems)**
-* **MuJoCo physics simulator**
-* **Nonlinear Model Predictive Control (NMPC)**
+- MuJoCo simulation
+- OCS2 MPC / WBC control
+- real-robot bridge
+- RViz visualization
+- sim-to-real command bridging
 
-This project provides a **fully reproducible quadruped locomotion environment** where a robot is simulated in **MuJoCo** and controlled in real time using **OCS2-based NMPC**.
+The main maintained path in this repo is now `quad_mini_real`.
 
-The entire system runs inside **Docker**, meaning you **do not need to manually install ROS2, MuJoCo, or OCS2**.
+## What Works Today
 
-Everything required to run the simulator is automatically configured.
+The project is set up around three practical use cases:
 
----
+1. Full local simulation with MuJoCo, MPC, RViz, and GUI
+2. Real robot stack on the Orin
+3. Viewer-only RViz + GUI on a connected PC
 
-# Table of Contents
+The launcher interface was simplified. The old `RUN_ROLE` / `MPC_HOST` arguments are no longer part of the active workflow.
 
-1. Overview
-2. System Architecture
-3. Features
-4. System Requirements
-5. Installation
-6. Building the Project
-7. Running the Simulation
-8. Selecting Different Robots
-9. Controlling the Robot
-10. Manual Launch Without `run.sh`
-11. ROS System Overview
-12. Project Structure
-13. Script Explanations
-14. Development Workflow
-15. Debugging Tools
-16. Troubleshooting
-17. References
-18. License
+## Requirements
 
----
+- Ubuntu 22.04
+- Docker
+- Docker Compose
+- X11 access if you want RViz or GUI windows
 
-# Overview
+Install Docker and verify:
 
-This repository simulates and controls quadruped robots using **centroidal Nonlinear Model Predictive Control (NMPC)**.
-
-The system integrates four major components:
-
-1. **MuJoCo Simulator** — simulates the robot physics
-2. **OCS2 Controller** — computes optimal control actions
-3. **ROS2 Infrastructure** — communication between modules
-4. **User Command Interface** — runtime robot control
-
-The NMPC controller continuously solves an **optimal control problem in real time**, allowing the robot to walk, trot, and move based on commands.
-
-The framework is designed for:
-
-* robotics research
-* legged locomotion experiments
-* optimal control research
-* robotics education
-* NMPC algorithm testing
-
----
-
-# System Architecture
-
-The system contains three main subsystems.
-
----
-
-## MuJoCo Simulator
-
-The MuJoCo simulator is responsible for:
-
-* simulating rigid body dynamics
-* modeling ground contacts
-* computing physics interactions
-* visualizing the robot
-* publishing robot state information to ROS2
-
----
-
-## NMPC Controller (OCS2)
-
-The controller:
-
-* uses **centroidal dynamics**
-* solves a **nonlinear optimal control problem**
-* runs continuously
-* outputs optimal joint torques
-
-The controller interacts with the simulator using ROS topics.
-
----
-
-## User Command Interface
-
-This module allows users to interact with the robot during simulation.
-
-Users can:
-
-* change gait
-* send movement commands
-* test controller behavior
-
----
-
-# Features
-
-* Real-time **Nonlinear Model Predictive Control**
-* **MuJoCo physics simulation**
-* Modular **ROS2 architecture**
-* Interactive command interface
-* Multiple quadruped robot models
-* Fully reproducible **Docker environment**
-* **tmux-based multi-terminal interface**
-* Easy robot switching
-* Development-friendly rebuild scripts
-
----
-
-# System Requirements
-
-Recommended system specifications:
-
-| Component | Requirement  |
-| --------- | ------------ |
-| OS        | Ubuntu 22.04 |
-| RAM       | 8 GB minimum |
-| Storage   | 15 GB free   |
-| GPU       | Optional     |
-
----
-
-# Installation
-
-## Step 1 — Install Docker
-
-Update your system:
-
-```
-sudo apt update
-```
-
-Install Docker:
-
-```
-sudo apt install docker.io docker-compose-plugin
-```
-
-Add your user to the docker group:
-
-```
-sudo usermod -aG docker $USER
-```
-
-Log out and log back in.
-
-Verify installation:
-
-```
+```bash
 docker --version
 docker compose version
 ```
 
----
+## Clone
 
-# Step 2 — Clone the Repository
-
-Clone the project:
-
-```
+```bash
 git clone https://github.com/Versanus/OCS2_quad_mini.git
-```
-
-Enter the directory:
-
-```
 cd OCS2_quad_mini
 ```
 
----
+## Build
 
-# Building the Project
+Build the full workspace with:
 
-Run the build script:
-
-```
+```bash
 ./build.sh
 ```
 
-This script automatically performs the following steps:
+This builds the Docker image and the ROS 2 workspace inside it.
 
-1. Enables X11 display access
-2. Clones required external repositories
-3. Builds qpOASES optimization library
-4. Builds the Docker image
-5. Compiles the ROS2 workspace inside Docker
+## Workspace Environment
 
-The build process may take **10–20 minutes**.
+To source the workspace in a normal terminal:
 
-When finished, you will see:
-
-```
-Build finished successfully
+```bash
+source ./source_ws.sh
 ```
 
----
+This exports:
 
-# Running the Simulation
-
-The easiest way to start the simulator is:
-
-```
-./run.sh
+```bash
+ROS_DOMAIN_ID=23
 ```
 
-This script automatically:
+by default.
 
-1. Starts the Docker container
-2. Loads ROS2 environment
-3. Loads MuJoCo libraries
-4. Launches tmux workspace
-5. Starts simulation nodes
+## Main Commands
 
----
+### Full launcher
 
-# tmux Simulation Interface
-
-The system launches **four terminals using tmux**.
-
-```
-+----------------------+----------------------+
-| Mujoco Simulator     | User Command Input   |
-+----------------------+----------------------+
-| NMPC Controller      | Debug Terminal       |
-+----------------------+----------------------+
+```bash
+./run.sh <robot> <backend> <contact_source> <debug> <rviz> <gui> <rviz_source>
 ```
 
-Terminal functions:
+For the current project, the main robot is:
 
-| Terminal         | Purpose                 |
-| ---------------- | ----------------------- |
-| Mujoco Simulator | runs physics simulation |
-| User Command     | send commands to robot  |
-| NMPC Controller  | runs optimal controller |
-| Debug Terminal   | debugging ROS tools     |
-
----
-
-# Selecting Different Robots
-
-Supported robots:
-
-```
-a1
-b1
-b2
-quad_mini
+```bash
+quad_mini_real
 ```
 
-Run a specific robot:
+Arguments:
 
-```
-./run.sh quad_mini
-```
+- `backend`: `sim` or `real`
+- `contact_source`: `mujoco` or `estimated`
+- `debug`: `debug` or `nodebug`
+- `rviz`: `rviz` or `norviz`
+- `gui`: `gui` or `nogui`
+- `rviz_source`: `auto`, `sim`, or `hardware`
 
-Default robot:
+### Viewer-only launcher
 
-```
-b2
-```
-
----
-
-# Controlling the Robot
-
-Commands are entered in the **User Command terminal**.
-
----
-
-## User Command Modes
-
-The command interface supports two main modes:
-
-```
-mode:goal
-mode:vel
+```bash
+./run_real_viewer.sh quad_mini_real
 ```
 
-* `mode:goal` is used for relative pose commands such as `goal:x y z yaw`
-* `mode:vel` enters keyboard teleoperation for gait and velocity control
+This opens:
 
-On startup, the system begins in a latched emergency hold state.
-To enable controller-side stance from keyboard teleop:
+- RViz
+- hardware GUI
+- debug shell
 
-```
-mode:vel
-press 1
-```
+and waits for real-hardware topics. It does not launch MuJoCo or MPC.
 
----
+## Common Workflows
 
-## List Available Gaits
+### 1. Full local simulation
 
-```
-gait:list
+```bash
+./run.sh quad_mini_real sim estimated debug rviz gui
 ```
 
-Example output:
+This starts:
 
-```
-standing
-walking
-flying_trot
-dynamic_walk
-```
+- bridge
+- user command
+- MPC
+- debug terminal
+- RViz
+- GUI
 
----
+### 2. Real robot stack on the Orin
 
-## Change Robot Gait
+Run this on the Orin:
 
-Example:
-
-```
-gait:flying_trot
+```bash
+./run.sh quad_mini_real real estimated debug norviz nogui
 ```
 
----
+This keeps the Orin focused on the control stack and avoids opening viewer windows there.
 
-## Send Motion Commands
+### 3. Viewer on the connected PC
 
-Command format:
+Run this on the connected PC:
 
-```
-goal:x y z yaw
-```
-
-Example:
-
-```
-goal:1 0 0 0
+```bash
+./run_real_viewer.sh quad_mini_real
 ```
 
-Meaning:
+This waits for:
 
-| Parameter | Description     |
-| --------- | --------------- |
-| x         | forward motion  |
-| y         | sideways motion |
-| z         | body height     |
-| yaw       | robot rotation  |
+- `/htdw_joint_state`
+- `/odom`
 
----
+Then it launches moving-base RViz and the GUI.
 
-## Velocity Keyboard Teleop
+### 4. Show real hardware in RViz while local sim is running
 
-Enter:
+If you are running local sim but want RViz to visualize the real robot instead of MuJoCo:
 
-```
-mode:vel
+```bash
+./run.sh quad_mini_real sim estimated debug rviz gui hardware
 ```
 
-Velocity mode uses keyboard teleoperation with filtered velocity commands.
+The last `hardware` argument switches RViz to the hardware-side topics.
 
-Main keys:
+## Recommended Daily Flow
 
-| Key | Action |
-| --- | ------ |
-| `w/s` | forward / backward |
-| `a/d` | lateral left / right |
-| `q/e` | yaw left / right |
-| `1` | stance |
-| `2` | standing_trot |
-| `3` | flying_trot |
-| `4` | dynamic_walk |
-| `5` | pawup |
-| `6` | fast_flying_trot |
-| `+/-` | increase / decrease teleop speed |
-| `o/l` | raise / lower desired body height |
-| `y` | stabilize in place using current state |
-| `t` | return from stabilize mode to walking |
-| `c` | soft switch to stance |
-| `g` | exit velocity mode back to `mode:goal` |
+### Orin
 
-Notes:
-
-* velocity commands are rate-limited before being sent to MPC
-* teleop startup speeds and acceleration limits are loaded from `reference.info`
-* look-ahead preview distance is also configured from `reference.info`
-
----
-
-## Emergency Override Keys
-
-Inside `mode:vel`, the emergency override flow is:
-
-| Key | Action |
-| --- | ------ |
-| `space` | latched emergency hold at current joint positions |
-| `0` | move to `defaultJointState` recovery pose |
-| `1` | clear emergency override and return to MPC stance |
-
-Important behavior:
-
-* `0` only works while emergency override is already active
-* `1` does not jump directly back to locomotion; it returns through stance
-* emergency override is implemented in `motion_control`, not only in the UI
-
-Typical recovery sequence:
-
-1. Press `space`
-2. Lift or stabilize the robot
-3. Press `0` to move to recovery pose
-4. Place the robot back down
-5. Press `1` to return to MPC stance
-
----
-
-## MuJoCo Window Shortcuts
-
-The MuJoCo window also has direct keyboard shortcuts:
-
-| Key | Action |
-| --- | ------ |
-| `h` | toggle random base disturbances on / off |
-| `r` | reposition the robot base back to the start pose |
-
-Disturbances are impulse-based and are configured in each robot's `simulation.info`.
-
----
-
-# Running Without `run.sh`
-
-Advanced users may want to run everything manually.
-
-First start the container:
-
-```
-docker compose run --rm quad_ocs2 bash
+```bash
+./run.sh quad_mini_real real estimated debug norviz nogui
 ```
 
-Inside the container load the environment:
+### Connected PC
 
-```
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-source mujoco_env.sh
+```bash
+./run_real_viewer.sh quad_mini_real
 ```
 
----
+This is the clean split for real-robot use.
 
-# Start MuJoCo Simulator
+## sim2real Bridge
 
-```
-ros2 launch launch_simulation mujoco.launch.py robot_type:=b1
-```
+The current `sim2real.py` bridge:
 
----
+- subscribes to `joint_control_data`
+- publishes to `joint_cmd`
 
-# Start User Command Node
+The output topic is parameterized, so it can be changed if your hardware side expects a different command topic.
 
-```
-REF=$(ros2 pkg prefix user_command)/share/user_command/config/b1/reference.info
-GAIT=$(ros2 pkg prefix user_command)/share/user_command/config/b1/gait.info
+Relevant file:
 
-ros2 run user_command user_command_node \
- --ros-args \
- -p referenceFile:=$REF \
- -p gaitCommandFile:=$GAIT
-```
+- `src/Quadruped-Control-OCS2-ROS2/hardware_interface/scripts/sim2real.py`
 
----
+## Important Topics
 
-# Start MPC Controller
+Main topics in the current workflow:
 
-```
-ros2 launch launch_simulation mpc.launch.py robot_type:=b1
-```
+- `/htdw_joint_state`
+- `/htdw_joint_cmd`
+- `/imu/data`
+- `/odom`
+- `/simulator_sensor_data`
+- `/simulator_state_data`
+- `/joint_control_data`
 
----
+Useful checks:
 
-# Checking ROS Nodes
-
-Verify the system is running:
-
-```
-ros2 node list
-```
-
-Expected output:
-
-```
-/mujoco_simulator
-/user_command_node
-/legged_robot_sqp_mpc
-```
-
----
-
-# Project Structure
-
-```
-OCS2_quad_mini
-│
-├── docker
-│
-├── src
-│   ├── motion_control
-│   ├── mujoco_simulator
-│   ├── user_command
-│   └── launch_simulation
-│
-├── tools
-│
-├── build.sh
-├── run.sh
-├── rebuild_quick.sh
-├── docker-compose.yml
-│
-└── README.md
-```
-
----
-
-# Script Explanations
-
-## build.sh
-
-Responsible for building the entire environment.
-
-Steps:
-
-* clones dependencies
-* builds qpOASES
-* builds Docker image
-* compiles ROS workspace
-
-Run once during installation.
-
-```
-./build.sh
-```
-
----
-
-## run.sh
-
-Main simulation launcher.
-
-Handles:
-
-* Docker startup
-* environment setup
-* tmux launch
-
-```
-./run.sh
-```
-
----
-
-## rebuild_quick.sh
-
-Used during development.
-
-Rebuilds only selected packages:
-
-```
-mujoco_simulator
-user_command
-launch_simulation
-```
-
-Run:
-
-```
-./rebuild_quick.sh
-```
-
----
-
-## tools/run_tmux.sh
-
-Creates tmux environment and launches nodes.
-
-```
-./tools/run_tmux.sh
-```
-
----
-
-# Development Workflow
-
-Typical workflow:
-
-Initial setup:
-
-```
-git clone <repo>
-cd <repo>
-./build.sh
-```
-
-Run simulation:
-
-```
-./run.sh
-```
-
-Rebuild after code changes:
-
-```
-./rebuild_quick.sh
-```
-
----
-
-# Debugging Tools
-
-List nodes:
-
-```
-ros2 node list
-```
-
-List topics:
-
-```
+```bash
 ros2 topic list
+ros2 topic hz /htdw_joint_state
+ros2 topic hz /odom
+ros2 topic echo /simulator_sensor_data
 ```
 
-Inspect robot state:
+## Root Scripts
 
-```
-ros2 topic echo /legged_robot_mpc_observation
-```
+### Active scripts
 
-Inspect MPC output:
+- `build.sh`
+- `run.sh`
+- `run_real_viewer.sh`
+- `source_ws.sh`
+- `rebuild_quick.sh`
+- `rebuild_user_command.sh`
 
-```
-ros2 topic echo /legged_robot_mpc_policy
-```
+### Optional / specialized scripts
 
----
+- `mujoco_env.sh`
+  Used by the launch and rebuild flow for MuJoCo library setup.
 
-# Resetting the Simulation
+- `git-gp`
+  Small local helper that does `git add -A`, commit, and push. Not part of runtime.
 
-Stop tmux sessions:
+### Legacy / one-leg-only scripts
 
-```
-tmux kill-server
-```
+These are not part of the main `quad_mini_real` workflow:
 
-Restart:
+- `rebuild_one_leg.sh`
+- `run_one_leg.sh`
+- `run_one_leg_rviz.sh`
 
-```
-./run.sh
-```
+They belong to:
 
----
+- `src/one_leg_pinocchio_control/`
 
-# Troubleshooting
+If you do not use the one-leg controller anymore, these are the main cleanup candidates.
 
-## MuJoCo window does not appear
+## Reports
 
-Enable X11:
+There are two LaTeX reports in the repo:
 
-```
-xhost +local:docker
-```
+- `quad_mini_usage_report.tex`
+  Short practical usage guide
 
-Restart simulation.
+- `quad_mini_detailed_report.tex`
+  Longer technical report
 
----
+## Notes
 
-## ROS nodes missing
-
-Check nodes:
-
-```
-ros2 node list
-```
-
-Expected:
-
-```
-/mujoco_simulator
-/user_command_node
-/legged_robot_sqp_mpc
-```
-
----
-
-# References
-
-OCS2:
-
-https://github.com/leggedrobotics/ocs2
-
-Legged Control:
-
-https://github.com/qiayuanl/legged_control
-
-OCS2 ROS2:
-
-https://github.com/zhengxiang94/ocs2_ros2
-
----
-
-# License
-
-This project inherits licenses from the upstream repositories used in this work.
-
-Please refer to the original repositories for licensing information.
-
----
+- `quad_mini_real` is the intended maintained path
+- `run.sh` always runs MPC where the command is launched
+- `run_real_viewer.sh` is the clean viewer-only command for the connected PC

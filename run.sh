@@ -15,12 +15,9 @@ CONTACT_SOURCE="${3:-}"
 DEBUG_STATE_LOGGING="${4:-}"
 RVIZ_AUTO="${5:-}"
 GUI_AUTO="${6:-}"
-RUN_ROLE="${7:-${QUAD_RUN_ROLE:-auto}}"
-MPC_HOST="${8:-${QUAD_MPC_HOST:-auto}}"
+RVIZ_SOURCE="${7:-auto}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
-export QUAD_RUN_ROLE="${RUN_ROLE}"
-export QUAD_MPC_HOST="${MPC_HOST}"
 
 if [ "${CONTACT_SOURCE}" = "debug" ] || [ "${CONTACT_SOURCE}" = "nodebug" ] || \
    [ "${CONTACT_SOURCE}" = "true" ] || [ "${CONTACT_SOURCE}" = "false" ]; then
@@ -91,20 +88,11 @@ case "${GUI_AUTO}" in
         ;;
 esac
 
-case "${RUN_ROLE}" in
-    auto|full|robot|viewer)
+case "${RVIZ_SOURCE}" in
+    auto|sim|hardware)
         ;;
     *)
-        echo "Invalid run role: ${RUN_ROLE}. Use 'auto', 'full', 'robot', or 'viewer'."
-        exit 1
-        ;;
-esac
-
-case "${MPC_HOST}" in
-    auto|robot|viewer|full)
-        ;;
-    *)
-        echo "Invalid MPC host: ${MPC_HOST}. Use 'auto', 'robot', 'viewer', or 'full'."
+        echo "Invalid RViz source: ${RVIZ_SOURCE}. Use 'auto', 'sim', or 'hardware'."
         exit 1
         ;;
 esac
@@ -127,9 +115,9 @@ if [ -f "/.dockerenv" ]; then
     fi
 
     echo "Environment loaded ✅"
-    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} run_role=${RUN_ROLE} mpc_host=${MPC_HOST} ros_domain_id=${ROS_DOMAIN_ID}..."
+    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} ros_domain_id=${ROS_DOMAIN_ID}..."
 
-    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RUN_ROLE}" "${MPC_HOST}"
+    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
 
 else
     echo "Running on host system"
@@ -141,5 +129,5 @@ else
 
     echo "Attaching to container..."
 
-    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" -e QUAD_RUN_ROLE="${RUN_ROLE}" -e QUAD_MPC_HOST="${MPC_HOST}" $(docker compose ps -q quad_ocs2) ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RUN_ROLE}" "${MPC_HOST}"
+    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" $(docker compose ps -q quad_ocs2) ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
 fi

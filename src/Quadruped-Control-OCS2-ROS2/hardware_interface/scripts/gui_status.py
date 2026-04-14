@@ -49,6 +49,9 @@ class MotorStatusGUI(Node):
         self.gui_thread = None
         self.gui_running = True
         self.gui_initialized = False  # GUI başlatıldı mı kontrolü
+        self.calibration_armed = False
+        self.calibration_arm_timeout_ms = 5000
+        self.calibration_reset_job = None
 
         self.create_subscription(String, 'joint_state_errors', self.joint_error_callback, 10)
         self.create_subscription(DiagnosticArray, 'htdw_status', self.motor_status_callback, 10)
@@ -157,17 +160,70 @@ class MotorStatusGUI(Node):
     # ------------------------------------------------------------
     # CALIBRATION BUTTON FUNCTION
     # ------------------------------------------------------------
+    def reset_calibration_button(self):
+        """Return calibration UI to its safe default state."""
+        self.calibration_armed = False
+        self.calibration_reset_job = None
+
+        if self.gui_initialized and self.calibration_button.winfo_exists():
+            self.calibration_button.config(
+                text="LEG CALIBRATION",
+                state="normal",
+                bg=self.COLORS['calibration_blue'],
+                activebackground="#0077B6"
+            )
+
+        if self.gui_initialized and self.calibration_info_label.winfo_exists():
+            self.calibration_info_label.config(
+                text="Requires two clicks within 5 seconds to avoid accidental calibration"
+            )
+
+    def arm_calibration(self):
+        """Require a second confirmation click before sending calibration."""
+        self.calibration_armed = True
+
+        if self.calibration_reset_job is not None:
+            self.root.after_cancel(self.calibration_reset_job)
+
+        self.calibration_button.config(
+            text="CLICK AGAIN TO CALIBRATE",
+            bg=self.COLORS['warning_orange'],
+            activebackground="#CC7A00"
+        )
+        self.calibration_info_label.config(
+            text="Calibration is armed. Click again within 5 seconds to send the command."
+        )
+        self.add_log("Calibration arm enabled. Waiting for confirmation click.")
+        self.calibration_reset_job = self.root.after(
+            self.calibration_arm_timeout_ms, self.reset_calibration_button)
+
     def send_calibration_command(self):
         """Send calibration command"""
+        if not self.calibration_armed:
+            self.arm_calibration()
+            return
+
+        if self.calibration_reset_job is not None:
+            self.root.after_cancel(self.calibration_reset_job)
+            self.calibration_reset_job = None
+
+        self.calibration_armed = False
         msg = Bool()
         msg.data = True
         self.calibration_publisher_.publish(msg)
         self.add_log("Leg calibration komutu gönderildi: True")
         
         # Buton durumunu güncelle
-        self.calibration_button.config(text="CALIBRATING...", state="disabled")
-        self.root.after(2000, lambda: self.calibration_button.config(
-            text="LEG CALIBRATION", state="normal"))
+        self.calibration_button.config(
+            text="CALIBRATING...",
+            state="disabled",
+            bg=self.COLORS['inactive_red'],
+            activebackground=self.COLORS['inactive_red']
+        )
+        self.calibration_info_label.config(
+            text="Calibration command sent. Button will return to safe mode shortly."
+        )
+        self.root.after(2000, self.reset_calibration_button)
 
     # ------------------------------------------------------------
     # GUI START
@@ -298,12 +354,16 @@ class MotorStatusGUI(Node):
         self.calibration_button.pack(padx=25, pady=20)
 
         # Buton açıklaması
-        calibration_info = tk.Label(calibration_frame,
-                                   text="Starts the calibration procedure for the robotic legs",
-                                   font=("Arial", 10),
-                                   bg=self.COLORS['panel_bg'],
-                                   fg=self.COLORS['text_muted'])
-        calibration_info.pack(pady=(0, 8))
+        self.calibration_info_label = tk.Label(
+            calibration_frame,
+            text="Requires two clicks within 5 seconds to avoid accidental calibration",
+            font=("Arial", 10),
+            bg=self.COLORS['panel_bg'],
+            fg=self.COLORS['text_muted'],
+            wraplength=360,
+            justify="center"
+        )
+        self.calibration_info_label.pack(pady=(0, 8))
 
         # Joint Hataları
         error_title = tk.Label(right_panel, text="JOINT ERROR CONTROL", 
