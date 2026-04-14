@@ -41,6 +41,38 @@ git clone https://github.com/Versanus/OCS2_quad_mini.git
 cd OCS2_quad_mini
 ```
 
+## New PC Quickstart
+
+On a fresh Ubuntu 22.04 machine:
+
+```bash
+sudo apt update
+sudo apt install -y git x11-xserver-utils
+```
+
+Then install Docker and Docker Compose plugin, make sure Docker is running, and verify:
+
+```bash
+docker --version
+docker compose version
+docker info
+```
+
+Then clone and build:
+
+```bash
+git clone https://github.com/Versanus/OCS2_quad_mini.git
+cd OCS2_quad_mini
+./build.sh
+```
+
+After the build:
+
+```bash
+source ./source_ws.sh
+./run.sh quad_mini_real sim estimated debug rviz gui
+```
+
 ## Build
 
 Build the full workspace with:

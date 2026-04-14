@@ -10,6 +10,27 @@ SRC_DIR="$WS_DIR/src/Quadruped-Control-OCS2-ROS2"
 MUJOCO_LIB="$SRC_DIR/mujoco/mujoco-3.2.2/lib"
 QPOASES_DIR="$SRC_DIR/qpOASES-master"
 
+require_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "ERROR: Required command '$1' is not installed or not on PATH."
+        exit 1
+    fi
+}
+
+echo "[0/6] Checking host prerequisites..."
+require_command git
+require_command docker
+if ! docker compose version >/dev/null 2>&1; then
+    echo "ERROR: 'docker compose' is not available."
+    echo "Install Docker Compose plugin before running build.sh."
+    exit 1
+fi
+if ! docker info >/dev/null 2>&1; then
+    echo "ERROR: Docker daemon is not reachable."
+    echo "Start Docker and make sure your user can run docker commands."
+    exit 1
+fi
+
 echo "[1/6] Enable X11"
 xhost +local:docker > /dev/null 2>&1 || true
 
@@ -131,5 +152,7 @@ echo "====================================="
 echo "Build finished successfully"
 echo "====================================="
 echo ""
-echo "Run the simulator with:"
-echo "./run.sh"
+echo "Typical commands:"
+echo "./run.sh quad_mini_real sim estimated debug rviz gui"
+echo "./run.sh quad_mini_real real estimated debug norviz nogui"
+echo "./run_real_viewer.sh quad_mini_real"

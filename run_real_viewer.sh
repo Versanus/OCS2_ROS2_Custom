@@ -7,6 +7,13 @@ ROBOT_TYPE="${1:-quad_mini_real}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 
+require_host_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "ERROR: Required command '$1' is not installed or not on PATH."
+        exit 1
+    fi
+}
+
 if [ -f "/.dockerenv" ]; then
     echo "Running real-hardware viewer inside Docker"
 
@@ -22,6 +29,16 @@ if [ -f "/.dockerenv" ]; then
 else
     echo "Running real-hardware viewer on host"
     echo "Starting Docker container..."
+
+    require_host_command docker
+    if ! docker compose version >/dev/null 2>&1; then
+        echo "ERROR: 'docker compose' is not available."
+        exit 1
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        echo "ERROR: Docker daemon is not reachable."
+        exit 1
+    fi
 
     xhost +local:docker >/dev/null 2>&1 || true
     docker compose up -d

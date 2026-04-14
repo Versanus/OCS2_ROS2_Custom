@@ -20,6 +20,13 @@ ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 HOST_UID="${HOST_UID:-$(id -u)}"
 HOST_GID="${HOST_GID:-$(id -g)}"
+
+require_host_command() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "ERROR: Required command '$1' is not installed or not on PATH."
+        exit 1
+    fi
+}
 if [ -z "${INPUT_GID:-}" ]; then
     if getent group input >/dev/null 2>&1; then
         INPUT_GID="$(getent group input | cut -d: -f3)"
@@ -134,6 +141,16 @@ if [ -f "/.dockerenv" ]; then
 else
     echo "Running on host system"
     echo "Starting Docker container..."
+
+    require_host_command docker
+    if ! docker compose version >/dev/null 2>&1; then
+        echo "ERROR: 'docker compose' is not available."
+        exit 1
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        echo "ERROR: Docker daemon is not reachable."
+        exit 1
+    fi
 
     xhost +local:docker >/dev/null 2>&1 || true
 
