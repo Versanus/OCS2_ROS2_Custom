@@ -35,11 +35,10 @@ std::chrono::nanoseconds periodFromHz(double hz) {
 
 BridgeNodeBase::BridgeNodeBase(const std::string& node_name, const rclcpp::NodeOptions& options)
     : rclcpp::Node(node_name, options),
-      contact_estimator_(ContactEstimator::Config{
-          declare_parameter<double>("estimatedContactFilterAlpha", 0.8),
-          declare_parameter<double>("estimatedContactOnThreshold", 4.0),
-          declare_parameter<double>("estimatedContactOffThreshold", 3.0),
-      }) {
+      contact_estimator_() {
+  declare_parameter<double>("estimatedContactFilterAlpha", 0.8);
+  declare_parameter<double>("estimatedContactOnThreshold", 4.0);
+  declare_parameter<double>("estimatedContactOffThreshold", 3.0);
   declare_parameter<std::string>("taskFile", "");
   declare_parameter<std::string>("urdfFile", "");
   declare_parameter<std::string>("contactSource", "mujoco");
@@ -64,6 +63,11 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
   boost::property_tree::ptree task_info_tree;
   boost::property_tree::read_info(task_file, task_info_tree);
   ContactEstimator::Config estimated_contact_config;
+  estimated_contact_config.filter_alpha = get_parameter("estimatedContactFilterAlpha").as_double();
+  estimated_contact_config.filter_alpha_rising = estimated_contact_config.filter_alpha;
+  estimated_contact_config.filter_alpha_falling = estimated_contact_config.filter_alpha;
+  estimated_contact_config.on_threshold = get_parameter("estimatedContactOnThreshold").as_double();
+  estimated_contact_config.off_threshold = get_parameter("estimatedContactOffThreshold").as_double();
   estimated_contact_config.filter_alpha = task_info_tree.get<double>(
       "estimatedContact.filterAlpha", estimated_contact_config.filter_alpha);
   estimated_contact_config.filter_alpha_rising = task_info_tree.get<double>(
@@ -78,6 +82,14 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
       "estimatedContact.onConfirmationSamples", estimated_contact_config.on_confirmation_samples);
   estimated_contact_config.off_confirmation_samples = task_info_tree.get<int>(
       "estimatedContact.offConfirmationSamples", estimated_contact_config.off_confirmation_samples);
+  estimated_contact_config.kinematic_max_height = task_info_tree.get<double>(
+      "estimatedContact.kinematicMaxHeight", estimated_contact_config.kinematic_max_height);
+  estimated_contact_config.kinematic_max_vertical_speed = task_info_tree.get<double>(
+      "estimatedContact.kinematicMaxVerticalSpeed", estimated_contact_config.kinematic_max_vertical_speed);
+  estimated_contact_config.kinematic_min_liftoff_vertical_speed = task_info_tree.get<double>(
+      "estimatedContact.kinematicMinLiftoffVerticalSpeed", estimated_contact_config.kinematic_min_liftoff_vertical_speed);
+  estimated_contact_config.strong_force_margin = task_info_tree.get<double>(
+      "estimatedContact.strongForceMargin", estimated_contact_config.strong_force_margin);
   contact_estimator_.setConfig(estimated_contact_config);
 
   ocs2::loadData::loadCppDataType(task_file, "stateEstimate", state_estimate_);
@@ -207,7 +219,9 @@ void BridgeNodeBase::applyConfiguredContactSource(BackendData& data) {
   const auto& joint_velocities =
       data.sensor.joint_velocity_values.empty() ? data.state.joint_velocity_values : data.sensor.joint_velocity_values;
   const auto estimated_contact_flags = contact_estimator_.update(
-      joint_positions, joint_velocities, data.state.joint_torque_values);
+      joint_positions, joint_velocities, data.state.joint_torque_values,
+      data.state.base_pose_values, data.state.base_quat_values,
+      data.state.base_angvel_values, data.state.base_linvel_values);
   overwriteContactFlags(data, estimated_contact_flags);
 }
 

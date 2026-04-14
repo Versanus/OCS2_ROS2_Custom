@@ -20,6 +20,10 @@ class ContactEstimator {
     double off_threshold = 3.0;
     int on_confirmation_samples = 1;
     int off_confirmation_samples = 1;
+    double kinematic_max_height = 0.04;
+    double kinematic_max_vertical_speed = 0.45;
+    double kinematic_min_liftoff_vertical_speed = 0.08;
+    double strong_force_margin = 1.5;
   };
 
   ContactEstimator();
@@ -29,11 +33,19 @@ class ContactEstimator {
   void initialize(const std::string& urdf_file);
   std::array<bool, 4> update(const std::vector<double>& joint_positions,
                              const std::vector<double>& joint_velocities,
-                             const std::vector<double>& joint_torques);
+                             const std::vector<double>& joint_torques,
+                             const std::vector<double>& base_pose,
+                             const std::vector<double>& base_quat,
+                             const std::vector<double>& base_angvel,
+                             const std::vector<double>& base_linvel);
   const std::array<Eigen::Vector3d, 4>& getLastFootPositionsInBaseFrame() const { return last_foot_positions_in_base_frame_; }
 
  private:
   std::array<bool, 4> updateFromTorqueNorm(const std::vector<double>& joint_torques);
+  double rejectOutlierAndGetMedian(std::size_t contact_index, double sample);
+  void updateContactFlag(std::size_t contact_index, double filtered_normal_force,
+                         bool kinematic_contact_hint, bool kinematic_release_hint,
+                         bool strong_force);
 
   Config config_;
   bool initialized_{false};
@@ -45,6 +57,9 @@ class ContactEstimator {
   std::array<bool, 4> contact_flags_{};
   std::array<int, 4> on_confirmation_counts_{};
   std::array<int, 4> off_confirmation_counts_{};
+  std::array<std::array<double, 3>, 4> raw_normal_force_history_{};
+  std::array<std::size_t, 4> raw_normal_force_history_sizes_{};
+  std::array<std::size_t, 4> raw_normal_force_history_indices_{};
   std::array<Eigen::Vector3d, 4> last_foot_positions_in_base_frame_{};
 };
 

@@ -3,13 +3,17 @@ stateEstimate true // true: use state estimate, false: use real state feedback f
 
 estimatedContact
 {
-  filterAlpha                   0.80
-  filterAlphaRise               0.80
-  filterAlphaFall               0.65
-  onThreshold                   5.0
-  offThreshold                  3.3
-  onConfirmationSamples         1
-  offConfirmationSamples        3
+  filterAlpha                   0.85
+  filterAlphaRise               0.90
+  filterAlphaFall               0.70
+  onThreshold                   5.5
+  offThreshold                  2.5
+  onConfirmationSamples         2
+  offConfirmationSamples        4
+  kinematicMaxHeight            0.04
+  kinematicMaxVerticalSpeed     0.50
+  kinematicMinLiftoffVerticalSpeed 0.15
+  strongForceMargin             1.5
 }
 
 legged_robot_interface
