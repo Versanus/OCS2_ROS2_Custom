@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 
 #include <boost/property_tree/info_parser.hpp>
@@ -211,7 +212,7 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
         return;
     }
 
-    if (key == GLFW_KEY_H) {
+    if (key == GLFW_KEY_D) {
         if (instance_->disturbance_body_id_ < 0) {
             RCLCPP_WARN(instance_->node_->get_logger(), "Cannot toggle disturbances because the base body was not found.");
             return;
@@ -223,7 +224,7 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
             instance_->next_disturbance_update_time_ =
                 instance_->data_ ? instance_->data_->time : 0.0;
             RCLCPP_INFO(instance_->node_->get_logger(),
-                        "Random base impulses enabled. Press 'h' again to turn them off.");
+                        "Random base impulses enabled. Press 'd' again to turn them off.");
         } else {
             instance_->clearDisturbanceForce();
             RCLCPP_INFO(instance_->node_->get_logger(), "Random base impulses disabled.");
@@ -407,6 +408,7 @@ void MujocoSimulation::sampleDisturbanceForce() {
     current_disturbance_wrench_[3] = 0.0;
     current_disturbance_wrench_[4] = 0.0;
     current_disturbance_wrench_[5] = 0.0;
+    last_disturbance_wrench_ = current_disturbance_wrench_;
 
     double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
     for (int i = 0; i < 6; ++i) {
@@ -485,6 +487,7 @@ void MujocoSimulation::render() {
 
         // Render the scene
         mjr_render(viewport, &scene_, &context_);
+        renderDisturbanceOverlay(viewport);
 
         // Swap buffers to display rendered image
         glfwSwapBuffers(window_);
@@ -493,6 +496,55 @@ void MujocoSimulation::render() {
         glfwPollEvents();
         //printf("Hello, World!\n");
     }
+}
+
+double MujocoSimulation::getCurrentDisturbanceForceMagnitude() const {
+    if (data_ == nullptr || disturbance_body_id_ < 0) {
+        return 0.0;
+    }
+
+    const double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+    return std::sqrt(appliedWrench[0] * appliedWrench[0] +
+                     appliedWrench[1] * appliedWrench[1] +
+                     appliedWrench[2] * appliedWrench[2]);
+}
+
+double MujocoSimulation::getLastDisturbanceForceMagnitude() const {
+    return std::sqrt(last_disturbance_wrench_[0] * last_disturbance_wrench_[0] +
+                     last_disturbance_wrench_[1] * last_disturbance_wrench_[1] +
+                     last_disturbance_wrench_[2] * last_disturbance_wrench_[2]);
+}
+
+void MujocoSimulation::renderDisturbanceOverlay(const mjrRect& viewport) {
+    if (!disturbance_enabled_ || disturbance_body_id_ < 0) {
+        return;
+    }
+
+    char overlayText[256];
+
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    const double currentForceMagnitude = getCurrentDisturbanceForceMagnitude();
+    const bool forceActive = currentForceMagnitude > 1e-6;
+    if (forceActive && data_ != nullptr && disturbance_body_id_ >= 0) {
+        const double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+        fx = appliedWrench[0];
+        fy = appliedWrench[1];
+        fz = appliedWrench[2];
+    } else {
+        fx = last_disturbance_wrench_[0];
+        fy = last_disturbance_wrench_[1];
+        fz = last_disturbance_wrench_[2];
+    }
+
+    const double forceMagnitude = forceActive ? currentForceMagnitude : getLastDisturbanceForceMagnitude();
+    std::snprintf(overlayText, sizeof(overlayText),
+                  "Last force: %.1f N\n"
+                  "Fx: %.1f   Fy: %.1f   Fz: %.1f",
+                  forceMagnitude, fx, fy, fz);
+
+    mjr_overlay(mjFONT_NORMAL, mjGRID_TOP, viewport, overlayText, nullptr, &context_);
 }
 
 void MujocoSimulation::appendDisturbanceArrowToScene() {

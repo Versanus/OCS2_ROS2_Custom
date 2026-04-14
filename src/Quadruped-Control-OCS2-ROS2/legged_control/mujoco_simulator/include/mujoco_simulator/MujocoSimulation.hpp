@@ -49,6 +49,9 @@ public:
     void scheduleNextDisturbance();
     void sampleDisturbanceForce();
     void appendDisturbanceArrowToScene();
+    void renderDisturbanceOverlay(const mjrRect& viewport);
+    double getCurrentDisturbanceForceMagnitude() const;
+    double getLastDisturbanceForceMagnitude() const;
     void resetRobotPose();
     void clearActuatorCommandState();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
@@ -121,6 +124,7 @@ private:
     double next_disturbance_update_time_ = 0.0;
     double disturbance_active_until_time_ = 0.0;
     std::array<double, 6> current_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+    std::array<double, 6> last_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
     std::mt19937 disturbance_rng_;
     std::array<double, 4> initial_base_quat_{{1.0, 0.0, 0.0, 0.0}};
     std::vector<double> initial_qpos_;

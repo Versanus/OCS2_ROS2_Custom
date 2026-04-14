@@ -25,10 +25,10 @@ pid
 disturbance
 {
     force_min            20.0
-    force_max            30.0
-    vertical_scale       0.20
-    interval_min         1.0
-    interval_max         1.5
-    impulse_duration     0.25
+    force_max            45.0
+    vertical_scale       0.15
+    interval_min         1.5
+    interval_max         2.0
+    impulse_duration     0.3
     arrow_scale          0.015
 }
