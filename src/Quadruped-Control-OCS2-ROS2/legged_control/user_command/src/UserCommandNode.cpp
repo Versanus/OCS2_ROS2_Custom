@@ -7,13 +7,20 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
+#include <cerrno>
+#include <cmath>
+#include <deque>
 #include <thread>
 #include <stdexcept>
+#include <unordered_map>
 #include <poll.h>
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <linux/joystick.h>
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include "std_msgs/msg/int32.hpp"
@@ -98,6 +105,268 @@ struct TeleopCommandState {
     lateralAxis = 0.0;
     yawAxis = 0.0;
   }
+};
+
+enum class MotionInputSource {
+  Keyboard,
+  Gamepad
+};
+
+struct GamepadConfig {
+  bool enabled = true;
+  std::string device = "/dev/input/js0";
+  double axisDeadzone = 0.20;
+  double digitalPressThreshold = 0.60;
+  int axisLateral = 0;
+  int axisForward = 1;
+  int axisYaw = 3;
+  int dpadHorizontalAxis = 6;
+  int dpadVerticalAxis = 7;
+  int leftTriggerAxis = 2;
+  int rightTriggerAxis = 5;
+  int buttonB = 1;
+  int buttonX = 2;
+  int buttonY = 3;
+  int buttonLb = 4;
+  int buttonRb = 5;
+};
+
+class GamepadTeleopInput {
+ public:
+  GamepadTeleopInput(const GamepadConfig& config, const rclcpp::Logger& logger)
+      : config_(config), logger_(logger) {
+    if (config_.enabled) {
+      tryOpenDevice();
+    }
+  }
+
+  ~GamepadTeleopInput() {
+    closeDevice();
+  }
+
+  void poll() {
+    if (!config_.enabled) {
+      return;
+    }
+
+    ensureDeviceOpen();
+    if (fd_ < 0) {
+      return;
+    }
+
+    while (true) {
+      js_event event{};
+      const ssize_t bytesRead = ::read(fd_, &event, sizeof(event));
+      if (bytesRead == static_cast<ssize_t>(sizeof(event))) {
+        const unsigned char type = event.type & ~JS_EVENT_INIT;
+        if (type == JS_EVENT_AXIS) {
+          handleAxisEvent(event.number, event.value);
+        } else if (type == JS_EVENT_BUTTON) {
+          handleButtonEvent(event.number, event.value);
+        }
+        continue;
+      }
+
+      if (bytesRead < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        break;
+      }
+
+      handleDisconnect();
+      break;
+    }
+  }
+
+  char popNextMappedKey() {
+    if (pendingKeys_.empty()) {
+      return '\0';
+    }
+
+    const char key = pendingKeys_.front();
+    pendingKeys_.pop_front();
+    return key;
+  }
+
+  ocs2::vector_t currentMotionAxes() const {
+    ocs2::vector_t axes = ocs2::vector_t::Zero(3);
+    if (fd_ < 0) {
+      return axes;
+    }
+
+    axes(0) = -applyDeadzone(normalizedAxisValue(config_.axisForward), config_.axisDeadzone);
+    axes(1) = -applyDeadzone(normalizedAxisValue(config_.axisLateral), config_.axisDeadzone);
+    axes(2) = -applyDeadzone(normalizedAxisValue(config_.axisYaw), config_.axisDeadzone);
+    return axes;
+  }
+
+  bool hasActiveMotionInput() const {
+    return !currentMotionAxes().isZero(1e-3);
+  }
+
+  void setStabilizeToggleState(bool active) {
+    stabilizeToggleState_ = active;
+  }
+
+ private:
+  static double normalizeAxis(int16_t value) {
+    const double denominator = value >= 0 ? 32767.0 : 32768.0;
+    return std::clamp(static_cast<double>(value) / denominator, -1.0, 1.0);
+  }
+
+  static double applyDeadzone(double value, double deadzone) {
+    const double magnitude = std::abs(value);
+    if (magnitude <= deadzone) {
+      return 0.0;
+    }
+
+    const double scaledMagnitude = (magnitude - deadzone) / std::max(1e-6, 1.0 - deadzone);
+    return std::copysign(std::clamp(scaledMagnitude, 0.0, 1.0), value);
+  }
+
+  void ensureDeviceOpen() {
+    if (fd_ >= 0) {
+      return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (now < nextOpenAttemptTime_) {
+      return;
+    }
+
+    tryOpenDevice();
+  }
+
+  void tryOpenDevice() {
+    fd_ = ::open(config_.device.c_str(), O_RDONLY | O_NONBLOCK);
+    if (fd_ < 0) {
+      if (!missingDeviceReported_) {
+        RCLCPP_INFO(logger_, "Optional gamepad '%s' not available. Keyboard teleop stays active.", config_.device.c_str());
+        missingDeviceReported_ = true;
+      }
+      nextOpenAttemptTime_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+      return;
+    }
+
+    missingDeviceReported_ = false;
+    nextOpenAttemptTime_ = std::chrono::steady_clock::time_point{};
+    RCLCPP_INFO(logger_, "Gamepad teleop connected on %s.", config_.device.c_str());
+  }
+
+  void closeDevice() {
+    if (fd_ >= 0) {
+      ::close(fd_);
+      fd_ = -1;
+    }
+  }
+
+  void handleDisconnect() {
+    if (fd_ >= 0) {
+      RCLCPP_WARN(logger_, "Gamepad teleop disconnected from %s. Falling back to keyboard.", config_.device.c_str());
+    }
+    closeDevice();
+    axisStates_.clear();
+    pendingKeys_.clear();
+    resetDigitalStates();
+    nextOpenAttemptTime_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  }
+
+  double normalizedAxisValue(int axisId) const {
+    const auto it = axisStates_.find(axisId);
+    if (it == axisStates_.end()) {
+      return 0.0;
+    }
+    return normalizeAxis(it->second);
+  }
+
+  void handleAxisEvent(unsigned int axisNumber, int16_t value) {
+    axisStates_[static_cast<int>(axisNumber)] = value;
+    const double normalizedValue = normalizeAxis(value);
+
+    if (static_cast<int>(axisNumber) == config_.dpadHorizontalAxis) {
+      queueKeyOnRisingEdge(normalizedValue <= -config_.digitalPressThreshold, dpadLeftPressed_, '1');
+      queueKeyOnRisingEdge(normalizedValue >= config_.digitalPressThreshold, dpadRightPressed_, '2');
+      return;
+    }
+
+    if (static_cast<int>(axisNumber) == config_.dpadVerticalAxis) {
+      queueKeyOnRisingEdge(normalizedValue <= -config_.digitalPressThreshold, dpadUpPressed_, 'o');
+      queueKeyOnRisingEdge(normalizedValue >= config_.digitalPressThreshold, dpadDownPressed_, 'l');
+      return;
+    }
+
+    if (static_cast<int>(axisNumber) == config_.leftTriggerAxis) {
+      queueKeyOnRisingEdge(normalizedValue >= config_.digitalPressThreshold, leftTriggerPressed_, '-');
+      return;
+    }
+
+    if (static_cast<int>(axisNumber) == config_.rightTriggerAxis) {
+      queueKeyOnRisingEdge(normalizedValue >= config_.digitalPressThreshold, rightTriggerPressed_, '+');
+    }
+  }
+
+  void handleButtonEvent(unsigned int buttonNumber, int16_t value) {
+    const bool pressed = value != 0;
+    const int button = static_cast<int>(buttonNumber);
+    if (button == config_.buttonB) {
+      queueKeyOnRisingEdge(pressed, buttonBPressed_, 'z');
+    } else if (button == config_.buttonLb) {
+      queueKeyOnRisingEdge(pressed, buttonLbPressed_, 'c');
+    } else if (button == config_.buttonRb) {
+      queueKeyOnRisingEdge(pressed, buttonRbPressed_, '0');
+    } else if (button == config_.buttonX) {
+      queueKeyOnRisingEdge(pressed, buttonXPressed_, 'r');
+    } else if (button == config_.buttonY) {
+      queueToggleOnRisingEdge(pressed, buttonYPressed_, 'y', 't');
+    }
+  }
+
+  void queueKeyOnRisingEdge(bool currentlyPressed, bool& previousPressed, char mappedKey) {
+    if (currentlyPressed && !previousPressed) {
+      pendingKeys_.push_back(mappedKey);
+    }
+    previousPressed = currentlyPressed;
+  }
+
+  void queueToggleOnRisingEdge(bool currentlyPressed, bool& previousPressed, char onKey, char offKey) {
+    if (currentlyPressed && !previousPressed) {
+      pendingKeys_.push_back(stabilizeToggleState_ ? offKey : onKey);
+      stabilizeToggleState_ = !stabilizeToggleState_;
+    }
+    previousPressed = currentlyPressed;
+  }
+
+  void resetDigitalStates() {
+    dpadLeftPressed_ = false;
+    dpadRightPressed_ = false;
+    dpadUpPressed_ = false;
+    dpadDownPressed_ = false;
+    leftTriggerPressed_ = false;
+    rightTriggerPressed_ = false;
+    buttonBPressed_ = false;
+    buttonXPressed_ = false;
+    buttonYPressed_ = false;
+    buttonLbPressed_ = false;
+    buttonRbPressed_ = false;
+  }
+
+  GamepadConfig config_;
+  rclcpp::Logger logger_;
+  int fd_ = -1;
+  bool missingDeviceReported_ = false;
+  bool stabilizeToggleState_ = false;
+  bool dpadLeftPressed_ = false;
+  bool dpadRightPressed_ = false;
+  bool dpadUpPressed_ = false;
+  bool dpadDownPressed_ = false;
+  bool leftTriggerPressed_ = false;
+  bool rightTriggerPressed_ = false;
+  bool buttonBPressed_ = false;
+  bool buttonXPressed_ = false;
+  bool buttonYPressed_ = false;
+  bool buttonLbPressed_ = false;
+  bool buttonRbPressed_ = false;
+  std::chrono::steady_clock::time_point nextOpenAttemptTime_{};
+  std::unordered_map<int, int16_t> axisStates_;
+  std::deque<char> pendingKeys_;
 };
 
 class ScopedRawTerminalMode {
@@ -281,8 +550,15 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  r : switch to stance with safe clamped motion\n"
       << "  space : latched E-stop hold of current joint positions\n"
       << "  g : exit velocity mode back to goal mode\n"
+      << "\nOptional 8Bitdo gamepad control:\n"
+      << "  left stick : w/a/s/d analog motion\n"
+      << "  right stick X : q/e analog yaw\n"
+      << "  d-pad left/right : 1/2\n"
+      << "  d-pad up/down : o/l\n"
+      << "  B : z, LB : c, RB : 0, X : r\n"
+      << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
       << "The last motion key stays latched until you overwrite it or clear it with r.\n"
-      << "The teleop state is analog-ready for future controller support.\n";
+      << "The last active motion source wins, so you can switch between keyboard and controller.\n";
   if (!status.empty()) {
     std::cout << "\nStatus: " << status << "\n";
   }
@@ -328,12 +604,16 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
                              ocs2::scalar_t initialYawSpeed,
                              const ocs2::vector_t& accelerationLimits,
                              const ocs2::vector_t& commandAxisScales,
+                             const GamepadConfig& gamepadConfig,
                              const rclcpp::Node::SharedPtr& node,
                              const rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr& emergencyOverridePublisher,
                              ControlState& controlState) {
   printVelocityModeHelp("Velocity mode active.");
 
   ScopedRawTerminalMode rawTerminalMode;
+  GamepadTeleopInput gamepadInput(gamepadConfig, node->get_logger());
+  MotionInputSource activeMotionSource = MotionInputSource::Keyboard;
+  bool gamepadMotionRequiresRecenter = false;
 
   ocs2::scalar_t linearSpeed = initialLinearSpeed;
   ocs2::scalar_t lateralSpeed = initialLateralSpeed;
@@ -353,9 +633,12 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
   while (rclcpp::ok() && currentMode == UserCommandMode::Velocity) {
     rclcpp::spin_some(node);
     teleopState.estopActive = isNonMpcState(controlState);
+    gamepadInput.poll();
 
     const char rawKey = readSingleKey(std::chrono::milliseconds(50));
-    const char key = rawKey == '\0' ? '\0' : static_cast<char>(std::tolower(static_cast<unsigned char>(rawKey)));
+    const char keyboardKey = rawKey == '\0' ? '\0' : static_cast<char>(std::tolower(static_cast<unsigned char>(rawKey)));
+    const char key = keyboardKey != '\0' ? keyboardKey : gamepadInput.popNextMappedKey();
+    bool keyboardMotionKeyProcessed = false;
     if (key != '\0') {
       if (teleopState.estopActive) {
         if (key == ' ') {
@@ -365,6 +648,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.resetAxes();
           teleopState.holdPositionActive = true;
           teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
           printVelocityModeHelp("Hold mode active.");
         } else if (key == '0') {
           if (controlState == ControlState::SitDown) {
@@ -376,6 +660,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             teleopState.resetAxes();
             teleopState.holdPositionActive = true;
             teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
             printVelocityModeHelp("Recovery pose active.");
           }
         } else if (key == '1') {
@@ -387,6 +672,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.resetAxes();
           teleopState.holdPositionActive = true;
           teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
           targetPoseCommand.publishHoldPositionCommand(false);
           publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
           printVelocityModeHelp("MPC stance activation requested.");
@@ -399,6 +685,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             teleopState.resetAxes();
             teleopState.holdPositionActive = true;
             teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
             printVelocityModeHelp("True zero torque mode active.");
           } else {
             printVelocityModeHelp("Zero torque is only allowed from a safe non-MPC posture.");
@@ -425,6 +712,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
+        gamepadMotionRequiresRecenter = true;
         printVelocityModeHelp("E-stop active: holding current joint positions.");
         continue;
       }
@@ -439,9 +727,12 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
+        gamepadMotionRequiresRecenter = true;
         printVelocityModeHelp("Switched gait to '" + gaitCommandString + "'.");
       } else if (isMotionKey(key)) {
         updateTeleopAxisFromKeyboard(teleopState, key);
+        activeMotionSource = MotionInputSource::Keyboard;
+        keyboardMotionKeyProcessed = true;
         if (!teleopState.stabilizeModeActive) {
           ocs2::vector_t velocityCommand =
               composeVelocityCommand(teleopState, linearSpeed, lateralSpeed, yawSpeed, commandAxisScales);
@@ -464,6 +755,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         filteredVelocityCommand.setZero();
         teleopState.stabilizeModeActive = true;
         teleopState.holdPositionActive = true;
+        gamepadMotionRequiresRecenter = true;
         printVelocityModeHelp("Stabilize mode active. Reference x/y follows current state.");
       } else if (key == 't') {
         teleopState.stabilizeModeActive = false;
@@ -510,6 +802,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.resetAxes();
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
+        gamepadMotionRequiresRecenter = true;
         printVelocityModeHelp("Switched to stance. Motion stays enabled with stance safety limits.");
       } else if (key == 'z') {
         if (controlState != ControlState::Mpc) {
@@ -523,6 +816,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.resetAxes();
           teleopState.holdPositionActive = true;
           teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
           targetPoseCommand.publishHoldPositionCommand(false);
           printVelocityModeHelp("Sit-down requested. MPC will hand over to strong-PD pose control.");
         }
@@ -539,6 +833,20 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         std::cout << "\nExited velocity mode. Back to goal mode.\n\n";
         break;
       }
+    }
+
+    gamepadInput.setStabilizeToggleState(teleopState.stabilizeModeActive);
+    if (gamepadMotionRequiresRecenter) {
+      if (!gamepadInput.hasActiveMotionInput()) {
+        gamepadMotionRequiresRecenter = false;
+      }
+    } else if (!keyboardMotionKeyProcessed &&
+               (gamepadInput.hasActiveMotionInput() || activeMotionSource == MotionInputSource::Gamepad)) {
+      activeMotionSource = MotionInputSource::Gamepad;
+      const ocs2::vector_t gamepadAxes = gamepadInput.currentMotionAxes();
+      teleopState.forwardAxis = gamepadAxes(0);
+      teleopState.lateralAxis = gamepadAxes(1);
+      teleopState.yawAxis = gamepadAxes(2);
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -630,6 +938,37 @@ int main(int argc, char* argv[]) {
               referenceInfoTree.get<double>("command_axis.y", 1.0),
               referenceInfoTree.get<double>("command_axis.yaw", 1.0))
               .finished();
+  GamepadConfig gamepadConfig;
+  gamepadConfig.enabled = referenceInfoTree.get<bool>("teleop.gamepad.enabled", gamepadConfig.enabled);
+  gamepadConfig.device = referenceInfoTree.get<std::string>("teleop.gamepad.device", gamepadConfig.device);
+  gamepadConfig.axisDeadzone =
+      referenceInfoTree.get<double>("teleop.gamepad.axisDeadzone", gamepadConfig.axisDeadzone);
+  gamepadConfig.digitalPressThreshold =
+      referenceInfoTree.get<double>("teleop.gamepad.digitalPressThreshold", gamepadConfig.digitalPressThreshold);
+  gamepadConfig.axisLateral =
+      referenceInfoTree.get<int>("teleop.gamepad.axisLateral", gamepadConfig.axisLateral);
+  gamepadConfig.axisForward =
+      referenceInfoTree.get<int>("teleop.gamepad.axisForward", gamepadConfig.axisForward);
+  gamepadConfig.axisYaw =
+      referenceInfoTree.get<int>("teleop.gamepad.axisYaw", gamepadConfig.axisYaw);
+  gamepadConfig.dpadHorizontalAxis =
+      referenceInfoTree.get<int>("teleop.gamepad.dpadHorizontalAxis", gamepadConfig.dpadHorizontalAxis);
+  gamepadConfig.dpadVerticalAxis =
+      referenceInfoTree.get<int>("teleop.gamepad.dpadVerticalAxis", gamepadConfig.dpadVerticalAxis);
+  gamepadConfig.leftTriggerAxis =
+      referenceInfoTree.get<int>("teleop.gamepad.leftTriggerAxis", gamepadConfig.leftTriggerAxis);
+  gamepadConfig.rightTriggerAxis =
+      referenceInfoTree.get<int>("teleop.gamepad.rightTriggerAxis", gamepadConfig.rightTriggerAxis);
+  gamepadConfig.buttonB =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonB", gamepadConfig.buttonB);
+  gamepadConfig.buttonX =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonX", gamepadConfig.buttonX);
+  gamepadConfig.buttonY =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonY", gamepadConfig.buttonY);
+  gamepadConfig.buttonLb =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonLb", gamepadConfig.buttonLb);
+  gamepadConfig.buttonRb =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonRb", gamepadConfig.buttonRb);
   TargetTrajectoriesKeyboardPublisher targetPoseCommand(node, robotName, relativeBaseLimit, referenceFile);
   auto emergencyOverridePublisher =
       node->create_publisher<std_msgs::msg::Int32>(robotName + "_emergency_override", 1);
@@ -651,7 +990,7 @@ int main(int argc, char* argv[]) {
     "Enter 'gait:xxx' for the desired gait,\n"
     "Enter 'gait:list' for the list of available gaits,\n"
     "In goal mode use 'goal:x y z yaw_deg' for relative pose commands,\n"
-    "In vel mode the node enters keyboard teleop,\n"
+    "In vel mode the node enters keyboard teleop with optional gamepad support,\n"
     "Use 'hold:' to hold the current pose.\n";
     
   while (rclcpp::ok()) {
@@ -660,7 +999,7 @@ int main(int argc, char* argv[]) {
       try {
         runVelocityKeyboardMode(targetPoseCommand, gaitCommand, currentMode, activeGaitCommand,
                                 initialLinearSpeed, initialLateralSpeed, initialYawSpeed,
-                                accelerationLimits, commandAxisScales, node,
+                                accelerationLimits, commandAxisScales, gamepadConfig, node,
                                 emergencyOverridePublisher, controlState);
       } catch (const std::exception& e) {
         RCLCPP_ERROR(node->get_logger(), "Velocity keyboard mode failed: %s", e.what());

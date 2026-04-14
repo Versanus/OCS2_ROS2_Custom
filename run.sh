@@ -18,6 +18,18 @@ GUI_AUTO="${6:-}"
 RVIZ_SOURCE="${7:-auto}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
+HOST_UID="${HOST_UID:-$(id -u)}"
+HOST_GID="${HOST_GID:-$(id -g)}"
+if [ -z "${INPUT_GID:-}" ]; then
+    if getent group input >/dev/null 2>&1; then
+        INPUT_GID="$(getent group input | cut -d: -f3)"
+    elif [ -e /dev/input ]; then
+        INPUT_GID="$(stat -c '%g' /dev/input)"
+    else
+        INPUT_GID="${HOST_GID}"
+    fi
+fi
+export HOST_UID HOST_GID INPUT_GID
 
 if [ "${CONTACT_SOURCE}" = "debug" ] || [ "${CONTACT_SOURCE}" = "nodebug" ] || \
    [ "${CONTACT_SOURCE}" = "true" ] || [ "${CONTACT_SOURCE}" = "false" ]; then

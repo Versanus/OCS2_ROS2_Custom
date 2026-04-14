@@ -13,6 +13,26 @@ teleop
   velocity_preview_distance_high_speed  2.0
   velocity_preview_speed_low            0.5
   velocity_preview_speed_high           2.0
+
+  gamepad
+  {
+    enabled                              true
+    device                               /dev/input/js0
+    axisDeadzone                         0.20
+    digitalPressThreshold                0.60
+    axisLateral                          0
+    axisForward                          1
+    axisYaw                              3
+    dpadHorizontalAxis                   6
+    dpadVerticalAxis                     7
+    leftTriggerAxis                      2
+    rightTriggerAxis                     5
+    buttonB                              1
+    buttonX                              2
+    buttonY                              3
+    buttonLb                             4
+    buttonRb                             5
+  }
 }
 
 command_axis
@@ -58,16 +78,16 @@ sitJointState
 {
    (0,0)   0.0   ; LF_HAA
    (1,0)   0.0   ; LF_HFE
-   (2,0)   0.0   ; LF_KFE
+   (2,0)   0.20   ; LF_KFE
    (3,0)   0.0   ; LH_HAA
    (4,0)   0.0   ; LH_HFE
-   (5,0)   0.0   ; LH_KFE
+   (5,0)   0.20   ; LH_KFE
    (6,0)   0.0   ; RF_HAA
    (7,0)   0.0   ; RF_HFE
-   (8,0)   0.0   ; RF_KFE
+   (8,0)   -0.20   ; RF_KFE
    (9,0)   0.0   ; RH_HAA
    (10,0)  0.0   ; RH_HFE
-   (11,0)  0.0   ; RH_KFE
+   (11,0)  -0.20   ; RH_KFE
 }
 
 recoveryJointState

@@ -41,7 +41,14 @@ services:
     volumes:
       - .:/workspaces/quad_ocs2_ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /dev/input:/dev/input:ro
 
     # Needed for OpenGL / MuJoCo
     devices:
       - /dev/dri:/dev/dri
+
+    device_cgroup_rules:
+      - "c 13:* rmw"
+
+    group_add:
+      - "${INPUT_GID:-1000}"
