@@ -48,6 +48,15 @@ KalmanFilterEstimate::KalmanFilterEstimate(const rclcpp::Node::SharedPtr& node, 
   //sub_ = ros::NodeHandle().subscribe<nav_msgs::Odometry>("/tracking_camera/odom/sample", 10, &KalmanFilterEstimate::callback, this);
 }
 
+void KalmanFilterEstimate::reset() {
+  xHat_.setZero();
+  ps_.setZero();
+  vs_.setZero();
+  p_ = 100. * q_;
+  feetHeights_.setZero();
+  updateLinear(vector3_t::Zero(), vector3_t::Zero());
+}
+
 ocs2::vector_t KalmanFilterEstimate::update(const ocs2::scalar_t& time, const ocs2::scalar_t& period) {
   ocs2::scalar_t dt = period;
   //std::cout << "  start estimate " << "\n";
@@ -269,4 +278,3 @@ void KalmanFilterEstimate::loadSettings(const std::string& taskFile, bool verbos
   ocs2::loadData::loadPtreeValue(pt, footSensorNoiseVelocity_, prefix + "footSensorNoiseVelocity", verbose);
   ocs2::loadData::loadPtreeValue(pt, footHeightSensorNoise_, prefix + "footHeightSensorNoise", verbose);
 }
-

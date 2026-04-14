@@ -22,6 +22,7 @@ class StateEstimateBase {
   virtual void updateImu(const Eigen::Quaternion<ocs2::scalar_t>& quat, const vector3_t& angularVelLocal, const vector3_t& linearAccelLocal,
                          const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance,
                          const matrix3_t& linearAccelCovariance);
+  virtual void reset() {}
 
   virtual ocs2::vector_t update(const ocs2::scalar_t& time, const ocs2::scalar_t& period) = 0;
 
@@ -66,4 +67,3 @@ Eigen::Matrix<SCALAR_T, 3, 1> quatToZyx(const Eigen::Quaternion<SCALAR_T>& q) {
   zyx(2) = std::atan2(2 * (q.y() * q.z() + q.w() * q.x()), square(q.w()) - square(q.x()) - square(q.y()) + square(q.z()));
   return zyx;
 }
-

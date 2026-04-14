@@ -142,7 +142,12 @@ protected:
 	    bool recoverExpiredPolicy(const char* observationSource);
 	    bool hasValidStateMessage(const legged_msgs::msg::SimulatorStateData& msg, std::string* reason = nullptr) const;
 	    bool hasValidSensorMessage(const legged_msgs::msg::SimulatorSensorData& msg, std::string* reason = nullptr) const;
+	    bool shouldTrackLiveHoldPose() const;
+	    bool shouldResetAroundHoldDiscontinuity(const ocs2::vector_t& jointPos, ocs2::scalar_t receivedTime) const;
+	    bool resetMpcFromCurrentObservation(const char* reason, bool force = false);
+	    void resetEstimatedObservationFromCurrentSensors();
 	    void relatchHoldJointStateFromObservation();
+	    void synchronizeObservationInputWithControlState();
     
     std::string robotName_;
     // Interface
@@ -199,6 +204,7 @@ private:
 	    bool initialStateReady_ = false;
 	    ocs2::scalar_t lastMpcResetTime_ = -1.0;
 	    ocs2::scalar_t mpcResetCooldown_ = 0.1;
+      ocs2::scalar_t holdJointJumpThreshold_ = 0.20;
 
 
   /*

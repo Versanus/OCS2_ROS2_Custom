@@ -15,6 +15,7 @@ class KalmanFilterEstimate : public StateEstimateBase {
  public:
   KalmanFilterEstimate(const rclcpp::Node::SharedPtr& node, ocs2::PinocchioInterface pinocchioInterface, ocs2::CentroidalModelInfo info, const ocs2::PinocchioEndEffectorKinematics& eeKinematics);
 
+  void reset() override;
   ocs2::vector_t update(const ocs2::scalar_t& time, const ocs2::scalar_t& period) override;
 
   void loadSettings(const std::string& taskFile, bool verbose);
@@ -52,4 +53,3 @@ class KalmanFilterEstimate : public StateEstimateBase {
   // std::string frameOdom_, frameGuess_;
   // bool topicUpdated_;
 };
-

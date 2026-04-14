@@ -38,6 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
@@ -202,6 +203,35 @@ bool MPC_WBC_ROS_Interface::hasValidCurrentObservationState() const {
 /******************************************************************************************************/
 /******************************************************************************************************/
 /******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::shouldTrackLiveHoldPose() const {
+  return controlState_ == ControlState::Hold && !mpcReleasePending_ && !mpcBlendActive_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::shouldResetAroundHoldDiscontinuity(const ocs2::vector_t& jointPos,
+                                                               ocs2::scalar_t receivedTime) const {
+  if (!shouldTrackLiveHoldPose()) {
+    return false;
+  }
+
+  if (receivedTime + 1e-6 < currentObservation_.time) {
+    return true;
+  }
+
+  const auto jointOffset = static_cast<Eigen::Index>(6);
+  if (measuredRbdState_.size() < jointOffset + jointPos.size()) {
+    return false;
+  }
+
+  const auto previousJointPos = measuredRbdState_.segment(jointOffset, jointPos.size());
+  return (jointPos - previousJointPos).cwiseAbs().maxCoeff() > holdJointJumpThreshold_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
 bool MPC_WBC_ROS_Interface::activePolicyExpired() const {
   if (!mpcMrtInterface_ || !mpcMrtInterface_->initialPolicyReceived()) {
     return true;
@@ -248,6 +278,60 @@ bool MPC_WBC_ROS_Interface::recoverExpiredPolicy(const char* observationSource) 
   }
 
   return false;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+bool MPC_WBC_ROS_Interface::resetMpcFromCurrentObservation(const char* reason, bool force) {
+  if (!mpcMrtInterface_) {
+    return false;
+  }
+
+  if (!force && lastMpcResetTime_ >= 0.0 && currentObservation_.time - lastMpcResetTime_ < mpcResetCooldown_) {
+    return false;
+  }
+
+  try {
+    const auto targetTrajectories = mpcMrtInterface_->getReferenceManager().getTargetTrajectories();
+    RCLCPP_WARN(node_->get_logger(),
+                "Resetting MPC/MRT %s at t=%.3f so the controller restarts from the current measured pose.",
+                reason, currentObservation_.time);
+    mpcMrtInterface_->resetMpcNode(targetTrajectories);
+    mpcMrtInterface_->setCurrentObservation(currentObservation_);
+    lastMpcResetTime_ = currentObservation_.time;
+    MpcCount_ = 0;
+    return true;
+  } catch (const std::exception& error) {
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                          "Failed to reset MPC/MRT %s at t=%.3f: %s",
+                          reason, currentObservation_.time, error.what());
+  } catch (...) {
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                          "Failed to reset MPC/MRT %s at t=%.3f due to an unknown error.",
+                          reason, currentObservation_.time);
+  }
+
+  return false;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::resetEstimatedObservationFromCurrentSensors() {
+  if (!StateEstimate_ || !stateEstimate_) {
+    return;
+  }
+
+  stateEstimate_->reset();
+  measuredRbdState_ = stateEstimate_->update(currentObservation_.time, 0.0);
+
+  const ocs2::scalar_t yawLast =
+      hasValidCurrentObservationState() ? currentObservation_.state(9) : ocs2::scalar_t(0.0);
+  currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
+  currentObservation_.state(9) =
+      yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
+  currentObservation_.mode = stateEstimate_->getMode();
 }
 
 /******************************************************************************************************/
@@ -324,6 +408,23 @@ void MPC_WBC_ROS_Interface::relatchHoldJointStateFromObservation() {
 
   estopHoldJointState_ = ocs2::centroidal_model::getJointAngles(
       currentObservation_.state, leggedInterface_->getCentroidalModelInfo());
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::synchronizeObservationInputWithControlState() {
+  const auto inputDim = leggedInterface_->getCentroidalModelInfo().inputDim;
+  if (currentObservation_.input.size() != inputDim) {
+    currentObservation_.input.setZero(inputDim);
+    return;
+  }
+
+  const bool controllerOwnsActuation =
+      controlState_ == ControlState::Mpc && !mpcReleasePending_ && !mpcBlendActive_;
+  if (!controllerOwnsActuation) {
+    currentObservation_.input.setZero();
+  }
 }
 
 /******************************************************************************************************/
@@ -443,6 +544,7 @@ void MPC_WBC_ROS_Interface::simulatorStartControlLoop()
 
     // Whole body control
     currentObservation_.input = optimizedInput;
+    synchronizeObservationInputWithControlState();
 
     wbcTimer_.startTimer();
     //RCLCPP_INFO(node_->get_logger(),"Update second: %f",1/leggedInterface_->mpcSettings().mrtDesiredFrequency_);
@@ -500,6 +602,7 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
   MpcCount_ += 1;
 
   updateStateEstimationFromState(msg);
+  synchronizeObservationInputWithControlState();
 
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
   const bool forceMpcUpdate = activePolicyExpired();
@@ -540,6 +643,7 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
 
   // Whole body control
   currentObservation_.input = optimizedInput;
+  synchronizeObservationInputWithControlState();
 
   wbcTimer_.startTimer();
   //RCLCPP_INFO(node_->get_logger(),"Update second: %f",1/leggedInterface_->mpcSettings().mrtDesiredFrequency_);
@@ -659,6 +763,8 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
   for (size_t i = 0; i < expected_joint_count; ++i) {
       jointVel(i) = msg->joint_velocity_values[i];
   }
+  const bool holdDiscontinuityDetected =
+      shouldResetAroundHoldDiscontinuity(jointPos, static_cast<ocs2::scalar_t>(msg->simulation_time));
   measuredRbdState_ = ocs2::vector_t::Zero(2 * (6 + jointPos.size()));
   measuredRbdState_.segment<3>(0) = eulerAngles;
   measuredRbdState_.segment<3>(3) = position;
@@ -685,6 +791,11 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromState(
   // }
   currentObservation_.mode = stanceLeg2ModeNumber(contactFlag_);
   // RCLCPP_INFO(node_->get_logger(), "Current mode: %zu", currentObservation_.mode);
+
+  if (holdDiscontinuityDetected) {
+    relatchHoldJointStateFromObservation();
+    resetMpcFromCurrentObservation("after a hold-state simulator pose jump", true);
+  }
 
   // std::ostringstream oss;
   // oss << "SystemObservation { "
@@ -738,6 +849,7 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
   //RCLCPP_INFO(node_->get_logger(), "Message recieved");
 
   updateStateEstimationFromSensor(msg);
+  synchronizeObservationInputWithControlState();
 
   mpcMrtInterface_->setCurrentObservation(currentObservation_);
   const bool forceMpcUpdate = activePolicyExpired();
@@ -778,6 +890,7 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
 
   // Whole body control
   currentObservation_.input = optimizedInput;
+  synchronizeObservationInputWithControlState();
 
   wbcTimer_.startTimer();
   //RCLCPP_INFO(node_->get_logger(),"Update second: %f",1/leggedInterface_->mpcSettings().mrtDesiredFrequency_);
@@ -843,6 +956,13 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
   stateEstimate_->updateImu(quat, angularVel, linearAccel, orientationCovariance, angularVelCovariance, linearAccelCovariance);
   ocs2::scalar_t time = static_cast<ocs2::scalar_t>(msg->simulation_time);
   ocs2::scalar_t period = time - currentObservation_.time;
+  const bool holdDiscontinuityDetected = shouldResetAroundHoldDiscontinuity(jointPos, time);
+
+  if (holdDiscontinuityDetected) {
+    stateEstimate_->reset();
+    period = 0.0;
+  }
+  period = std::max<ocs2::scalar_t>(0.0, period);
 
   measuredRbdState_ = stateEstimate_->update(time, period);
   currentObservation_.time = time;
@@ -850,6 +970,11 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
   currentObservation_.mode = stateEstimate_->getMode();
+
+  if (holdDiscontinuityDetected) {
+    relatchHoldJointStateFromObservation();
+    resetMpcFromCurrentObservation("after a hold-state estimator reseed", true);
+  }
 
 
   // // std::ostringstream oss;
@@ -1000,11 +1125,13 @@ void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32
       estopHoldJointState_ = standJointState_;
     }
     controlState_ = ControlState::Hold;
+    synchronizeObservationInputWithControlState();
     RCLCPP_WARN(node_->get_logger(), "Controller state active: HOLD current joint positions.");
   } else if (command == static_cast<int>(ControlCommand::RecoveryPose)) {
     mpcReleasePending_ = false;
     mpcBlendActive_ = false;
     controlState_ = ControlState::RecoveryPose;
+    synchronizeObservationInputWithControlState();
     RCLCPP_WARN(node_->get_logger(), "Controller state active: RECOVERY pose.");
   } else if (command == static_cast<int>(ControlCommand::SitDown)) {
     if (currentObservation_.state.size() == leggedInterface_->getCentroidalModelInfo().stateDim) {
@@ -1021,20 +1148,25 @@ void MPC_WBC_ROS_Interface::emergencyOverrideCallback(const std_msgs::msg::Int32
     mpcBlendActive_ = false;
     sitDownStartTime_ = currentObservation_.time;
     controlState_ = ControlState::SitDown;
+    synchronizeObservationInputWithControlState();
     RCLCPP_INFO(node_->get_logger(), "Controller state active: SIT_DOWN.");
   } else if (command == static_cast<int>(ControlCommand::ZeroTorque)) {
     mpcReleasePending_ = false;
     mpcBlendActive_ = false;
     controlState_ = ControlState::ZeroTorque;
+    synchronizeObservationInputWithControlState();
     RCLCPP_WARN(node_->get_logger(), "Controller state active: ZERO_TORQUE.");
   } else if (command == static_cast<int>(ControlCommand::ActivateMpc)) {
     mpcReleasePending_ = true;
     mpcBlendActive_ = false;
     mpcReleaseTime_ = currentObservation_.time + mpcReleaseDelay_;
     controlState_ = ControlState::Hold;
+    resetEstimatedObservationFromCurrentSensors();
     if (hasValidCurrentObservationState()) {
       relatchHoldJointStateFromObservation();
     }
+    resetMpcFromCurrentObservation("before MPC reactivation", true);
+    synchronizeObservationInputWithControlState();
     RCLCPP_INFO(node_->get_logger(),
                 "MPC activation requested. Holding current joints for %.2f s before returning control to MPC/WBC.",
                 mpcReleaseDelay_);

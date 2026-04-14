@@ -538,7 +538,7 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  4 : static_walking\n"
       << "  5 : pawup\n"
       << "  6 : fast_flying_trot\n"
-      << "  startup: system begins in E-stop, press 1 to enable MPC stance\n"
+      << "  startup: system begins in E-stop, press 1 to enable MPC\n"
       << "  0 : raw recovery pose (from safe non-MPC states)\n"
       << "      not allowed while sit-down is still in progress\n"
       << "  z : sit down with strong PD (only from MPC stance)\n"
@@ -548,7 +548,7 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  o/l : raise/lower desired height slowly\n"
       << "  +/- : increase/decrease speeds\n"
       << "  r : switch to stance with safe clamped motion\n"
-      << "  space : latched E-stop hold of current joint positions\n"
+      << "  space : hold current joints and refresh the background target to the current pose\n"
       << "  g : exit velocity mode back to goal mode\n"
       << "\nOptional 8Bitdo gamepad control:\n"
       << "  left stick : w/a/s/d analog motion\n"
@@ -557,6 +557,7 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  d-pad up/down : o/l\n"
       << "  B : z, LB : c, RB : 0, X : r\n"
       << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
+      << "Pressing 1 from HOLD returns to stance from the current pose.\n"
       << "The last motion key stays latched until you overwrite it or clear it with r.\n"
       << "The last active motion source wins, so you can switch between keyboard and controller.\n";
   if (!status.empty()) {
@@ -643,13 +644,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       if (teleopState.estopActive) {
         if (key == ' ') {
           publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
-          targetVelocityCommand.setZero();
-          filteredVelocityCommand.setZero();
-          teleopState.resetAxes();
-          teleopState.holdPositionActive = true;
-          teleopState.stabilizeModeActive = false;
-          gamepadMotionRequiresRecenter = true;
-          printVelocityModeHelp("Hold mode active.");
+          printVelocityModeHelp("Hold active: actuator output is locked, MPC/reference keeps updating in the background.");
         } else if (key == '0') {
           if (controlState == ControlState::SitDown) {
             printVelocityModeHelp("Sit-down is still in progress. Wait for sitting, or press space to hold first.");
@@ -664,18 +659,33 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             printVelocityModeHelp("Recovery pose active.");
           }
         } else if (key == '1') {
-          std::string stanceCommand = "stance";
-          gaitCommand.publishKeyboardCommand(stanceCommand);
-          activeGaitCommand = "stance";
-          targetVelocityCommand.setZero();
-          filteredVelocityCommand.setZero();
-          teleopState.resetAxes();
-          teleopState.holdPositionActive = true;
-          teleopState.stabilizeModeActive = false;
-          gamepadMotionRequiresRecenter = true;
-          targetPoseCommand.publishHoldPositionCommand(false);
-          publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
-          printVelocityModeHelp("MPC stance activation requested.");
+          if (controlState == ControlState::Hold) {
+            std::string stanceCommand = "stance";
+            gaitCommand.publishKeyboardCommand(stanceCommand);
+            activeGaitCommand = "stance";
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
+            printVelocityModeHelp("MPC stance resume requested from the current pose.");
+          } else {
+            std::string stanceCommand = "stance";
+            gaitCommand.publishKeyboardCommand(stanceCommand);
+            activeGaitCommand = "stance";
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
+            printVelocityModeHelp("MPC stance activation requested.");
+          }
         } else if (key == 'c') {
           if (controlState == ControlState::Sitting || controlState == ControlState::Hold ||
               controlState == ControlState::RecoveryPose || controlState == ControlState::ZeroTorque) {
@@ -699,7 +709,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         } else if (key == 'r') {
           printVelocityModeHelp("Soft stance command is only available while MPC is active.");
         } else {
-          printVelocityModeHelp("Safe mode active. Use space=hold, 0=recovery, 1=MPC stance, c=zero torque.");
+          printVelocityModeHelp("Safe mode active. Use space=hold, 0=recovery, 1=resume MPC, c=zero torque.");
         }
         continue;
       }
@@ -713,7 +723,8 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
         gamepadMotionRequiresRecenter = true;
-        printVelocityModeHelp("E-stop active: holding current joint positions.");
+        targetPoseCommand.publishHoldPositionCommand(false);
+        printVelocityModeHelp("Hold active: actuator output is locked and the background target is refreshed to the current pose.");
         continue;
       }
 

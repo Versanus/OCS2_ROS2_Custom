@@ -31,6 +31,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //#include "motion_control/gait/ModeSequenceTemplateRos.h"
 
+#include <algorithm>
+
+namespace {
+
+bool isAllStanceTemplate(const ModeSequenceTemplate& templateMsg) {
+  return !templateMsg.modeSequence.empty() &&
+         std::all_of(templateMsg.modeSequence.begin(), templateMsg.modeSequence.end(),
+                     [](size_t mode) { return mode == ModeNumber::STANCE; });
+}
+
+}  // namespace
+
 
 /******************************************************************************************************/
 /******************************************************************************************************/
@@ -54,14 +66,20 @@ GaitReceiver::GaitReceiver(const rclcpp::Node::SharedPtr& node,
 void GaitReceiver::preSolverRun(
     ocs2::scalar_t initTime, ocs2::scalar_t finalTime, const ocs2::vector_t& currentState,
     const ocs2::ReferenceManagerInterface& referenceManager) {
+  (void)currentState;
+  (void)referenceManager;
   if (gaitUpdated_) {
     std::lock_guard<std::mutex> lock(receivedGaitMutex_);
     std::cerr << "[GaitReceiver]: Setting new gait after time " << finalTime
               << "\n";
     std::cerr << receivedGait_;
     const auto timeHorizon = finalTime - initTime;
-    gaitSchedulePtr_->insertModeSequenceTemplate(receivedGait_, finalTime,
-                                                 timeHorizon);
+    const ocs2::scalar_t insertionStartTime =
+        isAllStanceTemplate(receivedGait_) ? initTime : finalTime;
+    const ocs2::scalar_t insertionFinalTime =
+        insertionStartTime + std::max<ocs2::scalar_t>(timeHorizon, 0.0);
+    gaitSchedulePtr_->insertModeSequenceTemplate(receivedGait_, insertionStartTime,
+                                                 insertionFinalTime);
     gaitUpdated_ = false;
   }
 }
