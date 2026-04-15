@@ -11,7 +11,7 @@ render
   render_inertia false
   visualize_contacts true
   tracking_base true
-  render_frequency 60
+  render_frequency 120
 }
 
 pid

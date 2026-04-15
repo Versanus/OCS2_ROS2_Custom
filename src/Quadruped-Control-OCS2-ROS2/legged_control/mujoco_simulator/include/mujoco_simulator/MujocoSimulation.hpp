@@ -5,6 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <GLFW/glfw3.h>  // For rendering and window handling
 #include <array>
+#include <chrono>
 #include <mutex>
 #include <random>
 #include <vector>
@@ -56,6 +57,7 @@ public:
     void clearActuatorCommandState();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
     double getControlFrequency() const { return control_frequency_; }
+    double getRenderFrequency() const { return render_frequency_; }
     bool exposesRosInterface() const { return exposeRosInterface_; }
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
@@ -82,7 +84,12 @@ private:
     bool render_inertia_;
     bool visualize_contacts_;
     bool tracking_base_;
-    double render_frequency_;
+    double render_frequency_ = 60.0;
+    double measured_render_fps_ = 0.0;
+    double measured_real_time_factor_ = 0.0;
+    std::size_t rendered_frame_count_ = 0;
+    std::chrono::steady_clock::time_point render_fps_window_start_ = std::chrono::steady_clock::now();
+    double render_rtf_window_start_sim_time_ = 0.0;
 
     // GLFW window
     GLFWwindow* window_;

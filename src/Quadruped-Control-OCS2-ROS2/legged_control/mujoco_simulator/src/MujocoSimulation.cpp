@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 
 #include <boost/property_tree/info_parser.hpp>
@@ -37,7 +38,7 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     }
     glfwMakeContextCurrent(window_);
     glfwShowWindow(window_);
-    glfwSwapInterval(1);  // Enable vsync
+    glfwSwapInterval(0);  // Disable vsync so rendering is not capped by display refresh
 
      // Initialize MuJoCo rendering
     mjv_defaultCamera(&cam_);
@@ -47,6 +48,7 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
 
     // load model
     loadModel(xmlFile, simulatorFile);
+    render_rtf_window_start_sim_time_ = data_ ? data_->time : 0.0;
 
     // set redering;
     renderSetting(simulatorFile);
@@ -521,7 +523,19 @@ void MujocoSimulation::render() {
 
         // Poll for and process events (e.g., keyboard input, window resizing)
         glfwPollEvents();
-        //printf("Hello, World!\n");
+
+        ++rendered_frame_count_;
+        const auto now = std::chrono::steady_clock::now();
+        const std::chrono::duration<double> elapsed = now - render_fps_window_start_;
+        if (elapsed.count() >= 0.5) {
+            measured_render_fps_ = static_cast<double>(rendered_frame_count_) / elapsed.count();
+            const double current_sim_time = data_ ? data_->time : 0.0;
+            measured_real_time_factor_ =
+                (current_sim_time - render_rtf_window_start_sim_time_) / elapsed.count();
+            rendered_frame_count_ = 0;
+            render_fps_window_start_ = now;
+            render_rtf_window_start_sim_time_ = current_sim_time;
+        }
     }
 }
 
@@ -543,35 +557,35 @@ double MujocoSimulation::getLastDisturbanceForceMagnitude() const {
 }
 
 void MujocoSimulation::renderDisturbanceOverlay(const mjrRect& viewport) {
-    if (!disturbance_enabled_ || disturbance_body_id_ < 0) {
-        return;
+    char fpsText[64];
+    std::snprintf(fpsText, sizeof(fpsText), "FPS %.1f / %.1f\nRTF %.2f",
+                  measured_render_fps_, render_frequency_, measured_real_time_factor_);
+    mjr_overlay(mjFONT_NORMAL, mjGRID_TOPRIGHT, viewport, fpsText, nullptr, &context_);
+
+    if (disturbance_enabled_ && disturbance_body_id_ >= 0) {
+        char overlayText[256];
+        double fx = 0.0;
+        double fy = 0.0;
+        double fz = 0.0;
+        const double currentForceMagnitude = getCurrentDisturbanceForceMagnitude();
+        const bool forceActive = currentForceMagnitude > 1e-6;
+        if (forceActive && data_ != nullptr && disturbance_body_id_ >= 0) {
+            const double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+            fx = appliedWrench[0];
+            fy = appliedWrench[1];
+            fz = appliedWrench[2];
+        } else {
+            fx = last_disturbance_wrench_[0];
+            fy = last_disturbance_wrench_[1];
+            fz = last_disturbance_wrench_[2];
+        }
+
+        const double forceMagnitude = forceActive ? currentForceMagnitude : getLastDisturbanceForceMagnitude();
+        std::snprintf(overlayText, sizeof(overlayText),
+                      "Last force: %.1f N\nFx: %.1f   Fy: %.1f   Fz: %.1f",
+                      forceMagnitude, fx, fy, fz);
+        mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, overlayText, nullptr, &context_);
     }
-
-    char overlayText[256];
-
-    double fx = 0.0;
-    double fy = 0.0;
-    double fz = 0.0;
-    const double currentForceMagnitude = getCurrentDisturbanceForceMagnitude();
-    const bool forceActive = currentForceMagnitude > 1e-6;
-    if (forceActive && data_ != nullptr && disturbance_body_id_ >= 0) {
-        const double* appliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
-        fx = appliedWrench[0];
-        fy = appliedWrench[1];
-        fz = appliedWrench[2];
-    } else {
-        fx = last_disturbance_wrench_[0];
-        fy = last_disturbance_wrench_[1];
-        fz = last_disturbance_wrench_[2];
-    }
-
-    const double forceMagnitude = forceActive ? currentForceMagnitude : getLastDisturbanceForceMagnitude();
-    std::snprintf(overlayText, sizeof(overlayText),
-                  "Last force: %.1f N\n"
-                  "Fx: %.1f   Fy: %.1f   Fz: %.1f",
-                  forceMagnitude, fx, fy, fz);
-
-    mjr_overlay(mjFONT_NORMAL, mjGRID_TOP, viewport, overlayText, nullptr, &context_);
 }
 
 void MujocoSimulation::appendDisturbanceArrowToScene() {

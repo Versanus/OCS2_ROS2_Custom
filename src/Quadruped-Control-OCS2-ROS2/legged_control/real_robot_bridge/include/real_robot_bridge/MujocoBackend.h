@@ -26,6 +26,7 @@ class MujocoBackend final : public BackendBase {
   rclcpp::Node::SharedPtr sim_node_;
   std::unique_ptr<MujocoSimulation> simulation_;
   double control_period_sec_{0.0};
+  double render_period_sec_{0.0};
   double sim_time_reference_{0.0};
   std::chrono::steady_clock::time_point wall_time_reference_;
   std::chrono::steady_clock::time_point last_render_time_;

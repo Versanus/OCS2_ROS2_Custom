@@ -24,6 +24,7 @@ MujocoBackend::MujocoBackend(const std::string& xml_file, const std::string& sim
 
   simulation_ = std::make_unique<MujocoSimulation>(sim_node_, xml_file, simulator_file, false);
   control_period_sec_ = 1.0 / std::max(1.0, simulation_->getControlFrequency());
+  render_period_sec_ = 1.0 / std::max(1.0, simulation_->getRenderFrequency());
   simulation_->stepControlPeriod();
   simulation_->render();
   sim_time_reference_ = simulation_->getData()->time;
@@ -58,7 +59,7 @@ void MujocoBackend::update() {
   }
 
   const auto now = std::chrono::steady_clock::now();
-  if (now - last_render_time_ >= std::chrono::milliseconds(33)) {
+  if (std::chrono::duration<double>(now - last_render_time_).count() >= render_period_sec_) {
     simulation_->render();
     last_render_time_ = now;
   }

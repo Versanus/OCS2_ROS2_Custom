@@ -309,11 +309,11 @@ class GamepadTeleopInput {
     if (button == config_.buttonB) {
       queueKeyOnRisingEdge(pressed, buttonBPressed_, 'z');
     } else if (button == config_.buttonLb) {
-      queueKeyOnRisingEdge(pressed, buttonLbPressed_, 'c');
+      queueKeyOnRisingEdge(pressed, buttonLbPressed_, ' ');
     } else if (button == config_.buttonRb) {
       queueKeyOnRisingEdge(pressed, buttonRbPressed_, '0');
     } else if (button == config_.buttonX) {
-      queueKeyOnRisingEdge(pressed, buttonXPressed_, 'r');
+      queueKeyOnRisingEdge(pressed, buttonXPressed_, 'c');
     } else if (button == config_.buttonY) {
       queueToggleOnRisingEdge(pressed, buttonYPressed_, 'y', 't');
     }
@@ -555,7 +555,7 @@ void printVelocityModeHelp(const std::string& status = "") {
       << "  right stick X : q/e analog yaw\n"
       << "  d-pad left/right : 1/2\n"
       << "  d-pad up/down : o/l\n"
-      << "  B : z, LB : c, RB : 0, X : r\n"
+      << "  B : z, LB : space(hold), RB : 0, X : c\n"
       << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
       << "Pressing 1 from HOLD returns to stance from the current pose.\n"
       << "The last motion key stays latched until you overwrite it or clear it with r.\n"
