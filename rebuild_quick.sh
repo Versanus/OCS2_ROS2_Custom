@@ -54,7 +54,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select ocs2_oc legged_msgs stm2ros motion_control hardware_interface mujoco_simulator real_robot_bridge user_command launch_simulation
+        --packages-select ocs2_oc ocs2_mpc legged_msgs stm2ros motion_control hardware_interface mujoco_simulator real_robot_bridge user_command launch_simulation
         #--cmake-clean-cache
 
     source install/local_setup.bash
