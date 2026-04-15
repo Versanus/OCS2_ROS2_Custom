@@ -97,8 +97,20 @@ echo "Auto launch GUI: $GUI_AUTO"
 echo "RViz source: $RVIZ_SOURCE"
 echo "ROS domain ID: $ROS_DOMAIN_ID"
 
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  tmux kill-session -t "$SESSION"
+fi
+
+if { [ "$RVIZ_AUTO" = true ] || [ "$GUI_AUTO" = true ]; } && ! ros2 pkg prefix hardware_interface >/dev/null 2>&1; then
+  echo "ERROR: package 'hardware_interface' is not installed in this workspace."
+  echo "Rebuild with ./build.sh or ./rebuild_quick.sh before launching with RViz or GUI."
+  exit 1
+fi
+
 tmux new-session -d -s $SESSION
+tmux set-option -t $SESSION remain-on-exit on
 tmux set-environment -t $SESSION ROS_DOMAIN_ID "$ROS_DOMAIN_ID"
+tmux bind-key -T root C-c kill-session -t $SESSION
 
 tmux split-window -h -t $SESSION
 tmux split-window -v -t $SESSION:0.0

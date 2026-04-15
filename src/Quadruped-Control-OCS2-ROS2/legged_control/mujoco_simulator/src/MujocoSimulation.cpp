@@ -36,6 +36,7 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
         mju_error("Could not create GLFW window");
     }
     glfwMakeContextCurrent(window_);
+    glfwShowWindow(window_);
     glfwSwapInterval(1);  // Enable vsync
 
      // Initialize MuJoCo rendering
@@ -128,6 +129,11 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     mjv_makeScene(model_, &scene_, 2000); 
     // Create MuJoCo context for rendering
     mjr_makeContext(model_, &context_, mjFONTSCALE_150);
+    mjr_setBuffer(mjFB_WINDOW, &context_);
+    if (context_.currentBuffer != mjFB_WINDOW) {
+        RCLCPP_WARN(node_->get_logger(),
+                    "MuJoCo renderer could not select the window framebuffer during initialization.");
+    }
 
     for (int i = 0; i < 12; ++i) {
         Joint_position_[i] = 0.0;
@@ -164,11 +170,20 @@ void MujocoSimulation::renderSetting(const std::string& configFile)
     ocs2::loadData::loadCppDataType(configFile, "render.tracking_base", tracking_base_);
     ocs2::loadData::loadCppDataType(configFile, "render.render_frequency", render_frequency_);
 
+    if (model_ != nullptr) {
+        mjv_defaultFreeCamera(model_, &cam_);
+    }
+
     if (tracking_base_) {
         const char* object_name = "trunk";
         int object_body_id = mj_name2id(model_, mjOBJ_BODY, object_name);
-        cam_.type = mjCAMERA_TRACKING;
-        cam_.trackbodyid = object_body_id;
+        if (object_body_id >= 0) {
+            cam_.type = mjCAMERA_TRACKING;
+            cam_.trackbodyid = object_body_id;
+            cam_.distance = 1.0;
+            cam_.azimuth = 135.0;
+            cam_.elevation = -20.0;
+        }
     }
     if (visualize_contacts_) {
         opt_.flags[mjVIS_CONTACTPOINT] = 1; 
@@ -465,6 +480,18 @@ void MujocoSimulation::updateDisturbanceForce() {
 void MujocoSimulation::render() {
     // Check if window exists
     if (window_) {
+        glfwMakeContextCurrent(window_);
+        mjr_setBuffer(mjFB_WINDOW, &context_);
+        if (context_.currentBuffer != mjFB_WINDOW) {
+            static bool warned_window_buffer = false;
+            if (!warned_window_buffer) {
+                RCLCPP_ERROR(node_->get_logger(),
+                             "MuJoCo renderer is not bound to the window framebuffer. Viewer output will stay black.");
+                warned_window_buffer = true;
+            }
+            return;
+        }
+
         // Get framebuffer size
         int width, height;
         glfwGetFramebufferSize(window_, &width, &height);

@@ -10,6 +10,7 @@ __pycache__/
 .idea/
 .vscode/
 .ros/
+.cache/
 tmp/
 MUJOCO_LOG.TXT
 sim_capture/

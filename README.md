@@ -73,6 +73,12 @@ source ./source_ws.sh
 ./run.sh quad_mini_real sim estimated debug rviz gui
 ```
 
+## GPU Rendering
+
+Runtime launchers use the single `docker-compose.yml`, which is configured for NVIDIA GPU rendering by default.
+
+If GPU startup fails with an `nvidia-container-cli` error, the host Docker NVIDIA runtime is not healthy yet. Verify GPU containers separately with `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`.
+
 ## Build
 
 Build the full workspace with:

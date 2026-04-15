@@ -15,7 +15,7 @@ model_settings
 
   verboseCppAd                  true
   recompileLibrariesCppAd       false
-  modelFolderCppAd              /tmp/legged_control/a1
+  modelFolderCppAd              /workspaces/quad_ocs2_ws/.cache/legged_control/a1
 }
 
 swing_trajectory_config

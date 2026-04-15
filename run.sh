@@ -20,13 +20,6 @@ ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 HOST_UID="${HOST_UID:-$(id -u)}"
 HOST_GID="${HOST_GID:-$(id -g)}"
-
-require_host_command() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo "ERROR: Required command '$1' is not installed or not on PATH."
-        exit 1
-    fi
-}
 if [ -z "${INPUT_GID:-}" ]; then
     if getent group input >/dev/null 2>&1; then
         INPUT_GID="$(getent group input | cut -d: -f3)"
@@ -142,21 +135,28 @@ else
     echo "Running on host system"
     echo "Starting Docker container..."
 
-    require_host_command docker
-    if ! docker compose version >/dev/null 2>&1; then
-        echo "ERROR: 'docker compose' is not available."
-        exit 1
-    fi
-    if ! docker info >/dev/null 2>&1; then
-        echo "ERROR: Docker daemon is not reachable."
-        exit 1
-    fi
-
     xhost +local:docker >/dev/null 2>&1 || true
+
+    cleanup_done=false
+    cleanup_container() {
+        if [ "${cleanup_done}" = true ]; then
+            return
+        fi
+        cleanup_done=true
+        docker compose down --timeout 1 >/dev/null 2>&1 || true
+    }
+
+    handle_interrupt() {
+        cleanup_container
+        exit 130
+    }
+
+    trap cleanup_container EXIT
+    trap handle_interrupt INT TERM
 
     docker compose up -d
 
     echo "Attaching to container..."
 
-    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" $(docker compose ps -q quad_ocs2) ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
+    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" "$(docker compose ps -q quad_ocs2)" ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
 fi

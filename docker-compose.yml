@@ -18,25 +18,20 @@ services:
     network_mode: host
     ipc: host
 
-    # Enable GPU
     gpus: all
 
     environment:
       DISPLAY: ${DISPLAY}
       QT_X11_NO_MITSHM: "1"
       LIBGL_ALWAYS_INDIRECT: "0"
-
-      __NV_PRIME_RENDER_OFFLOAD: "1"
-      __GLX_VENDOR_LIBRARY_NAME: "nvidia"
+      LIBGL_ALWAYS_SOFTWARE: "0"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: graphics,utility,compute
       
       ROS_DISTRO: ${ROS_DISTRO:-humble}
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-23}
       WS_DIR: /workspaces/quad_ocs2_ws
       XDG_RUNTIME_DIR: /tmp/runtime-${USER_NAME:-ros}
-
-      # NVIDIA runtime
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: all
 
     volumes:
       - .:/workspaces/quad_ocs2_ws

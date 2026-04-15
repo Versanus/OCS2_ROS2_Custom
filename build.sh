@@ -9,6 +9,21 @@ WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$WS_DIR/src/Quadruped-Control-OCS2-ROS2"
 MUJOCO_LIB="$SRC_DIR/mujoco/mujoco-3.2.2/lib"
 QPOASES_DIR="$SRC_DIR/qpOASES-master"
+HOST_UID="${HOST_UID:-$(id -u)}"
+HOST_GID="${HOST_GID:-$(id -g)}"
+USER_NAME="${USER_NAME:-$(id -un)}"
+
+if [ -z "${INPUT_GID:-}" ]; then
+    if getent group input >/dev/null 2>&1; then
+        INPUT_GID="$(getent group input | cut -d: -f3)"
+    elif [ -e /dev/input ]; then
+        INPUT_GID="$(stat -c '%g' /dev/input)"
+    else
+        INPUT_GID="${HOST_GID}"
+    fi
+fi
+
+export HOST_UID HOST_GID USER_NAME INPUT_GID
 
 require_command() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -20,16 +35,6 @@ require_command() {
 echo "[0/6] Checking host prerequisites..."
 require_command git
 require_command docker
-if ! docker compose version >/dev/null 2>&1; then
-    echo "ERROR: 'docker compose' is not available."
-    echo "Install Docker Compose plugin before running build.sh."
-    exit 1
-fi
-if ! docker info >/dev/null 2>&1; then
-    echo "ERROR: Docker daemon is not reachable."
-    echo "Start Docker and make sure your user can run docker commands."
-    exit 1
-fi
 
 echo "[1/6] Enable X11"
 xhost +local:docker > /dev/null 2>&1 || true
@@ -42,6 +47,10 @@ cd "$SRC_DIR"
 clone_if_missing () {
     if [ -d "$1/.git" ]; then
         echo "$1 already exists"
+    elif [ -d "$1" ] && [ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+        echo "Directory '$1' exists but is empty. Replacing it with a fresh clone..."
+        rmdir "$1"
+        git clone "$2"
     elif [ -d "$1" ]; then
         echo "ERROR: Directory '$1' already exists but is not a git checkout."
         echo "Remove it or convert it into a valid clone before running build.sh."
@@ -55,6 +64,10 @@ clone_if_missing () {
 clone_recursive_if_missing () {
     if [ -d "$1/.git" ]; then
         echo "$1 already exists"
+    elif [ -d "$1" ] && [ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+        echo "Directory '$1' exists but is empty. Replacing it with a fresh clone..."
+        rmdir "$1"
+        git clone --recurse-submodules "$2"
     elif [ -d "$1" ]; then
         echo "ERROR: Directory '$1' already exists but is not a git checkout."
         echo "Remove it or convert it into a valid clone before running build.sh."
@@ -140,11 +153,16 @@ colcon build \
 echo 'Sourcing workspace'
 source install/setup.bash
 
-echo 'Building simulator packages'
-colcon build --packages-up-to mujoco_simulator
-colcon build --packages-up-to motion_control
-colcon build --packages-up-to user_command
-colcon build --packages-up-to launch_simulation
+echo 'Building simulator, bridge, and visualization packages'
+colcon build --packages-select \
+  legged_msgs \
+  stm2ros \
+  motion_control \
+  hardware_interface \
+  mujoco_simulator \
+  real_robot_bridge \
+  user_command \
+  launch_simulation
 "
 
 echo ""
