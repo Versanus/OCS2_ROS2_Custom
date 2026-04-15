@@ -23,50 +23,127 @@ The launcher interface was simplified. The old `RUN_ROLE` / `MPC_HOST` arguments
 ## Requirements
 
 - Ubuntu 22.04
-- Docker
-- Docker Compose
-- X11 access if you want RViz or GUI windows
+- `git`
+- Docker Engine with the Docker Compose plugin
+- X11 access if you want MuJoCo, RViz, or GUI windows
+- NVIDIA driver + NVIDIA Container Toolkit if you want GPU MuJoCo rendering
 
-Install Docker and verify:
-
-```bash
-docker --version
-docker compose version
-```
-
-## Clone
-
-```bash
-git clone https://github.com/Versanus/OCS2_quad_mini.git
-cd OCS2_quad_mini
-```
+This repo is built around the normal apt-based Docker Engine on Ubuntu. Do not use the Snap Docker package on a new machine.
 
 ## New PC Quickstart
 
-On a fresh Ubuntu 22.04 machine:
+Use these steps on a fresh Ubuntu 22.04 machine.
+
+### 1. Install base packages
 
 ```bash
 sudo apt update
-sudo apt install -y git x11-xserver-utils
+sudo apt install -y git curl ca-certificates x11-xserver-utils
 ```
 
-Then install Docker and Docker Compose plugin, make sure Docker is running, and verify:
+### 2. Install Docker Engine
+
+Install Docker Engine and the Compose plugin using Docker's official Ubuntu instructions:
+
+- Docker Engine on Ubuntu: https://docs.docker.com/engine/install/ubuntu/
+- Docker Compose plugin on Linux: https://docs.docker.com/compose/install/linux/
+
+The standard apt-based install is:
+
+```bash
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+cat <<EOF | sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"
+```
+
+Log out and log back in after adding yourself to the `docker` group.
+
+### 3. Install GPU container support
+
+MuJoCo in this repo is configured for NVIDIA GPU rendering by default.
+
+First verify the host driver:
+
+```bash
+nvidia-smi
+```
+
+If that does not work, fix the NVIDIA driver first.
+
+Then install NVIDIA Container Toolkit using the official guide:
+
+- NVIDIA Container Toolkit install guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+
+The apt-based install is:
+
+```bash
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
+
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
+```
+
+Then configure Docker and restart the daemon:
+
+```bash
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+```
+
+### 4. Validate the host setup
+
+Before building the repo, make sure Docker and GPU containers work:
 
 ```bash
 docker --version
 docker compose version
 docker info
+docker run --rm hello-world
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
-Then clone and build:
+If the last command fails, fix the host Docker/NVIDIA runtime before building this workspace.
+
+### 5. Clone the repo
 
 ```bash
 git clone https://github.com/Versanus/OCS2_quad_mini.git
 cd OCS2_quad_mini
+```
+
+### 6. Build the workspace
+
+```bash
 ./build.sh
 ```
 
-After the build:
+`./build.sh` will:
+
+- clone the missing external dependencies under `src/Quadruped-Control-OCS2-ROS2`
+- build `qpOASES`
+- build the Docker image
+- build the ROS 2 workspace inside the container
+
+### 7. Source the workspace and run sim
 
 ```bash
 source ./source_ws.sh
@@ -77,7 +154,11 @@ source ./source_ws.sh
 
 Runtime launchers use the single `docker-compose.yml`, which is configured for NVIDIA GPU rendering by default.
 
-If GPU startup fails with an `nvidia-container-cli` error, the host Docker NVIDIA runtime is not healthy yet. Verify GPU containers separately with `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`.
+If GPU startup fails with an `nvidia-container-cli` error, the host Docker NVIDIA runtime is not healthy yet. Verify GPU containers separately with:
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
 
 ## Build
 
