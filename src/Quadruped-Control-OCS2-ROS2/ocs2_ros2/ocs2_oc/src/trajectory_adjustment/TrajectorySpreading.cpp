@@ -72,7 +72,7 @@ auto TrajectorySpreading::set(const ModeSchedule& oldModeSchedule, const ModeSch
   // the size of the window where the active modes are identical.
   // this means: mode[firstMatchingModeIndex + w] != updatedMode[updatedFirstMatchingModeIndex + w]
   size_t w = 0;
-  while (oldStartIndexOfMatchedSequence < oldModeSchedule.modeSequence.size()) {
+  while (oldStartIndexOfMatchedSequence <= oldLastActiveModeIndex) {
     // +1 to include the last active mode
     const auto mismatchedIndex = std::mismatch(oldModeSchedule.modeSequence.cbegin() + oldStartIndexOfMatchedSequence,
                                                oldModeSchedule.modeSequence.cbegin() + oldLastActiveModeIndex + 1,
@@ -128,17 +128,21 @@ auto TrajectorySpreading::set(const ModeSchedule& oldModeSchedule, const ModeSch
   // If the last active mode of the old mode schedule is NOT matched but the last active mode of the new mode schedule is matched, that
   // indicates the old ending event time need to be spread till the end of trajectories.
   // If neither new last active mode and old last active mode is matched, we have to compare the corresponding ending event time.
-  const bool isLastActiveModeOfOldModeSequenceMatched = oldStartIndexOfMatchedSequence + w - 1 == oldLastActiveModeIndex;
-  const bool isLastActiveModeOfNewModeSequenceMatched = newStartIndexOfMatchedSequence + w - 1 == newLastActiveModeIndex;
-  if (!isLastActiveModeOfOldModeSequenceMatched &&
-      (isLastActiveModeOfNewModeSequenceMatched || oldModeSchedule.eventTimes[oldStartIndexOfMatchedSequence + w - 1] <
-                                                       newModeSchedule.eventTimes[newStartIndexOfMatchedSequence + w - 1])) {
-    const auto oldLEndEvent = oldModeSchedule.eventTimes[oldStartIndexOfMatchedSequence + w - 1];
-    const auto newEndEvent =
-        isLastActiveModeOfNewModeSequenceMatched ? oldFinalTime + 1e-4 : newModeSchedule.eventTimes[newStartIndexOfMatchedSequence + w - 1];
+  bool isLastActiveModeOfOldModeSequenceMatched = false;
+  bool isLastActiveModeOfNewModeSequenceMatched = false;
+  if (w > 0) {
+    isLastActiveModeOfOldModeSequenceMatched = oldStartIndexOfMatchedSequence + w - 1 == oldLastActiveModeIndex;
+    isLastActiveModeOfNewModeSequenceMatched = newStartIndexOfMatchedSequence + w - 1 == newLastActiveModeIndex;
+    if (!isLastActiveModeOfOldModeSequenceMatched &&
+        (isLastActiveModeOfNewModeSequenceMatched || oldModeSchedule.eventTimes[oldStartIndexOfMatchedSequence + w - 1] <
+                                                         newModeSchedule.eventTimes[newStartIndexOfMatchedSequence + w - 1])) {
+      const auto oldLEndEvent = oldModeSchedule.eventTimes[oldStartIndexOfMatchedSequence + w - 1];
+      const auto newEndEvent = isLastActiveModeOfNewModeSequenceMatched ? oldFinalTime + 1e-4
+                                                                        : newModeSchedule.eventTimes[newStartIndexOfMatchedSequence + w - 1];
 
-    oldMatchedEventTimes.push_back(oldLEndEvent);
-    newMatchedEventTimes.push_back(newEndEvent);
+      oldMatchedEventTimes.push_back(oldLEndEvent);
+      newMatchedEventTimes.push_back(newEndEvent);
+    }
   }
 
   assert(oldMatchedEventTimes.size() == newMatchedEventTimes.size());

@@ -26,7 +26,7 @@ class SimToRealBridge(Node):
         self.declare_parameter('kd', 1.0)
         self.declare_parameter('motors_enabled', True)
         self.declare_parameter('feedforward_torque_enabled', True)
-        self.declare_parameter('enable_tuning_window', True)
+        self.declare_parameter('enable_tuning_window', False)
         self.declare_parameter('gain_scale_min', 0.0)
         self.declare_parameter('gain_scale_max', 10.0)
         self.declare_parameter('gain_scale_resolution', 0.01)
@@ -121,14 +121,17 @@ class SimToRealBridge(Node):
 
     def control_callback(self, msg: JointControlData):
         position_by_name = self._vector_to_map(msg.joint_position)
+        velocity_by_name = self._vector_to_map(msg.joint_velocity)
         torque_by_name = self._vector_to_map(msg.joint_torque)
         joint_position = []
+        joint_velocity = []
         joint_torque = []
 
         for target_name in self.output_joint_names:
             source_name = self.target_to_source_map.get(target_name)
             if source_name is None:
                 joint_position.append(float(self.default_position))
+                joint_velocity.append(0.0)
                 joint_torque.append(float(self.default_effort))
                 continue
 
@@ -137,6 +140,8 @@ class SimToRealBridge(Node):
             else:
                 position = self.default_position
 
+            velocity = velocity_by_name.get(source_name, 0.0)
+
             if self.use_input_effort:
                 torque = torque_by_name.get(source_name, self.default_effort)
             else:
@@ -144,10 +149,14 @@ class SimToRealBridge(Node):
 
             if target_name in self.invert_output_joints:
                 position *= -1.0
+                velocity *= -1.0
                 torque *= -1.0
 
             joint_position.append(float(position))
-            joint_torque.append(float(torque))
+            joint_velocity.append(float(1.2*abs(velocity)))
+            #joint_velocity.append(3.0)
+            #joint_torque.append(abs(float(torque)))
+            joint_torque.append(12.0)
 
         self.message_count += 1
         self.last_actuator_mode = int(msg.actuator_mode)
@@ -157,6 +166,7 @@ class SimToRealBridge(Node):
         torque_enabled = self.motors_enabled and self.feedforward_torque_enabled
         joint_cmd.joint_torque = joint_torque if torque_enabled else [0.0] * len(joint_torque)
         joint_cmd.joint_position = joint_position
+        joint_cmd.joint_velocity = joint_velocity
         joint_cmd.kp = float(self.kp if self.motors_enabled else 0.0)
         joint_cmd.kd = float(self.kd if self.motors_enabled else 0.0)
 
@@ -439,7 +449,7 @@ class SimToRealBridge(Node):
             rclpy.spin(self)
             return
 
-        self.root.after(10, self._pump_ros)
+        self.root.after(1, self._pump_ros)
         self.root.mainloop()
 
     def _pump_ros(self):
@@ -448,7 +458,7 @@ class SimToRealBridge(Node):
 
         rclpy.spin_once(self, timeout_sec=0.0)
         if self.root is not None:
-            self.root.after(10, self._pump_ros)
+            self.root.after(1, self._pump_ros)
 
     def shutdown(self):
         if self._shutdown_started:
