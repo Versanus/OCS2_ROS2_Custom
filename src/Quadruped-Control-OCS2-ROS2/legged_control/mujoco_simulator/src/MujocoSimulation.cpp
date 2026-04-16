@@ -16,6 +16,16 @@ bool MujocoSimulation::button_right = false;
 double MujocoSimulation::lastx = 0.0;
 double MujocoSimulation::lasty = 0.0;
 
+namespace {
+constexpr std::array<const char*, 5> kDisturbanceBodyNames = {
+    "trunk", "LF_FOOT", "RF_FOOT", "LH_FOOT", "RH_FOOT"
+};
+
+constexpr std::array<const char*, 5> kDisturbanceBodyLabels = {
+    "trunk", "LF foot", "RF foot", "LH foot", "RH foot"
+};
+}  // namespace
+
 MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     const std::string& xmlFile,
     const std::string& simulatorFile,
@@ -110,6 +120,11 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     disturbance_interval_max_ = std::max(disturbance_interval_min_, disturbance_interval_max_);
     disturbance_impulse_duration_ = std::max(timestep_, disturbance_impulse_duration_);
     disturbance_arrow_scale_ = std::max(0.0, disturbance_arrow_scale_);
+    disturbance_force_scales_[0] = std::max(0.0, pt.get<double>("disturbance.trunk_force_scale", disturbance_force_scales_[0]));
+    disturbance_force_scales_[1] = std::max(0.0, pt.get<double>("disturbance.lf_foot_force_scale", disturbance_force_scales_[1]));
+    disturbance_force_scales_[2] = std::max(0.0, pt.get<double>("disturbance.rf_foot_force_scale", disturbance_force_scales_[2]));
+    disturbance_force_scales_[3] = std::max(0.0, pt.get<double>("disturbance.lh_foot_force_scale", disturbance_force_scales_[3]));
+    disturbance_force_scales_[4] = std::max(0.0, pt.get<double>("disturbance.rh_foot_force_scale", disturbance_force_scales_[4]));
 
     // Load MuJoCo model and data
     model_ = mj_loadXML(modelPath.c_str(), nullptr, nullptr, 0);
@@ -143,8 +158,7 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
         Joint_torque_[i] = 0.0;
     }
 
-    disturbance_body_id_ = mj_name2id(model_, mjOBJ_BODY, "trunk");
-    if (disturbance_body_id_ < 0) {
+    if (!setDisturbanceBody(kDisturbanceBodyNames[0], kDisturbanceBodyLabels[0])) {
         RCLCPP_WARN(node_->get_logger(), "Base disturbance body 'trunk' not found. Disturbance toggle will be disabled.");
     }
     
@@ -231,7 +245,7 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
 
     if (key == GLFW_KEY_D) {
         if (instance_->disturbance_body_id_ < 0) {
-            RCLCPP_WARN(instance_->node_->get_logger(), "Cannot toggle disturbances because the base body was not found.");
+            RCLCPP_WARN(instance_->node_->get_logger(), "Cannot toggle disturbances because the selected body was not found.");
             return;
         }
 
@@ -241,10 +255,48 @@ void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int a
             instance_->next_disturbance_update_time_ =
                 instance_->data_ ? instance_->data_->time : 0.0;
             RCLCPP_INFO(instance_->node_->get_logger(),
-                        "Random base impulses enabled. Press 'd' again to turn them off.");
+                        "Random impulses enabled on %s. Press 0 for trunk, 1-4 for feet, or 'd' again to turn them off.",
+                        instance_->getDisturbanceBodyLabel());
         } else {
             instance_->clearDisturbanceForce();
-            RCLCPP_INFO(instance_->node_->get_logger(), "Random base impulses disabled.");
+            RCLCPP_INFO(instance_->node_->get_logger(), "Random impulses disabled.");
+        }
+        return;
+    }
+
+    int disturbanceSelectionIndex = -1;
+    switch (key) {
+        case GLFW_KEY_0:
+            disturbanceSelectionIndex = 0;
+            break;
+        case GLFW_KEY_1:
+            disturbanceSelectionIndex = 1;
+            break;
+        case GLFW_KEY_2:
+            disturbanceSelectionIndex = 2;
+            break;
+        case GLFW_KEY_3:
+            disturbanceSelectionIndex = 3;
+            break;
+        case GLFW_KEY_4:
+            disturbanceSelectionIndex = 4;
+            break;
+        default:
+            break;
+    }
+
+    if (disturbanceSelectionIndex >= 0) {
+        const char* targetBodyName = kDisturbanceBodyNames[disturbanceSelectionIndex];
+        const char* targetBodyLabel = kDisturbanceBodyLabels[disturbanceSelectionIndex];
+        if (instance_->setDisturbanceBody(targetBodyName, targetBodyLabel)) {
+            RCLCPP_INFO(instance_->node_->get_logger(),
+                        "Disturbance target set to %s. Press 'd' to %s disturbances.",
+                        instance_->getDisturbanceBodyLabel(),
+                        instance_->disturbance_enabled_ ? "keep applying" : "enable");
+        } else {
+            RCLCPP_WARN(instance_->node_->get_logger(),
+                        "Could not select disturbance target '%s' because that body was not found in the model.",
+                        targetBodyName);
         }
     }
 }
@@ -393,6 +445,54 @@ void MujocoSimulation::clearDisturbanceForce() {
     }
 }
 
+bool MujocoSimulation::setDisturbanceBody(const char* bodyName, const char* bodyLabel) {
+    if (model_ == nullptr || bodyName == nullptr || bodyLabel == nullptr) {
+        return false;
+    }
+
+    int selectionIndex = -1;
+    for (std::size_t i = 0; i < kDisturbanceBodyNames.size(); ++i) {
+        if (std::strcmp(bodyName, kDisturbanceBodyNames[i]) == 0) {
+            selectionIndex = static_cast<int>(i);
+            break;
+        }
+    }
+    if (selectionIndex < 0) {
+        return false;
+    }
+
+    const int newBodyId = mj_name2id(model_, mjOBJ_BODY, bodyName);
+    if (newBodyId < 0) {
+        return false;
+    }
+
+    if (data_ != nullptr && disturbance_body_id_ >= 0) {
+        double* previousAppliedWrench = data_->xfrc_applied + 6 * disturbance_body_id_;
+        for (int i = 0; i < 6; ++i) {
+            previousAppliedWrench[i] = 0.0;
+        }
+    }
+
+    disturbance_body_id_ = newBodyId;
+    disturbance_body_selection_index_ = selectionIndex;
+    disturbance_body_label_ = bodyLabel;
+    current_disturbance_wrench_.fill(0.0);
+    last_disturbance_wrench_.fill(0.0);
+    disturbance_active_until_time_ = data_ ? data_->time : 0.0;
+    next_disturbance_update_time_ = data_ ? data_->time : 0.0;
+    return true;
+}
+
+const char* MujocoSimulation::getDisturbanceBodyLabel() const {
+    return disturbance_body_label_.c_str();
+}
+
+double MujocoSimulation::getCurrentDisturbanceForceScale() const {
+    const std::size_t index = static_cast<std::size_t>(std::clamp(
+        disturbance_body_selection_index_, 0, static_cast<int>(disturbance_force_scales_.size() - 1)));
+    return disturbance_force_scales_[index];
+}
+
 void MujocoSimulation::scheduleNextDisturbance() {
     if (data_ == nullptr) {
         return;
@@ -415,13 +515,14 @@ void MujocoSimulation::sampleDisturbanceForce() {
     std::uniform_real_distribution<double> verticalDistribution(
         -disturbance_vertical_scale_, disturbance_vertical_scale_);
 
-    const double planarMagnitude = magnitudeDistribution(disturbance_rng_);
+    const double forceScale = getCurrentDisturbanceForceScale();
+    const double planarMagnitude = forceScale * magnitudeDistribution(disturbance_rng_);
     const double planarAngle = angleDistribution(disturbance_rng_);
 
     current_disturbance_wrench_[0] = planarMagnitude * std::cos(planarAngle);
     current_disturbance_wrench_[1] = planarMagnitude * std::sin(planarAngle);
     current_disturbance_wrench_[2] =
-        magnitudeDistribution(disturbance_rng_) * verticalDistribution(disturbance_rng_);
+        forceScale * magnitudeDistribution(disturbance_rng_) * verticalDistribution(disturbance_rng_);
     current_disturbance_wrench_[3] = 0.0;
     current_disturbance_wrench_[4] = 0.0;
     current_disturbance_wrench_[5] = 0.0;
@@ -434,7 +535,9 @@ void MujocoSimulation::sampleDisturbanceForce() {
     disturbance_active_until_time_ = data_->time + disturbance_impulse_duration_;
 
     RCLCPP_INFO(node_->get_logger(),
-                "Applied base impulse: fx=%.2f fy=%.2f fz=%.2f duration=%.3f",
+                "Applied impulse on %s (scale %.2f): fx=%.2f fy=%.2f fz=%.2f duration=%.3f",
+                getDisturbanceBodyLabel(),
+                forceScale,
                 current_disturbance_wrench_[0], current_disturbance_wrench_[1],
                 current_disturbance_wrench_[2], disturbance_impulse_duration_);
 }
@@ -582,8 +685,8 @@ void MujocoSimulation::renderDisturbanceOverlay(const mjrRect& viewport) {
 
         const double forceMagnitude = forceActive ? currentForceMagnitude : getLastDisturbanceForceMagnitude();
         std::snprintf(overlayText, sizeof(overlayText),
-                      "Last force: %.1f N\nFx: %.1f   Fy: %.1f   Fz: %.1f",
-                      forceMagnitude, fx, fy, fz);
+                      "Disturbance: ON\nTarget: %s\nScale: %.2f\nLast force: %.1f N\nFx: %.1f   Fy: %.1f   Fz: %.1f\nKeys: 0 trunk, 1 LF, 2 RF, 3 LH, 4 RH",
+                      getDisturbanceBodyLabel(), getCurrentDisturbanceForceScale(), forceMagnitude, fx, fy, fz);
         mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, overlayText, nullptr, &context_);
     }
 }

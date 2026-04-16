@@ -8,6 +8,7 @@
 #include <chrono>
 #include <mutex>
 #include <random>
+#include <string>
 #include <vector>
 #include <ocs2_core/misc/LoadData.h>
 //#include "std_msgs/msg/float32.hpp"
@@ -51,6 +52,9 @@ public:
     void sampleDisturbanceForce();
     void appendDisturbanceArrowToScene();
     void renderDisturbanceOverlay(const mjrRect& viewport);
+    bool setDisturbanceBody(const char* bodyName, const char* bodyLabel);
+    const char* getDisturbanceBodyLabel() const;
+    double getCurrentDisturbanceForceScale() const;
     double getCurrentDisturbanceForceMagnitude() const;
     double getLastDisturbanceForceMagnitude() const;
     void resetRobotPose();
@@ -121,6 +125,9 @@ private:
     // random base disturbance
     bool disturbance_enabled_ = false;
     int disturbance_body_id_ = -1;
+    int disturbance_body_selection_index_ = 0;
+    std::string disturbance_body_label_ = "trunk";
+    std::array<double, 5> disturbance_force_scales_{{1.0, 1.0, 1.0, 1.0, 1.0}};
     double disturbance_force_min_ = 20.0;
     double disturbance_force_max_ = 60.0;
     double disturbance_vertical_scale_ = 0.35;
