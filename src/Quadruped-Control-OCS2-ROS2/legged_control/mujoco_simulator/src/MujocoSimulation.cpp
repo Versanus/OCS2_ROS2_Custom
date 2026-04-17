@@ -24,6 +24,13 @@ constexpr std::array<const char*, 5> kDisturbanceBodyNames = {
 constexpr std::array<const char*, 5> kDisturbanceBodyLabels = {
     "trunk", "LF foot", "RF foot", "LH foot", "RH foot"
 };
+
+double sanitizeGainRatio(double ratio) {
+    if (!std::isfinite(ratio)) {
+        return 0.0;
+    }
+    return std::max(0.0, ratio);
+}
 }  // namespace
 
 MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
@@ -95,15 +102,8 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     ocs2::loadData::loadCppDataType(configFile, "controller.timestep", timestep_);
     ocs2::loadData::loadCppDataType(configFile, "controller.wbc_control_frequency", control_frequency_);
 
-    // pid
-    ocs2::loadData::loadCppDataType(configFile, "pid.kp", Kp_);
-    ocs2::loadData::loadCppDataType(configFile, "pid.kd", Kd_);
     boost::property_tree::ptree pt;
     boost::property_tree::read_info(configFile, pt);
-    estopKp_ = pt.get<double>("pid.estop_kp", estopKp_);
-    estopKd_ = pt.get<double>("pid.estop_kd", estopKd_);
-    estopKp_ = std::max(Kp_, estopKp_);
-    estopKd_ = std::max(Kd_, estopKd_);
 
     // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
@@ -406,10 +406,8 @@ void MujocoSimulation::simulateStep() {
 
     if (!Start_simulate_)
     {
-        const bool strongPdMode = actuator_mode_ == 1;
-        const bool zeroTorqueMode = actuator_mode_ == 2;
-        const double effectiveKp = strongPdMode ? estopKp_ : Kp_;
-        const double effectiveKd = strongPdMode ? estopKd_ : Kd_;
+        const double effectiveKp = baseKp_ * kpRatio_;
+        const double effectiveKd = baseKd_ * kdRatio_;
         double joint_position_value[12];
         double joint_velocity_value[12];
         double control_torque[12];
@@ -417,13 +415,9 @@ void MujocoSimulation::simulateStep() {
         for (int i = 0; i < 12; ++i) {
             joint_position_value[i] = data_->sensordata[i+10];
             joint_velocity_value[i] = data_->sensordata[i+22];
-            if (zeroTorqueMode) {
-                control_torque[i] = 0.0;
-            } else {
-                control_torque[i] = static_cast<double>(Joint_torque_[i]) +
-                    effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
-                    effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
-            }
+            control_torque[i] = static_cast<double>(Joint_torque_[i]) +
+                effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
+                effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
             data_->ctrl[i] = control_torque[i];
             //std::cout << "data_->ctrl[" << i << "] = " << data_->ctrl[i] << std::endl;
         }
@@ -737,7 +731,8 @@ void MujocoSimulation::clearActuatorCommandState() {
         Joint_torque_[i] = 0.0;
     }
 
-    actuator_mode_ = 2;
+    kpRatio_ = 0.0;
+    kdRatio_ = 0.0;
 
     if (data_ != nullptr) {
         std::fill(data_->ctrl, data_->ctrl + model_->nu, 0.0);
@@ -794,16 +789,18 @@ void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlDat
     const bool valid_position_size = msg.joint_position.size() == 12;
     const bool valid_velocity_size = msg.joint_velocity.size() == 12;
     const bool valid_torque_size = msg.joint_torque.size() == 12;
-    if (!valid_position_size || !valid_velocity_size || !valid_torque_size) {
+    const bool valid_gain_values = std::isfinite(msg.kp) && std::isfinite(msg.kd);
+    if (!valid_position_size || !valid_velocity_size || !valid_torque_size || !valid_gain_values) {
         RCLCPP_ERROR(node_->get_logger(),
-                     "Invalid joint command sizes. position=%zu velocity=%zu torque=%zu (expected 12 each). Ignoring command.",
-                     msg.joint_position.size(), msg.joint_velocity.size(), msg.joint_torque.size());
+                     "Invalid joint command. position=%zu velocity=%zu torque=%zu kp=%f kd=%f. Ignoring command.",
+                     msg.joint_position.size(), msg.joint_velocity.size(), msg.joint_torque.size(), msg.kp, msg.kd);
         return;
     }
 
     Start_simulate_ = false;
     Start_control_ = true;
-    actuator_mode_ = static_cast<int>(msg.actuator_mode);
+    kpRatio_ = sanitizeGainRatio(msg.kp);
+    kdRatio_ = sanitizeGainRatio(msg.kd);
 
     for (size_t i = 0; i < msg.joint_position.size(); ++i) {
         Joint_position_[i] = msg.joint_position[i];

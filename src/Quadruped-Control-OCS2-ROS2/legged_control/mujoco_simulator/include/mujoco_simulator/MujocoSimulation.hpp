@@ -114,11 +114,10 @@ private:
     double Joint_torque_[12];
     double timestep_;
     double control_frequency_;
-    double Kp_;
-    double Kd_;
-    double estopKp_ = 20.0;
-    double estopKd_ = 0.60;
-    int actuator_mode_ = 0;
+    double baseKp_ = 10.0;
+    double baseKd_ = 0.30;
+    double kpRatio_ = 0.0;
+    double kdRatio_ = 0.0;
     bool Start_control_=false;
     bool Start_simulate_=false;
 

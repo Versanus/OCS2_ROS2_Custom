@@ -102,12 +102,6 @@ public:
     ZeroTorque = 5,
   };
 
-  enum class ActuatorMode : uint8_t {
-    NormalPd = 0,
-    StrongPd = 1,
-    ZeroTorque = 2,
-  };
-
   MPC_WBC_ROS_Interface(
     const rclcpp::Node::SharedPtr& node, 
     const std::string& urdfFile,

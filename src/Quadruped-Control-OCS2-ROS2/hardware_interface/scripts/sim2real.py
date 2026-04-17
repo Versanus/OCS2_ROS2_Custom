@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import math
 import tkinter as tk
 from tkinter import ttk
 
@@ -80,6 +81,8 @@ class SimToRealBridge(Node):
         )
         self.gain_scale_max = max(self.gain_scale_min, self.gain_scale_max)
         self.gain_scale_resolution = max(0.001, self.gain_scale_resolution)
+        self.kp = max(self.gain_scale_min, min(self.gain_scale_max, self.kp))
+        self.kd = max(self.gain_scale_min, min(self.gain_scale_max, self.kd))
 
         self.source_to_target_map = {
             'LF_HAA': 'FL_HipX', 'LF_HFE': 'FL_HipY', 'LF_KFE': 'FL_Knee',
@@ -91,7 +94,10 @@ class SimToRealBridge(Node):
         self._updating_controls = False
         self._shutdown_started = False
         self.message_count = 0
-        self.last_actuator_mode = None
+        self.last_input_kp_ratio = None
+        self.last_input_kd_ratio = None
+        self.last_output_kp_ratio = None
+        self.last_output_kd_ratio = None
         self.root = None
         self.status_var = None
         self.motor_toggle_button = None
@@ -153,13 +159,16 @@ class SimToRealBridge(Node):
                 torque *= -1.0
 
             joint_position.append(float(position))
-            joint_velocity.append(float(1.2*abs(velocity)))
-            #joint_velocity.append(3.0)
-            #joint_torque.append(abs(float(torque)))
-            joint_torque.append(12.0)
+            joint_velocity.append(float(velocity))
+            joint_torque.append(float(torque))
 
         self.message_count += 1
-        self.last_actuator_mode = int(msg.actuator_mode)
+        input_kp_ratio = self._sanitize_ratio(msg.kp)
+        input_kd_ratio = self._sanitize_ratio(msg.kd)
+        bridge_kp_ratio = self._sanitize_ratio(self.kp)
+        bridge_kd_ratio = self._sanitize_ratio(self.kd)
+        self.last_input_kp_ratio = input_kp_ratio
+        self.last_input_kd_ratio = input_kd_ratio
 
         joint_cmd = JointControlState()
         joint_cmd.joint_names = list(self.output_joint_names)
@@ -167,8 +176,10 @@ class SimToRealBridge(Node):
         joint_cmd.joint_torque = joint_torque if torque_enabled else [0.0] * len(joint_torque)
         joint_cmd.joint_position = joint_position
         joint_cmd.joint_velocity = joint_velocity
-        joint_cmd.kp = float(self.kp if self.motors_enabled else 0.0)
-        joint_cmd.kd = float(self.kd if self.motors_enabled else 0.0)
+        joint_cmd.kp = float(input_kp_ratio * bridge_kp_ratio if self.motors_enabled else 0.0)
+        joint_cmd.kd = float(input_kd_ratio * bridge_kd_ratio if self.motors_enabled else 0.0)
+        self.last_output_kp_ratio = joint_cmd.kp
+        self.last_output_kd_ratio = joint_cmd.kd
 
         self.publisher.publish(joint_cmd)
         self._update_status_text()
@@ -196,8 +207,8 @@ class SimToRealBridge(Node):
             elif param.name == 'feedforward_torque_enabled':
                 new_feedforward_torque_enabled = bool(param.value)
 
-        self.kp = new_kp
-        self.kd = new_kd
+        self.kp = self._clamp_gain(new_kp)
+        self.kd = self._clamp_gain(new_kd)
         self.motors_enabled = new_motors_enabled
         self.feedforward_torque_enabled = new_feedforward_torque_enabled
         self._sync_gain_controls()
@@ -227,12 +238,12 @@ class SimToRealBridge(Node):
 
         ttk.Label(
             frame,
-            text='Live gain ratios. 1.0 means no change.',
+            text='Live bridge gain ratios. 1.0 means no change.',
             anchor='center',
         ).grid(row=0, column=0, columnspan=4, sticky='ew', pady=(0, 10))
 
-        self._build_gain_row(frame, row=1, gain_name='kp', label='KP Ratio')
-        self._build_gain_row(frame, row=2, gain_name='kd', label='KD Ratio')
+        self._build_gain_row(frame, row=1, gain_name='kp', label='Bridge KP Ratio')
+        self._build_gain_row(frame, row=2, gain_name='kd', label='Bridge KD Ratio')
 
         self.motor_toggle_button = tk.Button(
             frame,
@@ -347,6 +358,17 @@ class SimToRealBridge(Node):
     def _format_gain(self, value):
         return f'{float(value):.2f}'
 
+    def _sanitize_ratio(self, value):
+        try:
+            ratio = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+        if not math.isfinite(ratio):
+            return 0.0
+
+        return max(0.0, ratio)
+
     def _sync_gain_controls(self):
         if self.root is None:
             return
@@ -436,8 +458,12 @@ class SimToRealBridge(Node):
             f'output={"ON" if self.motors_enabled else "OFF"} | '
             f'torque_ff={"ON" if self.feedforward_torque_enabled else "OFF"} | '
             f'Msgs: {self.message_count} | '
-            f'mode: {self.last_actuator_mode if self.last_actuator_mode is not None else "-"} | '
-            f'kp={self._format_gain(self.kp)} kd={self._format_gain(self.kd)}'
+            f'msg_ratio='
+            f'{self._format_gain(self.last_input_kp_ratio) if self.last_input_kp_ratio is not None else "-"}/'
+            f'{self._format_gain(self.last_input_kd_ratio) if self.last_input_kd_ratio is not None else "-"} | '
+            f'bridge_ratio={self._format_gain(self.kp)}/{self._format_gain(self.kd)} | '
+            f'out_ratio={self._format_gain(self.last_output_kp_ratio) if self.last_output_kp_ratio is not None else "-"}/'
+            f'{self._format_gain(self.last_output_kd_ratio) if self.last_output_kd_ratio is not None else "-"}'
         )
 
         if self.root is None:

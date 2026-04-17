@@ -14,14 +14,6 @@ render
   render_frequency 120
 }
 
-pid
-{
-    kp                   10.0
-    kd                   0.30
-    estop_kp             40.0
-    estop_kd             0.60
-}
-
 disturbance
 {
     force_min            20.0

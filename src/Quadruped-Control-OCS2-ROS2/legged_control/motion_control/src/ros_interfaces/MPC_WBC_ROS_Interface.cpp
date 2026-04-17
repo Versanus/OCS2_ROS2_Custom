@@ -39,6 +39,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <utility>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
@@ -46,6 +47,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pinocchio/algorithm/kinematics.hpp>
 
 namespace {
+
+constexpr double kNominalKpRatio = 1.0;
+constexpr double kNominalKdRatio = 1.0;
+constexpr double kStrongKpRatio = 4.0;
+constexpr double kStrongKdRatio = 2.0;
+constexpr double kZeroKpRatio = 0.0;
+constexpr double kZeroKdRatio = 0.0;
 
 bool tryLoadJointState(const std::string& referenceFile, const std::string& field, ocs2::vector_t& jointState) {
   try {
@@ -76,6 +84,25 @@ std::array<float, 4> footTrajectoryColor(std::size_t index) {
       return {0.95f, 0.25f, 0.65f, 0.95f};
     default:
       return {0.85f, 0.85f, 0.85f, 0.90f};
+  }
+}
+
+std::pair<double, double> jointGainRatiosForState(MPC_WBC_ROS_Interface::ControlState state, bool mpcBlendActive) {
+  if (mpcBlendActive) {
+    return {kStrongKpRatio, kStrongKdRatio};
+  }
+
+  switch (state) {
+    case MPC_WBC_ROS_Interface::ControlState::Hold:
+    case MPC_WBC_ROS_Interface::ControlState::RecoveryPose:
+    case MPC_WBC_ROS_Interface::ControlState::SitDown:
+    case MPC_WBC_ROS_Interface::ControlState::Sitting:
+      return {kStrongKpRatio, kStrongKdRatio};
+    case MPC_WBC_ROS_Interface::ControlState::ZeroTorque:
+      return {kZeroKpRatio, kZeroKdRatio};
+    case MPC_WBC_ROS_Interface::ControlState::Mpc:
+    default:
+      return {kNominalKpRatio, kNominalKdRatio};
   }
 }
 
@@ -1030,7 +1057,8 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
   msg.joint_torque.resize(12);
   msg.joint_position.resize(12);
   msg.joint_velocity.resize(12);
-  msg.actuator_mode = static_cast<uint8_t>(ActuatorMode::NormalPd);
+  msg.kp = kNominalKpRatio;
+  msg.kd = kNominalKdRatio;
 
   const ocs2::scalar_t blendAlpha = mpcBlendActive_
                                         ? std::clamp((currentObservation_.time - mpcBlendStartTime_) /
@@ -1040,23 +1068,19 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
 
   ocs2::vector_t rawTargetJointState = standJointState_;
   ocs2::vector_t rawTargetJointVelocity = ocs2::vector_t::Zero(standJointState_.size());
-  ActuatorMode actuatorMode = ActuatorMode::NormalPd;
 
   switch (controlState_) {
     case ControlState::Hold:
       rawTargetJointState = estopHoldJointState_;
-      actuatorMode = ActuatorMode::StrongPd;
       break;
     case ControlState::RecoveryPose:
       rawTargetJointState = recoveryJointState_;
-      actuatorMode = ActuatorMode::StrongPd;
       break;
     case ControlState::SitDown: {
       const ocs2::scalar_t sitAlpha = std::clamp((currentObservation_.time - sitDownStartTime_) / sitDownDuration_,
                                                  ocs2::scalar_t(0.0), ocs2::scalar_t(1.0));
       rawTargetJointState = (1.0 - sitAlpha) * sitDownStartJointState_ + sitAlpha * sitJointState_;
       rawTargetJointVelocity = (sitJointState_ - sitDownStartJointState_) / sitDownDuration_;
-      actuatorMode = ActuatorMode::StrongPd;
       if (sitAlpha >= 1.0 - 1e-6) {
         controlState_ = ControlState::Sitting;
         rawTargetJointState = sitJointState_;
@@ -1067,15 +1091,12 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
     }
     case ControlState::Sitting:
       rawTargetJointState = sitJointState_;
-      actuatorMode = ActuatorMode::StrongPd;
       break;
     case ControlState::ZeroTorque:
       rawTargetJointState.setZero();
       rawTargetJointVelocity.setZero();
-      actuatorMode = ActuatorMode::ZeroTorque;
       break;
     case ControlState::Mpc:
-      actuatorMode = ActuatorMode::NormalPd;
       break;
   }
 
@@ -1099,7 +1120,9 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
     }
   }
 
-  msg.actuator_mode = static_cast<uint8_t>(mpcBlendActive_ ? ActuatorMode::StrongPd : actuatorMode);
+  const auto [kpRatio, kdRatio] = jointGainRatiosForState(controlState_, mpcBlendActive_);
+  msg.kp = kpRatio;
+  msg.kd = kdRatio;
 
   if (mpcBlendActive_ && blendAlpha >= 1.0 - 1e-6) {
     mpcBlendActive_ = false;

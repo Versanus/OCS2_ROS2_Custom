@@ -121,7 +121,9 @@ class DigitalTwinBridge(Node):
 
         # Mesajı donanıma yayınla
         self.htdw_cmd_pub.publish(traj_msg)
-        self.get_logger().debug(f"MPC kontrol mesajı gönderildi. Mod: {msg.actuator_mode}")
+        self.get_logger().debug(
+            f"MPC kontrol mesajı gönderildi. kp_ratio={float(msg.kp):.2f} kd_ratio={float(msg.kd):.2f}"
+        )
 
     def sim_to_htdw_callback(self, msg: JointState):
         """[MODE 2] Simülasyondan gelen veriyi doğrudan donanıma gönder (OFFSETSİZ)"""

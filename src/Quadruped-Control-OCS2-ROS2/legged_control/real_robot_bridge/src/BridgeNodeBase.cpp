@@ -31,6 +31,10 @@ std::chrono::nanoseconds periodFromHz(double hz) {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(1.0 / clamped_hz));
 }
 
+double valueOrZero(const std::vector<double>& values, std::size_t index) {
+  return index < values.size() ? values[index] : 0.0;
+}
+
 }  // namespace
 
 BridgeNodeBase::BridgeNodeBase(const std::string& node_name, const rclcpp::NodeOptions& options)
@@ -145,6 +149,9 @@ void BridgeNodeBase::commandCallback(const legged_msgs::msg::JointControlData::S
   if (!backend_) {
     return;
   }
+
+  last_joint_command_ = *msg;
+  has_last_joint_command_ = true;
   backend_->writeCommand(*msg);
 }
 
@@ -162,6 +169,10 @@ void BridgeNodeBase::publishCallback() {
 
   applyConfiguredContactSource(data);
   if (debug_state_logging_) {
+    const double simulation_time = state_estimate_ ? data.sensor.simulation_time : data.state.simulation_time;
+    if (has_last_joint_command_) {
+      logJointCommand(last_joint_command_, simulation_time);
+    }
     if (state_estimate_) {
       logSensorPublish(data.sensor);
     } else {
@@ -223,6 +234,35 @@ void BridgeNodeBase::applyConfiguredContactSource(BackendData& data) {
       data.state.base_pose_values, data.state.base_quat_values,
       data.state.base_angvel_values, data.state.base_linvel_values);
   overwriteContactFlags(data, estimated_contact_flags);
+}
+
+void BridgeNodeBase::logJointCommand(const legged_msgs::msg::JointControlData& command, double simulation_time) const {
+  RCLCPP_INFO(
+      get_logger(),
+      "Simulation time = [%f], \n"
+      "Received joint position command data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+      "Received joint velocity command data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+      "Received joint torque command data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
+      "Received joint gain ratio data: kp=[%f], kd=[%f]",
+      simulation_time,
+      valueOrZero(command.joint_position, 0), valueOrZero(command.joint_position, 1),
+      valueOrZero(command.joint_position, 2), valueOrZero(command.joint_position, 3),
+      valueOrZero(command.joint_position, 4), valueOrZero(command.joint_position, 5),
+      valueOrZero(command.joint_position, 6), valueOrZero(command.joint_position, 7),
+      valueOrZero(command.joint_position, 8), valueOrZero(command.joint_position, 9),
+      valueOrZero(command.joint_position, 10), valueOrZero(command.joint_position, 11),
+      valueOrZero(command.joint_velocity, 0), valueOrZero(command.joint_velocity, 1),
+      valueOrZero(command.joint_velocity, 2), valueOrZero(command.joint_velocity, 3),
+      valueOrZero(command.joint_velocity, 4), valueOrZero(command.joint_velocity, 5),
+      valueOrZero(command.joint_velocity, 6), valueOrZero(command.joint_velocity, 7),
+      valueOrZero(command.joint_velocity, 8), valueOrZero(command.joint_velocity, 9),
+      valueOrZero(command.joint_velocity, 10), valueOrZero(command.joint_velocity, 11),
+      valueOrZero(command.joint_torque, 0), valueOrZero(command.joint_torque, 1),
+      valueOrZero(command.joint_torque, 2), valueOrZero(command.joint_torque, 3),
+      valueOrZero(command.joint_torque, 4), valueOrZero(command.joint_torque, 5),
+      valueOrZero(command.joint_torque, 6), valueOrZero(command.joint_torque, 7),
+      valueOrZero(command.joint_torque, 8), valueOrZero(command.joint_torque, 9),
+      valueOrZero(command.joint_torque, 10), valueOrZero(command.joint_torque, 11), command.kp, command.kd);
 }
 
 void BridgeNodeBase::logLegacyStatePublish(const legged_msgs::msg::SimulatorStateData& state) const {

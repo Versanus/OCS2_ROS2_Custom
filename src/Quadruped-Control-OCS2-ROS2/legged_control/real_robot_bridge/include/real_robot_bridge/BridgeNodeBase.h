@@ -24,12 +24,13 @@ class BridgeNodeBase : public rclcpp::Node {
 
  private:
   void commandCallback(const legged_msgs::msg::JointControlData::SharedPtr msg);
-  void publishCallback();
+ void publishCallback();
   void startControlService(
       const std::shared_ptr<legged_msgs::srv::StartControl::Request> request,
       std::shared_ptr<legged_msgs::srv::StartControl::Response> response);
 
   void applyConfiguredContactSource(BackendData& data);
+  void logJointCommand(const legged_msgs::msg::JointControlData& command, double simulation_time) const;
   void logLegacyStatePublish(const legged_msgs::msg::SimulatorStateData& state) const;
   void logLegacyStateResponse(const legged_msgs::msg::SimulatorStateData& state) const;
   void logSensorPublish(const legged_msgs::msg::SimulatorSensorData& sensor) const;
@@ -51,6 +52,8 @@ class BridgeNodeBase : public rclcpp::Node {
   rclcpp::Subscription<legged_msgs::msg::JointControlData>::SharedPtr joint_command_sub_;
   rclcpp::Service<legged_msgs::srv::StartControl>::SharedPtr start_control_srv_;
   rclcpp::TimerBase::SharedPtr publish_timer_;
+  legged_msgs::msg::JointControlData last_joint_command_;
+  bool has_last_joint_command_{false};
 };
 
 }  // namespace real_robot_bridge
