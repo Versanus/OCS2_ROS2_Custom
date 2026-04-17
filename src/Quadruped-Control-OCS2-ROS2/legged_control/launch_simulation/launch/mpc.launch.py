@@ -52,6 +52,8 @@ def generate_launch_description():
             name='legged_robot_sqp_mpc',
             output='screen',
             parameters=[
+                {'robotName': 'legged_robot'},
+                {'controlType': 'mpc'},
                 {'urdfFile': urdfFile},
                 {'taskFile': taskFile},
                 {'referenceFile': referenceFile},

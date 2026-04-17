@@ -92,6 +92,7 @@ def generate_launch_description():
                 {'taskFile': task_file},
                 {'urdfFile': urdf_file},
                 {'contactSource': contact_source},
+                {'alwaysPublishStateTopic': True},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
                 {'debugStateLogging': ParameterValue(debug_state_logging, value_type=bool)},
                 {'jointFeedbackSource': joint_feedback_source},

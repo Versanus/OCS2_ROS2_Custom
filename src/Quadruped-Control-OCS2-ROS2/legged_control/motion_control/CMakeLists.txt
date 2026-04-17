@@ -71,9 +71,22 @@ pkg_check_modules(pinocchio REQUIRED pinocchio)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 get_filename_component(QUAD_OCS2_VENDOR_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+get_filename_component(QUAD_OCS2_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../" ABSOLUTE)
 set(QPOASES_ROOT "${QUAD_OCS2_VENDOR_ROOT}/qpOASES-master" CACHE PATH "qpOASES root directory")
 set(QPOASES_INCLUDE_DIR "${QPOASES_ROOT}/include")
 set(QPOASES_LIBRARY "${QPOASES_ROOT}/build/libs/libqpOASES.a")
+set(ONNXRUNTIME_ROOT_DIR "${QUAD_OCS2_REPO_ROOT}/third_party/onnxruntime")
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  set(ONNXRUNTIME_VARIANT "orin_cpu")
+else()
+  set(ONNXRUNTIME_VARIANT "pc_cpu")
+endif()
+
+set(ONNXRUNTIME_ROOT "${ONNXRUNTIME_ROOT_DIR}/${ONNXRUNTIME_VARIANT}")
+set(ONNXRUNTIME_INCLUDE_DIR "${ONNXRUNTIME_ROOT}/include")
+file(GLOB ONNXRUNTIME_LIBRARIES "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so*")
+list(LENGTH ONNXRUNTIME_LIBRARIES ONNXRUNTIME_LIBRARY_COUNT)
 
 if(NOT EXISTS "${QPOASES_INCLUDE_DIR}")
   message(FATAL_ERROR "qpOASES headers not found: ${QPOASES_INCLUDE_DIR}")
@@ -82,6 +95,21 @@ endif()
 if(NOT EXISTS "${QPOASES_LIBRARY}")
   message(FATAL_ERROR "qpOASES static library not found: ${QPOASES_LIBRARY}")
 endif()
+
+if(NOT EXISTS "${ONNXRUNTIME_INCLUDE_DIR}/onnxruntime_cxx_api.h")
+  message(FATAL_ERROR "ONNX Runtime headers not found: ${ONNXRUNTIME_INCLUDE_DIR}")
+endif()
+
+if(ONNXRUNTIME_LIBRARY_COUNT EQUAL 0)
+  message(FATAL_ERROR "ONNX Runtime shared library not found in ${ONNXRUNTIME_ROOT}/lib")
+endif()
+
+list(GET ONNXRUNTIME_LIBRARIES 0 ONNXRUNTIME_LIBRARY)
+add_library(onnxruntime_local SHARED IMPORTED GLOBAL)
+set_target_properties(onnxruntime_local PROPERTIES
+  IMPORTED_LOCATION "${ONNXRUNTIME_LIBRARY}"
+  INTERFACE_INCLUDE_DIRECTORIES "${ONNXRUNTIME_INCLUDE_DIR}"
+)
 
 include_directories(${QPOASES_INCLUDE_DIR})
 
@@ -116,6 +144,10 @@ add_library(${PROJECT_NAME}
   src/constraint/ZeroVelocityConstraintCppAd.cpp
   src/robot_precomputation/LeggedRobotPreComputation.cpp
   src/dynamics/LeggedRobotDynamicsAD.cpp
+  src/controller/LeggedControllerRosInterface.cpp
+  src/controller/MpcBackend.cpp
+  src/controller/OrtCpuRunner.cpp
+  src/controller/RlBackend.cpp
   src/ros_interfaces/GaitReceiver.cpp
   src/ros_interfaces/RosReferenceManager.cpp
   src/ros_interfaces/MPC_WBC_ROS_Interface.cpp
@@ -129,9 +161,15 @@ add_library(${PROJECT_NAME}
 ament_target_dependencies(${PROJECT_NAME}
   ${dependencies}
 )
-# Link qpOASES to main motion_control library
+target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+# Keep qpOASES on the motion_control target as before.
 target_link_libraries(${PROJECT_NAME}
   ${QPOASES_LIBRARY}
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  BUILD_RPATH "${ONNXRUNTIME_ROOT}/lib"
+  INSTALL_RPATH "${ONNXRUNTIME_ROOT}/lib"
 )
 
 target_compile_options(${PROJECT_NAME} PUBLIC ${OCS2_CXX_FLAGS})
@@ -141,16 +179,41 @@ add_executable(legged_robot_sqp_mpc
   src/LeggedRobotSqpMpcNode.cpp
 )
 
+add_executable(legged_robot_controller
+  src/LeggedRobotControllerNode.cpp
+)
+
 ament_target_dependencies(legged_robot_sqp_mpc
+  ${dependencies}
+)
+
+ament_target_dependencies(legged_robot_controller
   ${dependencies}
 )
 
 # Link the main library to the node
 target_link_libraries(legged_robot_sqp_mpc
   ${PROJECT_NAME}
+  onnxruntime_local
+)
+
+target_link_libraries(legged_robot_controller
+  ${PROJECT_NAME}
+  onnxruntime_local
+)
+
+set_target_properties(legged_robot_sqp_mpc PROPERTIES
+  BUILD_RPATH "${ONNXRUNTIME_ROOT}/lib"
+  INSTALL_RPATH "${ONNXRUNTIME_ROOT}/lib"
+)
+
+set_target_properties(legged_robot_controller PROPERTIES
+  BUILD_RPATH "${ONNXRUNTIME_ROOT}/lib"
+  INSTALL_RPATH "${ONNXRUNTIME_ROOT}/lib"
 )
 
 target_compile_options(legged_robot_sqp_mpc PRIVATE ${OCS2_CXX_FLAGS})
+target_compile_options(legged_robot_controller PRIVATE ${OCS2_CXX_FLAGS})
 
 #########################
 ###   CLANG TOOLING   ###
@@ -162,6 +225,7 @@ if(cmake_clang_tools_FOUND)
      TARGETS
        ${PROJECT_NAME}
        legged_robot_sqp_mpc
+       legged_robot_controller
      SOURCE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
      CT_HEADER_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include
      CF_WERROR
@@ -183,6 +247,7 @@ install(
 install(
   TARGETS
     legged_robot_sqp_mpc
+    legged_robot_controller
     DESTINATION lib/${PROJECT_NAME}
 )
 #install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})

@@ -73,7 +73,7 @@ install(
 )
 install(TARGETS user_command_node
   DESTINATION lib/${PROJECT_NAME})
-install(DIRECTORY config DESTINATION share/${PROJECT_NAME}/)
+install(DIRECTORY config models DESTINATION share/${PROJECT_NAME}/)
 
   
 ament_export_dependencies(${dependencies})  

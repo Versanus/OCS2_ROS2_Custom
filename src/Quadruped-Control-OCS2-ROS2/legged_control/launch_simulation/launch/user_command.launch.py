@@ -8,6 +8,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 def generate_launch_description():
 
     robot_type = LaunchConfiguration('robot_type')
+    control_type = LaunchConfiguration('control_type')
 
     gaitCommandFile = PathJoinSubstitution([
         get_package_share_directory('user_command'),
@@ -29,13 +30,18 @@ def generate_launch_description():
             'robot_type',
             default_value='b1'
         ),
+        DeclareLaunchArgument(
+            'control_type',
+            default_value='mpc'
+        ),
 
         ExecuteProcess(
             cmd=[
                 'ros2', 'run', 'user_command', 'user_command_node',
                 '--ros-args',
                 '-p', ['referenceFile:=', referenceFile],
-                '-p', ['gaitCommandFile:=', gaitCommandFile]
+                '-p', ['gaitCommandFile:=', gaitCommandFile],
+                '-p', ['controlType:=', control_type]
             ],
             output='screen'
         )

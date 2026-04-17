@@ -88,8 +88,21 @@ enum class UserCommandMode {
   Velocity
 };
 
+enum class ControllerType {
+  Mpc,
+  Rl
+};
+
 std::string modeToString(UserCommandMode mode) {
   return mode == UserCommandMode::Goal ? "goal" : "vel";
+}
+
+ControllerType controllerTypeFromString(std::string value) {
+  value = toLower(trimLeft(value));
+  if (value == "rl") {
+    return ControllerType::Rl;
+  }
+  return ControllerType::Mpc;
 }
 
 struct TeleopCommandState {
@@ -503,6 +516,8 @@ enum class ControlCommand {
   RecoveryPose = 2,
   SitDown = 3,
   ZeroTorque = 4,
+  ActivateRlStand = 6,
+  ActivateRlPolicy = 7,
 };
 
 void publishEmergencyOverrideCommand(
@@ -520,46 +535,76 @@ enum class ControlState {
   SitDown = 3,
   Sitting = 4,
   ZeroTorque = 5,
+  RlStand = 6,
+  RlPolicy = 7,
 };
 
-bool isNonMpcState(ControlState state) {
-  return state != ControlState::Mpc;
+bool isWalkingControlActive(ControlState state, ControllerType controllerType) {
+  if (controllerType == ControllerType::Rl) {
+    return state == ControlState::RlPolicy;
+  }
+  return state == ControlState::Mpc;
 }
 
-void printVelocityModeHelp(const std::string& status = "") {
+void printVelocityModeHelp(ControllerType controllerType, const std::string& status = "") {
   std::cout << "\033[2J\033[H"
       << "\nVelocity mode keyboard control:\n"
       << "  w/s : forward/backward\n"
       << "  a/d : left/right strafe\n"
-      << "  q/e : yaw left/right\n"
-      << "  1 : stance\n"
-      << "  2 : standing_trot\n"
-      << "  3 : flying_trot\n"
-      << "  4 : static_walking\n"
-      << "  5 : pawup\n"
-      << "  6 : fast_flying_trot\n"
-      << "  startup: system begins in E-stop, press 1 to enable MPC\n"
-      << "  0 : raw recovery pose (from safe non-MPC states)\n"
-      << "      not allowed while sit-down is still in progress\n"
-      << "  z : sit down with strong PD (only from MPC stance)\n"
-      << "  c : true zero torque mode (from hold / recovery / sitting)\n"
-      << "  y : stabilize in place using current x/y reference\n"
-      << "  t : resume walking mode inside vel mode\n"
-      << "  o/l : raise/lower desired height slowly\n"
-      << "  +/- : increase/decrease speeds\n"
-      << "  r : switch to stance with safe clamped motion\n"
-      << "  space : hold current joints and refresh the background target to the current pose\n"
-      << "  g : exit velocity mode back to goal mode\n"
-      << "\nOptional 8Bitdo gamepad control:\n"
-      << "  left stick : w/a/s/d analog motion\n"
-      << "  right stick X : q/e analog yaw\n"
-      << "  d-pad left/right : 1/2\n"
-      << "  d-pad up/down : o/l\n"
-      << "  B : z, LB : space(hold), RB : 0, X : c\n"
-      << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
-      << "Pressing 1 from HOLD returns to stance from the current pose.\n"
-      << "The last motion key stays latched until you overwrite it or clear it with r.\n"
-      << "The last active motion source wins, so you can switch between keyboard and controller.\n";
+      << "  q/e : yaw left/right\n";
+  if (controllerType == ControllerType::Rl) {
+    std::cout
+        << "  1 : RL stance with PD hold at the configured stand pose\n"
+        << "  2 : activate RL policy from RL stance\n"
+        << "  0 : raw recovery pose\n"
+        << "  z : sit down with strong PD\n"
+        << "  c : true zero torque mode\n"
+        << "  y : stabilize in place using current x/y reference\n"
+        << "  t : resume walking mode inside vel mode\n"
+        << "  o/l : raise/lower desired height slowly\n"
+        << "  +/- : increase/decrease speeds\n"
+        << "  space : hold the current joints from the current pose\n"
+        << "  g : exit velocity mode back to goal mode\n"
+        << "\nOptional 8Bitdo gamepad control:\n"
+        << "  left stick : w/a/s/d analog motion after RL is active\n"
+        << "  right stick X : q/e analog yaw after RL is active\n"
+        << "  d-pad left/right : 1/2\n"
+        << "  d-pad up/down : o/l\n"
+        << "  B : z, LB : space(hold), RB : 0, X : c\n"
+        << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
+        << "Press 1 first to go to RL stance, then press 2 to arm RL walking.\n"
+        << "Motion keys only move the robot once RL policy is active.\n";
+  } else {
+    std::cout
+        << "  1 : stance\n"
+        << "  2 : standing_trot\n"
+        << "  3 : flying_trot\n"
+        << "  4 : static_walking\n"
+        << "  5 : pawup\n"
+        << "  6 : fast_flying_trot\n"
+        << "  startup: system begins in E-stop, press 1 to enable MPC\n"
+        << "  0 : raw recovery pose (from safe non-MPC states)\n"
+        << "      not allowed while sit-down is still in progress\n"
+        << "  z : sit down with strong PD (only from MPC stance)\n"
+        << "  c : true zero torque mode (from hold / recovery / sitting)\n"
+        << "  y : stabilize in place using current x/y reference\n"
+        << "  t : resume walking mode inside vel mode\n"
+        << "  o/l : raise/lower desired height slowly\n"
+        << "  +/- : increase/decrease speeds\n"
+        << "  r : switch to stance with safe clamped motion\n"
+        << "  space : hold current joints and refresh the background target to the current pose\n"
+        << "  g : exit velocity mode back to goal mode\n"
+        << "\nOptional 8Bitdo gamepad control:\n"
+        << "  left stick : w/a/s/d analog motion\n"
+        << "  right stick X : q/e analog yaw\n"
+        << "  d-pad left/right : 1/2\n"
+        << "  d-pad up/down : o/l\n"
+        << "  B : z, LB : space(hold), RB : 0, X : c\n"
+        << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
+        << "Pressing 1 from HOLD returns to stance from the current pose.\n"
+        << "The last motion key stays latched until you overwrite it or clear it with r.\n"
+        << "The last active motion source wins, so you can switch between keyboard and controller.\n";
+  }
   if (!status.empty()) {
     std::cout << "\nStatus: " << status << "\n";
   }
@@ -605,11 +650,16 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
                              ocs2::scalar_t initialYawSpeed,
                              const ocs2::vector_t& accelerationLimits,
                              const ocs2::vector_t& commandAxisScales,
+                             ControllerType controllerType,
                              const GamepadConfig& gamepadConfig,
                              const rclcpp::Node::SharedPtr& node,
                              const rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr& emergencyOverridePublisher,
                              ControlState& controlState) {
-  printVelocityModeHelp("Velocity mode active.");
+  auto showVelocityModeHelp = [&](const std::string& status = "") {
+    printVelocityModeHelp(controllerType, status);
+  };
+
+  showVelocityModeHelp("Velocity mode active.");
 
   ScopedRawTerminalMode rawTerminalMode;
   GamepadTeleopInput gamepadInput(gamepadConfig, node->get_logger());
@@ -629,11 +679,11 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
   auto lastVelocityUpdateTime = std::chrono::steady_clock::now();
   TeleopCommandState teleopState;
   teleopState.resetAxes();
-  teleopState.estopActive = isNonMpcState(controlState);
+  teleopState.estopActive = !isWalkingControlActive(controlState, controllerType);
 
   while (rclcpp::ok() && currentMode == UserCommandMode::Velocity) {
     rclcpp::spin_some(node);
-    teleopState.estopActive = isNonMpcState(controlState);
+    teleopState.estopActive = !isWalkingControlActive(controlState, controllerType);
     gamepadInput.poll();
 
     const char rawKey = readSingleKey(std::chrono::milliseconds(50));
@@ -642,12 +692,91 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
     bool keyboardMotionKeyProcessed = false;
     if (key != '\0') {
       if (teleopState.estopActive) {
+        if (controllerType == ControllerType::Rl) {
+          if (key == ' ') {
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
+            controlState = ControlState::Hold;
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            showVelocityModeHelp("RL hold active from the current pose.");
+          } else if (key == '0') {
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::RecoveryPose);
+            controlState = ControlState::RecoveryPose;
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            showVelocityModeHelp("RL recovery pose requested.");
+          } else if (key == '1') {
+            activeGaitCommand = "stance";
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateRlStand);
+            controlState = ControlState::RlStand;
+            showVelocityModeHelp("RL stance PD requested.");
+          } else if (key == '2') {
+            if (controlState == ControlState::RlStand) {
+              targetVelocityCommand.setZero();
+              filteredVelocityCommand.setZero();
+              teleopState.resetAxes();
+              teleopState.holdPositionActive = true;
+              teleopState.stabilizeModeActive = false;
+              gamepadMotionRequiresRecenter = true;
+              publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateRlPolicy);
+              controlState = ControlState::RlPolicy;
+              showVelocityModeHelp("RL policy requested. Use motion keys to move.");
+            } else if (controlState == ControlState::RlPolicy) {
+              showVelocityModeHelp("RL policy is already active.");
+            } else {
+              showVelocityModeHelp("Press 1 first to move the robot into RL stance.");
+            }
+          } else if (key == 'z') {
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::SitDown);
+            controlState = ControlState::SitDown;
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            showVelocityModeHelp("RL sit-down requested.");
+          } else if (key == 'c') {
+            publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ZeroTorque);
+            controlState = ControlState::ZeroTorque;
+            targetVelocityCommand.setZero();
+            filteredVelocityCommand.setZero();
+            teleopState.resetAxes();
+            teleopState.holdPositionActive = true;
+            teleopState.stabilizeModeActive = false;
+            gamepadMotionRequiresRecenter = true;
+            targetPoseCommand.publishHoldPositionCommand(false);
+            showVelocityModeHelp("RL zero torque requested.");
+          } else {
+            showVelocityModeHelp("RL safe mode active. Use 1=stance PD, 2=RL, 0=recovery, z=sit, c=zero torque, space=hold.");
+          }
+          continue;
+        }
+
         if (key == ' ') {
           publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
-          printVelocityModeHelp("Hold active: actuator output is locked, MPC/reference keeps updating in the background.");
+          showVelocityModeHelp("Hold active: actuator output is locked, MPC/reference keeps updating in the background.");
         } else if (key == '0') {
           if (controlState == ControlState::SitDown) {
-            printVelocityModeHelp("Sit-down is still in progress. Wait for sitting, or press space to hold first.");
+            showVelocityModeHelp("Sit-down is still in progress. Wait for sitting, or press space to hold first.");
           } else {
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::RecoveryPose);
             targetVelocityCommand.setZero();
@@ -656,7 +785,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             teleopState.holdPositionActive = true;
             teleopState.stabilizeModeActive = false;
             gamepadMotionRequiresRecenter = true;
-            printVelocityModeHelp("Recovery pose active.");
+            showVelocityModeHelp("Recovery pose active.");
           }
         } else if (key == '1') {
           if (controlState == ControlState::Hold) {
@@ -671,7 +800,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             gamepadMotionRequiresRecenter = true;
             targetPoseCommand.publishHoldPositionCommand(false);
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
-            printVelocityModeHelp("MPC stance resume requested from the current pose.");
+            showVelocityModeHelp("MPC stance resume requested from the current pose.");
           } else {
             std::string stanceCommand = "stance";
             gaitCommand.publishKeyboardCommand(stanceCommand);
@@ -684,7 +813,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             gamepadMotionRequiresRecenter = true;
             targetPoseCommand.publishHoldPositionCommand(false);
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
-            printVelocityModeHelp("MPC stance activation requested.");
+            showVelocityModeHelp("MPC stance activation requested.");
           }
         } else if (key == 'c') {
           if (controlState == ControlState::Sitting || controlState == ControlState::Hold ||
@@ -696,26 +825,29 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             teleopState.holdPositionActive = true;
             teleopState.stabilizeModeActive = false;
             gamepadMotionRequiresRecenter = true;
-            printVelocityModeHelp("True zero torque mode active.");
+            showVelocityModeHelp("True zero torque mode active.");
           } else {
-            printVelocityModeHelp("Zero torque is only allowed from a safe non-MPC posture.");
+            showVelocityModeHelp("Zero torque is only allowed from a safe non-MPC posture.");
           }
         } else if (key == 'z') {
           if (controlState == ControlState::Sitting || controlState == ControlState::SitDown) {
-            printVelocityModeHelp("Robot is already in the sit-down path.");
+            showVelocityModeHelp("Robot is already in the sit-down path.");
           } else {
-            printVelocityModeHelp("Sit-down is only available while MPC stance is active.");
+            showVelocityModeHelp("Sit-down is only available while MPC stance is active.");
           }
         } else if (key == 'r') {
-          printVelocityModeHelp("Soft stance command is only available while MPC is active.");
+          showVelocityModeHelp("Soft stance command is only available while MPC is active.");
         } else {
-          printVelocityModeHelp("Safe mode active. Use space=hold, 0=recovery, 1=resume MPC, c=zero torque.");
+          showVelocityModeHelp("Safe mode active. Use space=hold, 0=recovery, 1=resume MPC, c=zero torque.");
         }
         continue;
       }
 
       if (key == ' ') {
         publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
+        if (controllerType == ControllerType::Rl) {
+          controlState = ControlState::Hold;
+        }
         teleopState.estopActive = true;
         targetVelocityCommand.setZero();
         filteredVelocityCommand.setZero();
@@ -724,11 +856,72 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.stabilizeModeActive = false;
         gamepadMotionRequiresRecenter = true;
         targetPoseCommand.publishHoldPositionCommand(false);
-        printVelocityModeHelp("Hold active: actuator output is locked and the background target is refreshed to the current pose.");
+        showVelocityModeHelp("Hold active: actuator output is locked and the background target is refreshed to the current pose.");
         continue;
       }
 
-      const std::string gaitCommandString = gaitCommandFromKey(key);
+      if (controllerType == ControllerType::Rl) {
+        if (key == '0') {
+          publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::RecoveryPose);
+          controlState = ControlState::RecoveryPose;
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp("RL recovery pose requested.");
+          continue;
+        }
+        if (key == '1') {
+          activeGaitCommand = "stance";
+          publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateRlStand);
+          controlState = ControlState::RlStand;
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp("Switched back to RL stance PD.");
+          continue;
+        }
+        if (key == '2') {
+          showVelocityModeHelp("RL policy is already active. Use motion keys to move.");
+          continue;
+        }
+        if (key == 'z') {
+          publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::SitDown);
+          controlState = ControlState::SitDown;
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp("RL sit-down requested.");
+          continue;
+        }
+        if (key == 'c') {
+          publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ZeroTorque);
+          controlState = ControlState::ZeroTorque;
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp("RL zero torque requested.");
+          continue;
+        }
+      }
+
+      const std::string gaitCommandString =
+          controllerType == ControllerType::Rl ? std::string{} : gaitCommandFromKey(key);
       if (!gaitCommandString.empty()) {
         std::string gaitCommandValue = gaitCommandString;
         gaitCommand.publishKeyboardCommand(gaitCommandValue);
@@ -739,7 +932,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.holdPositionActive = true;
         teleopState.stabilizeModeActive = false;
         gamepadMotionRequiresRecenter = true;
-        printVelocityModeHelp("Switched gait to '" + gaitCommandString + "'.");
+        showVelocityModeHelp("Switched gait to '" + gaitCommandString + "'.");
       } else if (isMotionKey(key)) {
         updateTeleopAxisFromKeyboard(teleopState, key);
         activeMotionSource = MotionInputSource::Keyboard;
@@ -751,7 +944,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             bool wasClamped = false;
             velocityCommand = clampVelocityCommandForStance(velocityCommand, wasClamped);
             if (wasClamped) {
-              printVelocityModeHelp("Stance velocity clamp active.");
+              showVelocityModeHelp("Stance velocity clamp active.");
             }
           }
           targetVelocityCommand = velocityCommand;
@@ -767,7 +960,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         teleopState.stabilizeModeActive = true;
         teleopState.holdPositionActive = true;
         gamepadMotionRequiresRecenter = true;
-        printVelocityModeHelp("Stabilize mode active. Reference x/y follows current state.");
+        showVelocityModeHelp("Stabilize mode active. Reference x/y follows current state.");
       } else if (key == 't') {
         teleopState.stabilizeModeActive = false;
         targetVelocityCommand =
@@ -778,48 +971,52 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
         } else {
           teleopState.holdPositionActive = false;
         }
-        printVelocityModeHelp("Walking mode resumed inside velocity mode.");
+        showVelocityModeHelp("Walking mode resumed inside velocity mode.");
       } else if (key == 'o') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(heightStep);
         if (teleopState.holdPositionActive) {
           targetPoseCommand.publishHoldPositionCommand(false);
         }
-        printVelocityModeHelp("Desired height: " + std::to_string(desiredHeight));
+        showVelocityModeHelp("Desired height: " + std::to_string(desiredHeight));
       } else if (key == 'l') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(-heightStep);
         if (teleopState.holdPositionActive) {
           targetPoseCommand.publishHoldPositionCommand(false);
         }
-        printVelocityModeHelp("Desired height: " + std::to_string(desiredHeight));
+        showVelocityModeHelp("Desired height: " + std::to_string(desiredHeight));
       } else if (key == '+' || key == '=') {
         linearSpeed += linearStep;
         lateralSpeed += linearStep;
         yawSpeed += yawStep;
-        printVelocityModeHelp("Speeds updated -> linear: " + std::to_string(linearSpeed) + " lateral: " +
-                              std::to_string(lateralSpeed) + " yaw: " + std::to_string(yawSpeed));
+        showVelocityModeHelp("Speeds updated -> linear: " + std::to_string(linearSpeed) + " lateral: " +
+                             std::to_string(lateralSpeed) + " yaw: " + std::to_string(yawSpeed));
       } else if (key == '-' || key == '_') {
         linearSpeed = std::max(minLinearSpeed, linearSpeed - linearStep);
         lateralSpeed = std::max(minLinearSpeed, lateralSpeed - linearStep);
         yawSpeed = std::max(minYawSpeed, yawSpeed - yawStep);
-        printVelocityModeHelp("Speeds updated -> linear: " + std::to_string(linearSpeed) + " lateral: " +
-                              std::to_string(lateralSpeed) + " yaw: " + std::to_string(yawSpeed));
+        showVelocityModeHelp("Speeds updated -> linear: " + std::to_string(linearSpeed) + " lateral: " +
+                             std::to_string(lateralSpeed) + " yaw: " + std::to_string(yawSpeed));
       } else if (key == 'r') {
-        targetVelocityCommand.setZero();
-        filteredVelocityCommand.setZero();
-        std::string stanceCommand = "stance";
-        gaitCommand.publishKeyboardCommand(stanceCommand);
-        activeGaitCommand = "stance";
-        targetPoseCommand.publishHoldPositionCommand();
-        teleopState.resetAxes();
-        teleopState.holdPositionActive = true;
-        teleopState.stabilizeModeActive = false;
-        gamepadMotionRequiresRecenter = true;
-        printVelocityModeHelp("Switched to stance. Motion stays enabled with stance safety limits.");
+        if (controllerType == ControllerType::Rl) {
+          showVelocityModeHelp("RL mode uses 1 for stance PD and 2 for policy activation.");
+        } else {
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          std::string stanceCommand = "stance";
+          gaitCommand.publishKeyboardCommand(stanceCommand);
+          activeGaitCommand = "stance";
+          targetPoseCommand.publishHoldPositionCommand();
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          showVelocityModeHelp("Switched to stance. Motion stays enabled with stance safety limits.");
+        }
       } else if (key == 'z') {
         if (controlState != ControlState::Mpc) {
-          printVelocityModeHelp("Sit-down is only available while MPC is active in stance.");
+          showVelocityModeHelp("Sit-down is only available while MPC is active in stance.");
         } else if (activeGaitCommand != "stance") {
-          printVelocityModeHelp("Sit-down requires stance first. Press r to switch to stance.");
+          showVelocityModeHelp("Sit-down requires stance first. Press r to switch to stance.");
         } else {
           publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::SitDown);
           targetVelocityCommand.setZero();
@@ -829,10 +1026,10 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.stabilizeModeActive = false;
           gamepadMotionRequiresRecenter = true;
           targetPoseCommand.publishHoldPositionCommand(false);
-          printVelocityModeHelp("Sit-down requested. MPC will hand over to strong-PD pose control.");
+          showVelocityModeHelp("Sit-down requested. MPC will hand over to strong-PD pose control.");
         }
       } else if (key == 'c') {
-        printVelocityModeHelp("Zero torque is only available after sit-down or from a safe non-MPC mode.");
+        showVelocityModeHelp("Zero torque is only available after sit-down or from a safe non-MPC mode.");
       } else if (key == 'g') {
         targetVelocityCommand.setZero();
         filteredVelocityCommand.setZero();
@@ -915,6 +1112,10 @@ int main(int argc, char* argv[]) {
   const std::string gaitCommandFile =
       node->get_parameter("gaitCommandFile").as_string();
   std::cerr << "Loading gait file from launch: " << gaitCommandFile << std::endl;
+  const std::string controlTypeParameter =
+      node->has_parameter("controlType") ? node->get_parameter("controlType").as_string() : "mpc";
+  const ControllerType controllerType = controllerTypeFromString(controlTypeParameter);
+  std::cerr << "Using control type from launch: " << controlTypeParameter << std::endl;
 
   // const std::string gaitCommandFile = "/home/zhx/Desktop/zhx_legged_ocs2_ros2/src/legged_control/user_command/config/a1/gait.info";
   // std::cerr << "Loading gait file: " << gaitCommandFile << std::endl;
@@ -995,14 +1196,23 @@ int main(int argc, char* argv[]) {
   (void)emergencyOverrideStateSubscriber;
 
   const std::string commadMsg =
-    "Current mode starts as 'goal'.\n"
-    "System starts latched in E-stop. Enter 'mode:vel' and press '1' to enable MPC stance.\n"
-    "Enter 'mode:goal' or 'mode:vel' to switch modes,\n"
-    "Enter 'gait:xxx' for the desired gait,\n"
-    "Enter 'gait:list' for the list of available gaits,\n"
-    "In goal mode use 'goal:x y z yaw_deg' for relative pose commands,\n"
-    "In vel mode the node enters keyboard teleop with optional gamepad support,\n"
-    "Use 'hold:' to hold the current pose.\n";
+    controllerType == ControllerType::Rl
+        ? "Current mode starts as 'goal'.\n"
+          "RL control starts in hold. Enter 'mode:vel', press '1' for stance PD, then press '2' to activate RL.\n"
+          "Enter 'mode:goal' or 'mode:vel' to switch modes,\n"
+          "Enter 'gait:xxx' for the desired gait,\n"
+          "Enter 'gait:list' for the list of available gaits,\n"
+          "In goal mode use 'goal:x y z yaw_deg' for relative pose commands,\n"
+          "In vel mode the node enters keyboard teleop with optional gamepad support,\n"
+          "Use 'hold:' to hold the current pose.\n"
+        : "Current mode starts as 'goal'.\n"
+          "System starts latched in E-stop. Enter 'mode:vel' and press '1' to enable MPC stance.\n"
+          "Enter 'mode:goal' or 'mode:vel' to switch modes,\n"
+          "Enter 'gait:xxx' for the desired gait,\n"
+          "Enter 'gait:list' for the list of available gaits,\n"
+          "In goal mode use 'goal:x y z yaw_deg' for relative pose commands,\n"
+          "In vel mode the node enters keyboard teleop with optional gamepad support,\n"
+          "Use 'hold:' to hold the current pose.\n";
     
   while (rclcpp::ok()) {
     rclcpp::spin_some(node);
@@ -1010,7 +1220,7 @@ int main(int argc, char* argv[]) {
       try {
         runVelocityKeyboardMode(targetPoseCommand, gaitCommand, currentMode, activeGaitCommand,
                                 initialLinearSpeed, initialLateralSpeed, initialYawSpeed,
-                                accelerationLimits, commandAxisScales, gamepadConfig, node,
+                                accelerationLimits, commandAxisScales, controllerType, gamepadConfig, node,
                                 emergencyOverridePublisher, controlState);
       } catch (const std::exception& e) {
         RCLCPP_ERROR(node->get_logger(), "Velocity keyboard mode failed: %s", e.what());

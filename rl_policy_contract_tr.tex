@@ -1,0 +1,209 @@
+  \documentclass[11pt,a4paper]{article}
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+  \usepackage[turkish]{babel}
+  \usepackage{amsmath}
+  \usepackage[margin=2.5cm]{geometry}
+
+  \title{RL Policy Kontrati Kisa Ozeti}
+  \author{}
+  \date{}
+
+  \begin{document}
+  \maketitle
+
+  \section*{Amac}
+  Bu notun amaci, MuJoCo Playground tarafindaki ONNX policy kontratini kisa ve net sekilde ozetlemek ve mevcut C++ RL backend ile arasindaki farklari gostermektir.
+
+  \section*{MuJoCo Playground Tarafinda Gercek Kontrat}
+  Verilen Python koduna gore policy kontrati sunlardir:
+
+  \begin{itemize}
+  \item Girdi adi: \texttt{obs}
+  \item Cikti adi: \texttt{continuous\_actions}
+  \item Girdi boyutu: \texttt{48}
+  \item Cikti boyutu: \texttt{12}
+  \end{itemize}
+
+  Inference su sekilde yapilir:
+  \[
+  \texttt{onnx\_input = \{"obs": obs.reshape(1, -1)\}}
+  \]
+  \[
+  \texttt{onnx\_pred = policy.run(["continuous\_actions"], onnx\_input)[0][0]}
+  \]
+
+  \section*{Gozlem Vektoru}
+  Python kodundaki gozlem sirasi su sekildedir:
+
+  \[
+  \texttt{obs = [linvel,\ gyro,\ gravity,\ joint\_angles,\ joint\_velocities,\ last\_action,\ command]}
+  \]
+
+  Acik olarak:
+
+  \begin{enumerate}
+  \item \texttt{linvel}: \texttt{data.sensor("local\_linvel").data} \hfill (3 boyut)
+  \item \texttt{gyro}: \texttt{data.sensor("gyro").data} \hfill (3 boyut)
+  \item \texttt{gravity}: \texttt{imu\_xmat.T @ [0, 0, -1]} \hfill (3 boyut)
+  \item \texttt{joint\_angles}: \texttt{data.qpos[7:] - default\_angles} \hfill (12 boyut)
+  \item \texttt{joint\_velocities}: \texttt{data.qvel[6:]} \hfill (12 boyut)
+  \item \texttt{last\_action}: bir onceki ham policy cikisi \hfill (12 boyut)
+  \item \texttt{command}: joystick komutu \hfill (3 boyut)
+  \end{enumerate}
+
+  Toplam:
+  \[
+  3 + 3 + 3 + 12 + 12 + 12 + 3 = 48
+  \]
+
+\section*{Action Anlami}
+Python kodundaki kontrol su sekildedir:
+
+  \[
+  \texttt{data.ctrl[:] = onnx\_pred * action\_scale + default\_angles}
+  \]
+
+  Kodda:
+  \[
+  \texttt{action\_scale = 0.5}
+  \]
+
+  Dolayisiyla action yorumu:
+
+  \begin{itemize}
+\item Policy cikisi 12 eklem icin \emph{offset} uretir.
+\item Hedef eklem acisi:
+\[
+q_{des} = q_{default} + 0.5 \cdot action
+\]
+\item Yani bu policy dogrudan eklem pozisyon hedefi uretiyor gibi kullaniliyor.
+\end{itemize}
+
+\section*{Default Joint State}
+Bu policy icin cok onemli bir nokta, action'in sifir referansi olan \texttt{defaultJointState} bilgisidir. Gozlem tarafinda eklem acilari su sekilde normalize edilir:
+\[
+q_{rel} = q - q_{default}
+\]
+
+Ayni sekilde action da bu poz etrafinda uygulanir:
+\[
+q_{des} = q_{default} + 0.5 \cdot action
+\]
+
+Yani \texttt{defaultJointState} hem observation tarafinda hem de action tarafinda merkez referans pozdur.
+
+Mevcut repodaki \texttt{defaultJointState} sirasi ve degerleri [reference.info] dosyasinda tanimlidir:
+
+\begin{itemize}
+\item \texttt{LF\_HAA = -0.10}
+\item \texttt{LF\_HFE = -0.70}
+\item \texttt{LF\_KFE = 1.30}
+\item \texttt{LH\_HAA = 0.10}
+\item \texttt{LH\_HFE = -0.30}
+\item \texttt{LH\_KFE = 1.20}
+\item \texttt{RF\_HAA = 0.10}
+\item \texttt{RF\_HFE = 0.70}
+\item \texttt{RF\_KFE = -1.30}
+\item \texttt{RH\_HAA = -0.10}
+\item \texttt{RH\_HFE = 0.30}
+\item \texttt{RH\_KFE = -1.20}
+\end{itemize}
+
+Bu nedenle yeni bir policy kullanilacaksa sadece \texttt{onnx} dosyasinin degil, policy'nin hangi \texttt{defaultJointState} ile egitildiginin de ayni oldugu teyit edilmelidir.
+
+\section*{Su Anda C++ Tarafinda Dogru Olanlar}
+Mevcut C++ RL backend'te su noktalar Python koduyla uyumludur:
+
+  \begin{itemize}
+  \item Girdi adi: \texttt{obs}
+  \item Cikti adi: \texttt{continuous\_actions}
+  \item \texttt{obsDim = 48}
+  \item \texttt{actDim = 12}
+  \item Gozlem yapisinin genel mantigi dogru:
+    lineer hiz, acisal hiz, gravity, eklem acisi, eklem hizi, son action, komut
+  \item Action yorumu da dogru yone bakiyor:
+    eklem hedefi, default pose etrafinda uretiliyor
+  \end{itemize}
+
+  \section*{Su Anda C++ Tarafinda Tam Eslesmeyen Yerler}
+  Asil dikkat edilmesi gereken kisim burasidir.
+
+  \subsection*{1. Action scale farki}
+  MuJoCo Playground kodunda:
+  \[
+  \texttt{action\_scale = 0.5}
+  \]
+
+  Mevcut \texttt{rl.info} dosyasinda ise:
+  \[
+  \texttt{actionScale = 0.20}
+  \]
+
+  Bu nedenle su an C++ tarafta ayni action cikisi gelse bile ekleme daha kucuk hareket uygulanir.
+
+  \subsection*{2. Hiz kaynagi tam ayni degil}
+  Playground kodu su verileri kullaniyor:
+
+  \begin{itemize}
+  \item \texttt{local\_linvel}
+  \item \texttt{gyro}
+  \end{itemize}
+
+  Mevcut C++ backend ise simulator state mesajindan su alanlari kullaniyor:
+
+  \begin{itemize}
+  \item \texttt{base\_linvel\_values}
+  \item \texttt{base\_angvel\_values}
+  \end{itemize}
+
+  Burada problem su:
+
+  \begin{itemize}
+  \item \texttt{gyro} yerel IMU acisal hiz bilgisidir.
+  \item \texttt{local\_linvel} de robotun yerel eksendeki lineer hizidir.
+  \item Bizim mevcut backend ise Python kodundaki sensor isimlerini birebir kullanmiyor.
+  \end{itemize}
+
+  Yani boyutlar ayni olsa bile, \emph{hangi frame'den gelen hiz bilgisinin} policy'ye verildigi tam esit olmayabilir.
+
+  \subsection*{3. Joint order kesin teyit edilmeli}
+  Python tarafinda eklem sirasi su sekilde geliyor:
+
+  \begin{itemize}
+  \item \texttt{data.qpos[7:]}
+  \item \texttt{data.qvel[6:]}
+  \end{itemize}
+
+  Mevcut repoda kullanilan 12'li sira tipik olarak su:
+
+  \begin{itemize}
+  \item \texttt{LF\_HAA, LF\_HFE, LF\_KFE}
+  \item \texttt{LH\_HAA, LH\_HFE, LH\_KFE}
+  \item \texttt{RF\_HAA, RF\_HFE, RF\_KFE}
+  \item \texttt{RH\_HAA, RH\_HFE, RH\_KFE}
+  \end{itemize}
+
+  Bu sira buyuk ihtimalle dogru olabilir, fakat policy tarafinda egitim sirasinin birebir ayni oldugu teyit edilmelidir. Aksi halde model yuklenir ama davranis yanlis olur.
+
+  \section*{Pratik Sonuc}
+  Bu asamada su sonuca varabiliriz:
+
+  \begin{itemize}
+  \item Evet, \texttt{input/output name} ve \texttt{48 -> 12} bilgisi dogrudur.
+  \item Evet, action'in ``default pose etrafinda joint offset'' mantigi dogrudur.
+  \item Fakat mevcut C++ backend henuz MuJoCo Playground kodunu \emph{birebir} kopyalamis durumda degildir.
+  \end{itemize}
+
+  Ozellikle duzeltilmesi gerekenler:
+
+  \begin{enumerate}
+  \item \texttt{actionScale} gerekirse \texttt{0.5} yapilmali.
+  \item Gozlemde \texttt{local\_linvel} ve \texttt{gyro} ile birebir ayni kaynak/frame kullanilmali.
+  \item Joint order kesin olarak teyit edilmeli.
+  \end{enumerate}
+
+  \section*{Tek Cumlelik Ozet}
+  Su anki framework calisiyor, fakat policy'nin gercekten dogru davranmasi icin C++ tarafindaki observation ve action uygulamasi, MuJoCo Playground kodundaki kontrat ile birebir eslestirilmelidir.
+
+  \end{document}

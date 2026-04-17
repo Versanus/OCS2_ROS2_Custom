@@ -104,8 +104,8 @@ public:
 
   MPC_WBC_ROS_Interface(
     const rclcpp::Node::SharedPtr& node, 
-    const std::string& urdfFile,
     const std::string& taskFile,
+    const std::string& urdfFile,
     const std::string& referenceFile,
     const std::string& simulatorFile,
     const std::string& robotName);

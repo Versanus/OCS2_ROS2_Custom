@@ -14,6 +14,7 @@ DEBUG_STATE_LOGGING=${4:-false}
 RVIZ_AUTO=${5:-true}
 GUI_AUTO=${6:-true}
 RVIZ_SOURCE=${7:-auto}
+CONTROL_TYPE=${8:-mpc}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-23}
 export ROS_DOMAIN_ID
 
@@ -88,6 +89,14 @@ case "$RVIZ_SOURCE" in
     ;;
 esac
 
+case "$CONTROL_TYPE" in
+  mpc|rl) ;;
+  *)
+    echo "Invalid control type: $CONTROL_TYPE. Use 'mpc' or 'rl'."
+    exit 1
+    ;;
+esac
+
 echo "Launching robot: $ROBOT_TYPE"
 echo "Backend: $BACKEND"
 echo "Contact source: $CONTACT_SOURCE"
@@ -95,6 +104,7 @@ echo "Bridge debug state logging: $DEBUG_STATE_LOGGING"
 echo "Auto launch RViz: $RVIZ_AUTO"
 echo "Auto launch GUI: $GUI_AUTO"
 echo "RViz source: $RVIZ_SOURCE"
+echo "Control type: $CONTROL_TYPE"
 echo "ROS domain ID: $ROS_DOMAIN_ID"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -171,7 +181,8 @@ GAIT=\$(ros2 pkg prefix user_command)/share/user_command/config/$ROBOT_TYPE/gait
 ros2 run user_command user_command_node \
  --ros-args \
  -p referenceFile:=\$REF \
- -p gaitCommandFile:=\$GAIT
+ -p gaitCommandFile:=\$GAIT \
+ -p controlType:=$CONTROL_TYPE
 '"
 
 
@@ -186,8 +197,12 @@ echo Waiting for /start_control service...
 until ros2 service type /start_control >/dev/null 2>&1; do
   sleep 1
 done
-echo /start_control is ready. Launching MPC...
-ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
+echo /start_control is ready. Launching controller...
+if [ \"$CONTROL_TYPE\" = \"rl\" ]; then
+  ros2 launch launch_simulation controller.launch.py robot_type:=$ROBOT_TYPE robot_name:=legged_robot control_type:=rl
+else
+  ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
+fi
 '"
 
 

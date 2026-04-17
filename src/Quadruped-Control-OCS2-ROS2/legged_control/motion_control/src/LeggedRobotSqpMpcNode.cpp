@@ -27,16 +27,9 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ******************************************************************************/
 
+#include <string>
 
-#include "motion_control/legged_interface/LeggedRobotInterface.h"//#include <ocs2_legged_robot/LeggedRobotInterface.h>
-
-#include "motion_control/ros_interfaces/RosReferenceManager.h"// #include <ocs2_ros_interfaces/synchronized_module/RosReferenceManager.h>
-// #include <ocs2_ros_interfaces/synchronized_module/SolverObserverRosCallbacks.h>
-#include <ocs2_sqp/SqpMpc.h>
-
-#include "motion_control/ros_interfaces/GaitReceiver.h"//#include "ocs2_legged_robot_ros/gait/GaitReceiver.h"
-
-#include "motion_control/ros_interfaces/MPC_WBC_ROS_Interface.h"
+#include "motion_control/controller/LeggedControllerRosInterface.h"
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -50,21 +43,9 @@ int main(int argc, char** argv) {
       rclcpp::NodeOptions()
           .allow_undeclared_parameters(true)
           .automatically_declare_parameters_from_overrides(true));
-  // Get node parameters
-  bool multiplot = false;
-  const std::string taskFile = node->get_parameter("taskFile").as_string();
-  const std::string urdfFile = node->get_parameter("urdfFile").as_string();
-  const std::string referenceFile = node->get_parameter("referenceFile").as_string();
-  const std::string simulatorFile = node->get_parameter("simulatorFile").as_string();
-  // const std::string taskFile = "/home/zhx/Desktop/zhx_legged_ocs2_master/src/legged_control/user_command/config/b1/task.info";
-  // const std::string urdfFile = "/home/zhx/Desktop/zhx_legged_ocs2_master/src/legged_control/mujoco_simulator/models/b1/urdf/robot.urdf";
-  // const std::string referenceFile ="/home/zhx/Desktop/zhx_legged_ocs2_master/src/legged_control/user_command/config/b1/reference.info";
-  // const std::string simulatorFile = "/home/zhx/Desktop/zhx_legged_ocs2_master/src/legged_control/user_command/config/b1/simulation.info";
+  LeggedControllerRosInterface controller(node);
+  controller.launch();
+  rclcpp::shutdown();
 
-  MPC_WBC_ROS_Interface mpcNode(node, taskFile, urdfFile, referenceFile, simulatorFile, robotName);
-  mpcNode.launchNodes();
-
-  // Successful exit
-  std::cerr << "Succeed " << std::endl;
   return 0;
 }

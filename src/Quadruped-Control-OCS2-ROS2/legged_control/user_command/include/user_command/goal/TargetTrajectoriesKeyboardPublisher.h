@@ -33,6 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "legged_msgs/msg/mpc_target_trajectories.hpp"
 #include "legged_msgs/msg/mpc_observation.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include <ocs2_core/Types.h>
 //#include <ocs2_ros_interfaces/command/TargetTrajectoriesRosPublisher.h>
@@ -104,6 +105,7 @@ class TargetTrajectoriesKeyboardPublisher {
     const ocs2::TargetTrajectories& targetTrajectories);
   ocs2::SystemObservation getLatestObservation();
   void publishTargetTrajectories(const ocs2::TargetTrajectories& targetTrajectories, bool verbose = true);
+  void publishRawVelocityCommand(const ocs2::vector_t& velocityCommand);
   void resetVelocityReference();
   ocs2::scalar_t computeVelocityPreviewDistance(const ocs2::vector_t& velocityCommand) const;
   nav_msgs::msg::Path createTargetPathMsg(const ocs2::TargetTrajectories& targetTrajectories) const;
@@ -119,6 +121,8 @@ class TargetTrajectoriesKeyboardPublisher {
   //     targetTrajectoriesPublisherPtr_;
   rclcpp::Publisher<legged_msgs::msg::MpcTargetTrajectories>::SharedPtr
       targetTrajectoriesPublisherPtr_;
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr
+      velocityCommandPublisherPtr_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr
       targetTrajectoryPathPublisherPtr_;
 

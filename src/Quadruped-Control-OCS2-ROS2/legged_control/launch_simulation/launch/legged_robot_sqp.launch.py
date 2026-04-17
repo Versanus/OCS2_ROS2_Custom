@@ -103,6 +103,9 @@ def generate_launch_description():
                 },
                 {
                     'gaitCommandFile': launch.substitutions.LaunchConfiguration('gaitCommandFile')
+                },
+                {
+                    'controlType': 'mpc'
                 }
             ],
         ),
@@ -135,4 +138,3 @@ def generate_launch_description():
         
         
     ])
-

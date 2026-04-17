@@ -1,0 +1,26 @@
+; Smoke-test RL config. This is intentionally simple and does not aim to match training.
+
+onnxModelPath ../../models/go1_policy.onnx
+onnxInputName obs
+onnxOutputName continuous_actions
+
+policyHz 50.0
+obsDim 48
+actDim 12
+
+actionScale 0.50
+actionClip 1.0
+
+kpRatio 1.0
+kdRatio 1.0
+
+stateTimeoutSec 0.25
+commandTimeoutSec 1.0
+startupHoldSec 1.0
+standTransitionSec 1.5
+sitTransitionSec 1.5
+policyCommandMaxX 1.5
+policyCommandMaxY 0.8
+policyCommandMaxYaw 6.283185307179586
+commandActivationThreshold 0.02
+requireCommandForPolicy true

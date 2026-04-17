@@ -388,6 +388,7 @@
     <framepos name="base_pose" objtype='site' objname="imu_sensor_site" />
     <frameangvel name="base_angvel" objtype='site' objname="imu_sensor_site" />
     <framelinvel name="base_linvel" objtype='site' objname="imu_sensor_site" />
+    <velocimeter name="local_linvel" site="imu_sensor_site" />
 
   </sensor>
 

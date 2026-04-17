@@ -153,6 +153,8 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
   //     new TargetTrajectoriesRosPublisher(node, topicPrefix));
   targetTrajectoriesPublisherPtr_=
       node_->create_publisher<legged_msgs::msg::MpcTargetTrajectories>(topicPrefix + "_mpc_target", 1); 
+  velocityCommandPublisherPtr_ =
+      node_->create_publisher<geometry_msgs::msg::Twist>(topicPrefix + "_velocity_command", 1);
   targetTrajectoryPathPublisherPtr_ =
       node_->create_publisher<nav_msgs::msg::Path>(topicPrefix + "_user_command_target_path", 1);
 
@@ -167,6 +169,7 @@ TargetTrajectoriesKeyboardPublisher::TargetTrajectoriesKeyboardPublisher(
 void TargetTrajectoriesKeyboardPublisher::publishGoalCommand(const ocs2::vector_t& goalCommand) {
   const ocs2::vector_t commandLineInput = goalCommand.cwiseMin(targetCommandLimits_).cwiseMax(-targetCommandLimits_);
   std::cout << "Publishing goal command: [" << ocs2::toDelimitedString(commandLineInput) << "]\n";
+  publishRawVelocityCommand(ocs2::vector_t::Zero(3));
   resetVelocityReference();
   publishTargetTrajectories(commandLineToTargetTrajectories(commandLineInput, getLatestObservation()));
 }
@@ -178,6 +181,7 @@ void TargetTrajectoriesKeyboardPublisher::publishVelocityCommand(const ocs2::vec
   if (verbose) {
     std::cout << "Publishing velocity command: [" << ocs2::toDelimitedString(velocityCommand) << "]\n";
   }
+  publishRawVelocityCommand(velocityCommand);
   publishTargetTrajectories(velocityCommandToTargetTrajectories(velocityCommand, getLatestObservation()), verbose);
 }
 
@@ -188,8 +192,26 @@ void TargetTrajectoriesKeyboardPublisher::publishHoldPositionCommand(bool verbos
   if (verbose) {
     std::cout << "Publishing hold-position command.\n";
   }
+  publishRawVelocityCommand(ocs2::vector_t::Zero(3));
   resetVelocityReference();
   publishTargetTrajectories(holdCurrentPoseToTargetTrajectories(getLatestObservation()), verbose);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::publishRawVelocityCommand(const ocs2::vector_t& velocityCommand) {
+  if (!velocityCommandPublisherPtr_) {
+    return;
+  }
+
+  geometry_msgs::msg::Twist msg;
+  if (velocityCommand.size() >= 3) {
+    msg.linear.x = velocityCommand(0);
+    msg.linear.y = velocityCommand(1);
+    msg.angular.z = velocityCommand(2);
+  }
+  velocityCommandPublisherPtr_->publish(msg);
 }
 
 /******************************************************************************************************/

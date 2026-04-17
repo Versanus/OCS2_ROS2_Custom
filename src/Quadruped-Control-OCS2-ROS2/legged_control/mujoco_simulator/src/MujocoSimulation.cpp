@@ -31,6 +31,22 @@ double sanitizeGainRatio(double ratio) {
     }
     return std::max(0.0, ratio);
 }
+
+bool fillSensorValuesByName(const mjModel* model, const mjData* data, const char* sensorName, std::vector<double>& output) {
+    output.clear();
+    const int sensorId = mj_name2id(model, mjOBJ_SENSOR, sensorName);
+    if (sensorId < 0) {
+        return false;
+    }
+
+    const int sensorAddress = model->sensor_adr[sensorId];
+    const int sensorDim = model->sensor_dim[sensorId];
+    output.reserve(static_cast<std::size_t>(sensorDim));
+    for (int i = 0; i < sensorDim; ++i) {
+        output.push_back(static_cast<double>(data->sensordata[sensorAddress + i]));
+    }
+    return true;
+}
 }  // namespace
 
 MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
@@ -832,19 +848,10 @@ void MujocoSimulation::populate_state_message(legged_msgs::msg::SimulatorStateDa
 {
     state.simulation_time = data_->time;
 
-    state.base_quat_values.clear();
-    for (int i = 0; i < 4; ++i) {
-        state.base_quat_values.push_back(static_cast<double>(data_->sensordata[i + 34]));
-    }
-
-    state.base_pose_values.clear();
-    state.base_angvel_values.clear();
-    state.base_linvel_values.clear();
-    for (int i = 0; i < 3; ++i) {
-        state.base_pose_values.push_back(static_cast<double>(data_->sensordata[i + 38]));
-        state.base_angvel_values.push_back(static_cast<double>(data_->sensordata[i + 41]));
-        state.base_linvel_values.push_back(static_cast<double>(data_->sensordata[i + 44]));
-    }
+    fillSensorValuesByName(model_, data_, "base_quat", state.base_quat_values);
+    fillSensorValuesByName(model_, data_, "base_pose", state.base_pose_values);
+    fillSensorValuesByName(model_, data_, "base_angvel", state.base_angvel_values);
+    fillSensorValuesByName(model_, data_, "base_linvel", state.base_linvel_values);
 
     state.joint_position_values.clear();
     state.joint_velocity_values.clear();
@@ -918,16 +925,10 @@ void MujocoSimulation::populate_sensor_message(legged_msgs::msg::SimulatorSensor
 {
     message.simulation_time = data_->time;
 
-    message.imu_quat_values.clear();
-    message.imu_angvel_values.clear();
-    message.imu_linacc_values.clear();
-    for (int i = 0; i < 4; ++i) {
-        message.imu_quat_values.push_back(static_cast<double>(data_->sensordata[i]));
-    }
-    for (int i = 0; i < 3; ++i) {
-        message.imu_angvel_values.push_back(static_cast<double>(data_->sensordata[i + 4]));
-        message.imu_linacc_values.push_back(static_cast<double>(data_->sensordata[i + 7]));
-    }
+    fillSensorValuesByName(model_, data_, "imu_quat", message.imu_quat_values);
+    fillSensorValuesByName(model_, data_, "imu_angvel", message.imu_angvel_values);
+    fillSensorValuesByName(model_, data_, "imu_linacc", message.imu_linacc_values);
+    fillSensorValuesByName(model_, data_, "local_linvel", message.local_linvel_values);
 
     message.joint_position_values.clear();
     message.joint_velocity_values.clear();

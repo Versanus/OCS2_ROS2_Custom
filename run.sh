@@ -16,6 +16,7 @@ DEBUG_STATE_LOGGING="${4:-}"
 RVIZ_AUTO="${5:-}"
 GUI_AUTO="${6:-}"
 RVIZ_SOURCE="${7:-auto}"
+CONTROL_TYPE="${8:-mpc}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 HOST_UID="${HOST_UID:-$(id -u)}"
@@ -109,6 +110,15 @@ case "${RVIZ_SOURCE}" in
         ;;
 esac
 
+case "${CONTROL_TYPE}" in
+    mpc|rl)
+        ;;
+    *)
+        echo "Invalid control type: ${CONTROL_TYPE}. Use 'mpc' or 'rl'."
+        exit 1
+        ;;
+esac
+
 # Detect if running inside Docker
 if [ -f "/.dockerenv" ]; then
     echo "Running inside Docker container"
@@ -127,9 +137,9 @@ if [ -f "/.dockerenv" ]; then
     fi
 
     echo "Environment loaded ✅"
-    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} ros_domain_id=${ROS_DOMAIN_ID}..."
+    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} control_type=${CONTROL_TYPE} ros_domain_id=${ROS_DOMAIN_ID}..."
 
-    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
+    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
 
 else
     echo "Running on host system"
@@ -158,5 +168,5 @@ else
 
     echo "Attaching to container..."
 
-    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" "$(docker compose ps -q quad_ocs2)" ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}"
+    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" "$(docker compose ps -q quad_ocs2)" ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
 fi
