@@ -74,6 +74,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/joint_control_data.hpp"
 #include "legged_msgs/srv/start_control.hpp"
+#include "std_msgs/msg/float64.hpp"
 #include "std_msgs/msg/int32.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 
@@ -125,6 +126,7 @@ protected:
     void simulatorSensorCallback(const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg);
     void updateStateEstimationFromSensor(const legged_msgs::msg::SimulatorSensorData::ConstSharedPtr msg);
     void publishJointControl(const ocs2::vector_t& torque, const ocs2::vector_t& posDes, const ocs2::vector_t& velDes);
+    void publishMpcComputeTime(double computeTimeMs);
     void emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr msg);
     void publishEmergencyOverrideState();
     void publishCurrentObservation();
@@ -168,6 +170,7 @@ protected:
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<legged_msgs::msg::MpcObservation>::SharedPtr observationPublisher_;
     rclcpp::Publisher<legged_msgs::msg::JointControlData>::SharedPtr jointControlPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr mpcComputeTimePublisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr emergencyOverrideStatePublisher_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mpcFootTrajectoryPublisher_;
     rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;

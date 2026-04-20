@@ -466,6 +466,7 @@ void MPC_WBC_ROS_Interface::launchNodes()
 
   // Joint control publisher
   jointControlPublisher_ = node_->create_publisher<legged_msgs::msg::JointControlData>("joint_control_data", 1);
+  mpcComputeTimePublisher_ = node_->create_publisher<std_msgs::msg::Float64>("mpc_compute_time_ms", 1);
   mpcFootTrajectoryPublisher_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("mpc_foot_trajectories", 1);
   emergencyOverrideStatePublisher_ = node_->create_publisher<std_msgs::msg::Int32>(
       robotName_ + "_emergency_override_state", 1);
@@ -650,6 +651,7 @@ void MPC_WBC_ROS_Interface::simulatorStateCallback(
     std::cerr << "\n###   Latest  : "
     << mpcTimer_.getLastIntervalInMilliseconds() << "[ms]."
     << std::endl;
+    publishMpcComputeTime(mpcTimer_.getLastIntervalInMilliseconds());
   }
 
   const bool policyUpdated = mpcMrtInterface_->updatePolicy();
@@ -897,6 +899,7 @@ void MPC_WBC_ROS_Interface::simulatorSensorCallback(
     std::cerr << "\n###   Latest  : "
     << mpcTimer_.getLastIntervalInMilliseconds() << "[ms]."
     << std::endl;
+    publishMpcComputeTime(mpcTimer_.getLastIntervalInMilliseconds());
   }
 
   const bool policyUpdated = mpcMrtInterface_->updatePolicy();
@@ -1032,6 +1035,19 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
 
   // // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "%s", oss.str().c_str());
 
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::publishMpcComputeTime(double computeTimeMs) {
+  if (!mpcComputeTimePublisher_) {
+    return;
+  }
+
+  auto msg = std_msgs::msg::Float64();
+  msg.data = computeTimeMs;
+  mpcComputeTimePublisher_->publish(msg);
 }
 
 /******************************************************************************************************/
