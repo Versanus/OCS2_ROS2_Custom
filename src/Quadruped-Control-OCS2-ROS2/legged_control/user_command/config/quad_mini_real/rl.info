@@ -1,26 +1,106 @@
-; Smoke-test RL config. This is intentionally simple and does not aim to match training.
+; Quad mini real RL config for the ONNX joystick policy.
+; Observation layout:
+;   local linear velocity, gyro, projected gravity,
+;   joint positions minus default angles, joint velocities, previous action, user command.
+; Policy action and joint observation layout follow the training MuJoCo order:
+;   RF, LF, RH, LH.
 
-onnxModelPath ../../models/go1_policy.onnx
+onnxModelPath ../../models/quad_mini_policy.onnx
 onnxInputName obs
 onnxOutputName continuous_actions
 
 policyHz 50.0
 obsDim 48
 actDim 12
+observationLayout training
+jointPositionObservation relative_to_default
+policyActionJointOrder
+{
+  [0]  RF_HAA
+  [1]  RF_HFE
+  [2]  RF_KFE
+  [3]  LF_HAA
+  [4]  LF_HFE
+  [5]  LF_KFE
+  [6]  RH_HAA
+  [7]  RH_HFE
+  [8]  RH_KFE
+  [9]  LH_HAA
+  [10] LH_HFE
+  [11] LH_KFE
+}
+policyJointObservationOrder
+{
+  [0]  RF_HAA
+  [1]  RF_HFE
+  [2]  RF_KFE
+  [3]  LF_HAA
+  [4]  LF_HFE
+  [5]  LF_KFE
+  [6]  RH_HAA
+  [7]  RH_HFE
+  [8]  RH_KFE
+  [9]  LH_HAA
+  [10] LH_HFE
+  [11] LH_KFE
+}
 
-actionScale 0.50
+; Internal controller order is LF, LH, RF, RH. Values match the training XML home keyframe.
+; This is only the RL q_default used in q_des = q_default + actionScale * action.
+policyDefaultJointState
+{
+   (0,0)   0.0   ; LF_HAA
+   (1,0)  -0.3   ; LF_HFE
+   (2,0)   1.2   ; LF_KFE
+   (3,0)   0.0   ; LH_HAA
+   (4,0)  -0.3   ; LH_HFE
+   (5,0)   1.2   ; LH_KFE
+   (6,0)   0.0   ; RF_HAA
+   (7,0)   0.3   ; RF_HFE
+   (8,0)  -1.2   ; RF_KFE
+   (9,0)   0.0   ; RH_HAA
+   (10,0)  0.3   ; RH_HFE
+   (11,0) -1.2   ; RH_KFE
+}
+
+; Key '1' moves to the same MuJoCo home pose that the policy was reset/trained from.
+; This avoids a jump from the MPC stand pose into q_default when the policy starts.
+policyStandJointState
+{
+   (0,0)   0.0   ; LF_HAA
+   (1,0)  -0.3   ; LF_HFE
+   (2,0)   1.2   ; LF_KFE
+   (3,0)   0.0   ; LH_HAA
+   (4,0)  -0.3   ; LH_HFE
+   (5,0)   1.2   ; LH_KFE
+   (6,0)   0.0   ; RF_HAA
+   (7,0)   0.3   ; RF_HFE
+   (8,0)  -1.2   ; RF_KFE
+   (9,0)   0.0   ; RH_HAA
+   (10,0)  0.3   ; RH_HFE
+   (11,0) -1.2   ; RH_KFE
+}
+
+actionScale 0.32
 actionClip 1.0
 
-kpRatio 1.0
-kdRatio 1.0
+kp 10.0
+kd 0.1375
+
+; Stance/hold gains for key '1'. Keep these separate from the policy PD gains above.
+poseKp 10.0
+poseKd 0.1375
 
 stateTimeoutSec 0.25
 commandTimeoutSec 1.0
 startupHoldSec 1.0
 standTransitionSec 1.5
 sitTransitionSec 1.5
-policyCommandMaxX 1.5
-policyCommandMaxY 0.8
-policyCommandMaxYaw 6.283185307179586
+policyCommandMaxX 1.2
+policyCommandMaxY 0.6
+policyCommandMaxYaw 1.0
+; Policy command observation is real velocity units: [x_vel, y_vel, yaw_vel].
+; Keep axis sign correction, but do not scale keyboard speed to the training limit.
+scaleCommandToPolicyLimits false
 commandActivationThreshold 0.02
 requireCommandForPolicy true

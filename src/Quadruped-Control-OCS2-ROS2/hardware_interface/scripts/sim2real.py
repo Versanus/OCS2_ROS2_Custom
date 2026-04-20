@@ -27,7 +27,7 @@ class SimToRealBridge(Node):
         self.declare_parameter('kd', 1.0)
         self.declare_parameter('motors_enabled', True)
         self.declare_parameter('feedforward_torque_enabled', True)
-        self.declare_parameter('enable_tuning_window', False)
+        self.declare_parameter('enable_tuning_window', True)
         self.declare_parameter('gain_scale_min', 0.0)
         self.declare_parameter('gain_scale_max', 10.0)
         self.declare_parameter('gain_scale_resolution', 0.01)
