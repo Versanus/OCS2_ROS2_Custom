@@ -39,7 +39,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <stdexcept>
 #include <utility>
+#include <boost/property_tree/info_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
 #include <ocs2_sqp/SqpMpc.h>
 
 #include <angles/angles.h>
@@ -47,13 +50,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <pinocchio/algorithm/kinematics.hpp>
 
 namespace {
-
-constexpr double kNominalKpRatio = 1.0;
-constexpr double kNominalKdRatio = 1.0;
-constexpr double kStrongKpRatio = 4.0;
-constexpr double kStrongKdRatio = 2.0;
-constexpr double kZeroKpRatio = 0.0;
-constexpr double kZeroKdRatio = 0.0;
 
 bool tryLoadJointState(const std::string& referenceFile, const std::string& field, ocs2::vector_t& jointState) {
   try {
@@ -84,25 +80,6 @@ std::array<float, 4> footTrajectoryColor(std::size_t index) {
       return {0.95f, 0.25f, 0.65f, 0.95f};
     default:
       return {0.85f, 0.85f, 0.85f, 0.90f};
-  }
-}
-
-std::pair<double, double> jointGainRatiosForState(MPC_WBC_ROS_Interface::ControlState state, bool mpcBlendActive) {
-  if (mpcBlendActive) {
-    return {kStrongKpRatio, kStrongKdRatio};
-  }
-
-  switch (state) {
-    case MPC_WBC_ROS_Interface::ControlState::Hold:
-    case MPC_WBC_ROS_Interface::ControlState::RecoveryPose:
-    case MPC_WBC_ROS_Interface::ControlState::SitDown:
-    case MPC_WBC_ROS_Interface::ControlState::Sitting:
-      return {kStrongKpRatio, kStrongKdRatio};
-    case MPC_WBC_ROS_Interface::ControlState::ZeroTorque:
-      return {kZeroKpRatio, kZeroKdRatio};
-    case MPC_WBC_ROS_Interface::ControlState::Mpc:
-    default:
-      return {kNominalKpRatio, kNominalKdRatio};
   }
 }
 
@@ -137,6 +114,7 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
   mpcReleaseDelay_ = std::max<ocs2::scalar_t>(0.0, mpcReleaseDelay_);
   mpcBlendDuration_ = std::max<ocs2::scalar_t>(0.0, mpcBlendDuration_);
   sitDownDuration_ = std::max<ocs2::scalar_t>(0.1, sitDownDuration_);
+  loadJointGainRatios(taskFile);
 
   // mpc
   ocs2::loadData::loadCppDataType(simulatorFile, "controller.mpc_control_frequency", Mpc_control_frequency_);
@@ -154,6 +132,59 @@ MPC_WBC_ROS_Interface::MPC_WBC_ROS_Interface(const rclcpp::Node::SharedPtr& node
 
   MpcCount_ = 0; //control the different frequencyies between mpc and wbc
 
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void MPC_WBC_ROS_Interface::loadJointGainRatios(const std::string& taskFile) {
+  boost::property_tree::ptree tree;
+  boost::property_tree::read_info(taskFile, tree);
+
+  nominalKpRatio_ = tree.get<double>("jointGainRatios.nominalKp", nominalKpRatio_);
+  nominalKdRatio_ = tree.get<double>("jointGainRatios.nominalKd", nominalKdRatio_);
+  strongKpRatio_ = tree.get<double>("jointGainRatios.strongKp", strongKpRatio_);
+  strongKdRatio_ = tree.get<double>("jointGainRatios.strongKd", strongKdRatio_);
+  zeroKpRatio_ = tree.get<double>("jointGainRatios.zeroKp", zeroKpRatio_);
+  zeroKdRatio_ = tree.get<double>("jointGainRatios.zeroKd", zeroKdRatio_);
+
+  const auto validateRatio = [](double value, const char* name) {
+    if (!std::isfinite(value) || value < 0.0) {
+      throw std::runtime_error(std::string("jointGainRatios.") + name + " must be finite and non-negative.");
+    }
+  };
+  validateRatio(nominalKpRatio_, "nominalKp");
+  validateRatio(nominalKdRatio_, "nominalKd");
+  validateRatio(strongKpRatio_, "strongKp");
+  validateRatio(strongKdRatio_, "strongKd");
+  validateRatio(zeroKpRatio_, "zeroKp");
+  validateRatio(zeroKdRatio_, "zeroKd");
+
+  RCLCPP_INFO(node_->get_logger(),
+              "MPC joint gain ratios: nominal=%.3f/%.3f strong=%.3f/%.3f zero=%.3f/%.3f.",
+              nominalKpRatio_, nominalKdRatio_, strongKpRatio_, strongKdRatio_, zeroKpRatio_, zeroKdRatio_);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+std::pair<double, double> MPC_WBC_ROS_Interface::jointGainRatiosForCurrentState(bool mpcBlendActive) const {
+  if (mpcBlendActive) {
+    return {strongKpRatio_, strongKdRatio_};
+  }
+
+  switch (controlState_) {
+    case ControlState::Hold:
+    case ControlState::RecoveryPose:
+    case ControlState::SitDown:
+    case ControlState::Sitting:
+      return {strongKpRatio_, strongKdRatio_};
+    case ControlState::ZeroTorque:
+      return {zeroKpRatio_, zeroKdRatio_};
+    case ControlState::Mpc:
+    default:
+      return {nominalKpRatio_, nominalKdRatio_};
+  }
 }
 
 /******************************************************************************************************/
@@ -1073,8 +1104,8 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
   msg.joint_torque.resize(12);
   msg.joint_position.resize(12);
   msg.joint_velocity.resize(12);
-  msg.kp = kNominalKpRatio;
-  msg.kd = kNominalKdRatio;
+  msg.kp = nominalKpRatio_;
+  msg.kd = nominalKdRatio_;
 
   const ocs2::scalar_t blendAlpha = mpcBlendActive_
                                         ? std::clamp((currentObservation_.time - mpcBlendStartTime_) /
@@ -1136,7 +1167,7 @@ void MPC_WBC_ROS_Interface::publishJointControl(const ocs2::vector_t& torque, co
     }
   }
 
-  const auto [kpRatio, kdRatio] = jointGainRatiosForState(controlState_, mpcBlendActive_);
+  const auto [kpRatio, kdRatio] = jointGainRatiosForCurrentState(mpcBlendActive_);
   msg.kp = kpRatio;
   msg.kd = kdRatio;
 

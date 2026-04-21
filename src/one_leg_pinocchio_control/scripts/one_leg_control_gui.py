@@ -191,7 +191,7 @@ class OneLegControlGui(Node):
             ttk.Scale(
                 id_gains,
                 from_=0.0,
-                to=10.0,
+                to=100.0,
                 variable=kp_var,
                 command=lambda _unused=None: self._update_slider_labels(),
             ).grid(row=row, column=1, sticky='ew', padx=8, pady=4)
@@ -202,7 +202,7 @@ class OneLegControlGui(Node):
             ttk.Scale(
                 id_gains,
                 from_=0.0,
-                to=2.0,
+                to=50.0,
                 variable=kd_var,
                 command=lambda _unused=None: self._update_slider_labels(),
             ).grid(row=row, column=3, sticky='ew', padx=8, pady=4)

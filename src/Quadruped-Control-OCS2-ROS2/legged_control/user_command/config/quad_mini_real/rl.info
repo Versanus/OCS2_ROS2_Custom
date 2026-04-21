@@ -1,19 +1,29 @@
-; Quad mini real RL config for the ONNX joystick policy.
+; Quad mini real RL config for the exported ONNX joystick policy.
 ; Observation layout:
 ;   local linear velocity, gyro, projected gravity,
 ;   joint positions minus default angles, joint velocities, previous action, user command.
 ; Policy action and joint observation layout follow the training MuJoCo order:
 ;   RF, LF, RH, LH.
+; Exported checkpoint:
+;   Kp=25.0, Kd=0.55, actionScale=0.32, ctrl_dt=0.02.
+; RL publishes gain ratios. In MuJoCo RL mode, ratio 1.0 maps to Kp=25.0, Kd=0.55.
+; MuJoCo sim overrides below are used only when launching sim with controlType=rl.
 
 onnxModelPath ../../models/quad_mini_policy.onnx
 onnxInputName obs
 onnxOutputName continuous_actions
 
 policyHz 50.0
+mujocoTimestep 0.004
+mujocoControlFrequency 50.0
+mujocoBaseKp 25.0
+mujocoBaseKd 0.55
 obsDim 48
 actDim 12
 observationLayout training
 jointPositionObservation relative_to_default
+; Real hardware joint feedback arrives in motor coordinates. Convert it back to MuJoCo/policy joint coordinates for observations.
+feedbackJointStateTransform quad_mini_hardware
 policyActionJointOrder
 {
   [0]  RF_HAA
@@ -83,17 +93,17 @@ policyStandJointState
 
 actionScale 0.32
 actionClip 1.0
+actionRateLimit 0.0
 
-kp 10.0
-kd 0.1375
+kpRatio 1.0
+kdRatio 1.0
 
-; Stance/hold gains for key '1'. Keep these separate from the policy PD gains above.
-poseKp 10.0
-poseKd 0.1375
+poseKpRatio 1.0
+poseKdRatio 1.0
 
 stateTimeoutSec 0.25
 commandTimeoutSec 1.0
-startupHoldSec 1.0
+startupHoldSec 0.0
 standTransitionSec 1.5
 sitTransitionSec 1.5
 policyCommandMaxX 1.2
@@ -102,5 +112,3 @@ policyCommandMaxYaw 1.0
 ; Policy command observation is real velocity units: [x_vel, y_vel, yaw_vel].
 ; Keep axis sign correction, but do not scale keyboard speed to the training limit.
 scaleCommandToPolicyLimits false
-commandActivationThreshold 0.02
-requireCommandForPolicy true

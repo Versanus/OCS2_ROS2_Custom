@@ -29,6 +29,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
 
+#include <utility>
+
 // #include <ocs2_core/control/FeedforwardController.h>
 // #include <ocs2_core/control/LinearController.h>
 // #include <ocs2_core/misc/Benchmark.h>
@@ -144,6 +146,8 @@ protected:
 	    void resetEstimatedObservationFromCurrentSensors();
 	    void relatchHoldJointStateFromObservation();
 	    void synchronizeObservationInputWithControlState();
+	    void loadJointGainRatios(const std::string& taskFile);
+	    std::pair<double, double> jointGainRatiosForCurrentState(bool mpcBlendActive) const;
     
     std::string robotName_;
     // Interface
@@ -200,8 +204,14 @@ private:
 	    ocs2::scalar_t sitDownDuration_ = 1.0;
 	    bool initialStateReady_ = false;
 	    ocs2::scalar_t lastMpcResetTime_ = -1.0;
-	    ocs2::scalar_t mpcResetCooldown_ = 0.1;
+      ocs2::scalar_t mpcResetCooldown_ = 0.1;
       ocs2::scalar_t holdJointJumpThreshold_ = 0.20;
+      double nominalKpRatio_ = 1.0;
+      double nominalKdRatio_ = 1.0;
+      double strongKpRatio_ = 4.0;
+      double strongKdRatio_ = 2.0;
+      double zeroKpRatio_ = 0.0;
+      double zeroKdRatio_ = 0.0;
 
 
   /*

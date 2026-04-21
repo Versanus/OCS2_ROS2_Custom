@@ -10,7 +10,9 @@ constexpr double kRealtimeToleranceSec = 1e-6;
 
 }  // namespace
 
-MujocoBackend::MujocoBackend(const std::string& xml_file, const std::string& simulator_file)
+MujocoBackend::MujocoBackend(const std::string& xml_file,
+                             const std::string& simulator_file,
+                             const MujocoSimulation::RuntimeOptions& runtime_options)
     : sim_node_(rclcpp::Node::make_shared(
           "mujoco_bridge_backend_internal",
           rclcpp::NodeOptions().use_global_arguments(false))),
@@ -22,7 +24,7 @@ MujocoBackend::MujocoBackend(const std::string& xml_file, const std::string& sim
     throw std::runtime_error("MujocoBackend requires a non-empty simulatorFile.");
   }
 
-  simulation_ = std::make_unique<MujocoSimulation>(sim_node_, xml_file, simulator_file, false);
+  simulation_ = std::make_unique<MujocoSimulation>(sim_node_, xml_file, simulator_file, false, runtime_options);
   control_period_sec_ = 1.0 / std::max(1.0, simulation_->getControlFrequency());
   render_period_sec_ = 1.0 / std::max(1.0, simulation_->getRenderFrequency());
   simulation_->stepControlPeriod();

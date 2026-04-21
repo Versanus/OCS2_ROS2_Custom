@@ -168,5 +168,8 @@ else
 
     echo "Attaching to container..."
 
-    docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" "$(docker compose ps -q quad_ocs2)" ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
+    docker exec -it \
+        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
+        "$(docker compose ps -q quad_ocs2)" \
+        ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
 fi

@@ -19,6 +19,7 @@ class SimToRealBridge(Node):
 
         self.declare_parameter('input_topic', 'joint_control_data')
         self.declare_parameter('output_topic', 'joint_cmd')
+        self.declare_parameter('publish_rate_hz', 50.0)
         self.declare_parameter('default_position', 0.0)
         self.declare_parameter('default_effort', 12.0)
         self.declare_parameter('use_input_position', True)
@@ -29,7 +30,7 @@ class SimToRealBridge(Node):
         self.declare_parameter('feedforward_torque_enabled', True)
         self.declare_parameter('enable_tuning_window', True)
         self.declare_parameter('gain_scale_min', 0.0)
-        self.declare_parameter('gain_scale_max', 10.0)
+        self.declare_parameter('gain_scale_max', 100.0)
         self.declare_parameter('gain_scale_resolution', 0.01)
         self.declare_parameter(
             'source_joint_names',
@@ -56,6 +57,9 @@ class SimToRealBridge(Node):
 
         self.input_topic = self.get_parameter('input_topic').get_parameter_value().string_value
         self.output_topic = self.get_parameter('output_topic').get_parameter_value().string_value
+        self.publish_rate_hz = self._parse_publish_rate_hz(
+            self.get_parameter('publish_rate_hz').value
+        )
         self.default_position = self.get_parameter('default_position').get_parameter_value().double_value
         self.default_effort = self.get_parameter('default_effort').get_parameter_value().double_value
         self.use_input_position = self.get_parameter('use_input_position').get_parameter_value().bool_value
@@ -94,6 +98,8 @@ class SimToRealBridge(Node):
         self._updating_controls = False
         self._shutdown_started = False
         self.message_count = 0
+        self.latest_input_msg = None
+        self.publish_timer = None
         self.last_input_kp_ratio = None
         self.last_input_kd_ratio = None
         self.last_output_kp_ratio = None
@@ -114,6 +120,7 @@ class SimToRealBridge(Node):
             10,
         )
         self.publisher = self.create_publisher(JointControlState, self.output_topic, 10)
+        self._configure_publish_timer()
 
         if len(self.output_joint_names) != 12:
             raise ValueError('output_joint_names must contain 12 joint names for JointControlState.')
@@ -122,10 +129,28 @@ class SimToRealBridge(Node):
             self._setup_tuning_window()
 
         self.get_logger().info(
-            f"Sim2Real bridge started: {self.input_topic} -> {self.output_topic}"
+            f"Sim2Real bridge started: {self.input_topic} -> {self.output_topic} "
+            f"({self._format_publish_rate()})"
         )
 
     def control_callback(self, msg: JointControlData):
+        self.message_count += 1
+        self.latest_input_msg = msg
+
+        if self.publish_timer is None:
+            self._publish_latest_command()
+        else:
+            self._update_status_text()
+
+    def _publish_latest_command(self):
+        if self.latest_input_msg is None:
+            return
+
+        joint_cmd = self._build_joint_command(self.latest_input_msg)
+        self.publisher.publish(joint_cmd)
+        self._update_status_text()
+
+    def _build_joint_command(self, msg: JointControlData):
         position_by_name = self._vector_to_map(msg.joint_position)
         velocity_by_name = self._vector_to_map(msg.joint_velocity)
         torque_by_name = self._vector_to_map(msg.joint_torque)
@@ -162,7 +187,6 @@ class SimToRealBridge(Node):
             joint_velocity.append(float(velocity))
             joint_torque.append(float(torque))
 
-        self.message_count += 1
         input_kp_ratio = self._sanitize_ratio(msg.kp)
         input_kd_ratio = self._sanitize_ratio(msg.kd)
         bridge_kp_ratio = self._sanitize_ratio(self.kp)
@@ -181,8 +205,7 @@ class SimToRealBridge(Node):
         self.last_output_kp_ratio = joint_cmd.kp
         self.last_output_kd_ratio = joint_cmd.kd
 
-        self.publisher.publish(joint_cmd)
-        self._update_status_text()
+        return joint_cmd
 
     def _vector_to_map(self, values):
         return {
@@ -196,6 +219,7 @@ class SimToRealBridge(Node):
         new_kd = self.kd
         new_motors_enabled = self.motors_enabled
         new_feedforward_torque_enabled = self.feedforward_torque_enabled
+        new_publish_rate_hz = self.publish_rate_hz
 
         for param in params:
             if param.name == 'kp':
@@ -206,16 +230,55 @@ class SimToRealBridge(Node):
                 new_motors_enabled = bool(param.value)
             elif param.name == 'feedforward_torque_enabled':
                 new_feedforward_torque_enabled = bool(param.value)
+            elif param.name == 'publish_rate_hz':
+                try:
+                    new_publish_rate_hz = self._parse_publish_rate_hz(param.value)
+                except ValueError as exc:
+                    return SetParametersResult(successful=False, reason=str(exc))
 
         self.kp = self._clamp_gain(new_kp)
         self.kd = self._clamp_gain(new_kd)
         self.motors_enabled = new_motors_enabled
         self.feedforward_torque_enabled = new_feedforward_torque_enabled
+        if abs(new_publish_rate_hz - self.publish_rate_hz) > 1e-9:
+            self.publish_rate_hz = new_publish_rate_hz
+            self._configure_publish_timer()
+            self.get_logger().info(f'publish_rate_hz set to {self._format_publish_rate()}')
         self._sync_gain_controls()
         self._sync_motor_button()
         self._sync_torque_button()
-        self._update_status_text()
+        if self.publish_timer is None:
+            self._publish_latest_command()
+        else:
+            self._update_status_text()
         return SetParametersResult(successful=True)
+
+    def _parse_publish_rate_hz(self, value):
+        try:
+            publish_rate_hz = float(value)
+        except (TypeError, ValueError):
+            raise ValueError('publish_rate_hz must be a number.')
+
+        if not math.isfinite(publish_rate_hz) or publish_rate_hz < 0.0:
+            raise ValueError('publish_rate_hz must be finite and non-negative.')
+
+        return publish_rate_hz
+
+    def _configure_publish_timer(self):
+        if self.publish_timer is not None:
+            self.destroy_timer(self.publish_timer)
+            self.publish_timer = None
+
+        if self.publish_rate_hz > 0.0:
+            self.publish_timer = self.create_timer(
+                1.0 / self.publish_rate_hz,
+                self._publish_latest_command,
+            )
+
+    def _format_publish_rate(self):
+        if self.publish_rate_hz <= 0.0:
+            return 'input-rate publish'
+        return f'{self.publish_rate_hz:.2f} Hz publish'
 
     def _setup_tuning_window(self):
         try:

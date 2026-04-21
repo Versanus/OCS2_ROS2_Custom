@@ -12,7 +12,9 @@ namespace real_robot_bridge {
 
 class MujocoBackend final : public BackendBase {
  public:
-  MujocoBackend(const std::string& xml_file, const std::string& simulator_file);
+  MujocoBackend(const std::string& xml_file,
+                const std::string& simulator_file,
+                const MujocoSimulation::RuntimeOptions& runtime_options = MujocoSimulation::RuntimeOptions{});
 
   std::string name() const override { return "mujoco"; }
   bool supportsGroundTruthContact() const override { return true; }

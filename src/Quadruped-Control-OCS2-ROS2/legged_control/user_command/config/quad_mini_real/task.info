@@ -16,6 +16,16 @@ estimatedContact
   strongForceMargin             1.5
 }
 
+jointGainRatios
+{
+  nominalKp                     1.0
+  nominalKd                     1.0
+  strongKp                      4.0
+  strongKd                      2.0
+  zeroKp                        0.0
+  zeroKd                        0.0
+}
+
 legged_robot_interface
 {
   verbose                               false  // show the loaded parameters

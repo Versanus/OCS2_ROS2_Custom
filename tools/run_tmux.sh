@@ -152,6 +152,10 @@ else
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
 fi
 
+BRIDGE_FEEDBACK_ARGS=""
+if [ "$BACKEND" = "real" ] && [ "$CONTROL_TYPE" = "rl" ]; then
+  BRIDGE_FEEDBACK_ARGS="joint_feedback_source:=joint_state joint_state_topic:=htdw_joint_state"
+fi
 
 # -------------------------
 # Shared bridge backend
@@ -163,7 +167,7 @@ source $WS/install/setup.bash
 if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
   source $WS/mujoco_env.sh
 fi
-ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING
+ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING control_type:=$CONTROL_TYPE $BRIDGE_FEEDBACK_ARGS
 '"
 
 

@@ -14,12 +14,17 @@ def generate_launch_description():
     contact_source = LaunchConfiguration('contact_source')
     publish_rate_hz = LaunchConfiguration('publish_rate_hz')
     debug_state_logging = LaunchConfiguration('debug_state_logging')
+    control_type = LaunchConfiguration('control_type')
     joint_feedback_source = LaunchConfiguration('joint_feedback_source')
     joint_feedback_topic = LaunchConfiguration('joint_feedback_topic')
     joint_state_topic = LaunchConfiguration('joint_state_topic')
     imu_topic = LaunchConfiguration('imu_topic')
     odom_topic = LaunchConfiguration('odom_topic')
     hardware_command_topic = LaunchConfiguration('hardware_command_topic')
+    mujoco_timestep = LaunchConfiguration('mujoco_timestep')
+    mujoco_control_frequency = LaunchConfiguration('mujoco_control_frequency')
+    mujoco_base_kp = LaunchConfiguration('mujoco_base_kp')
+    mujoco_base_kd = LaunchConfiguration('mujoco_base_kd')
 
     xml_file = PathJoinSubstitution([
         get_package_share_directory('mujoco_simulator'),
@@ -51,18 +56,30 @@ def generate_launch_description():
         'task.info'
     ])
 
+    rl_file = PathJoinSubstitution([
+        get_package_share_directory('user_command'),
+        'config',
+        robot_type,
+        'rl.info'
+    ])
+
     return LaunchDescription([
         DeclareLaunchArgument('robot_type', default_value='b1'),
         DeclareLaunchArgument('backend', default_value='sim'),
         DeclareLaunchArgument('contact_source', default_value='mujoco'),
         DeclareLaunchArgument('publish_rate_hz', default_value='0.0'),
         DeclareLaunchArgument('debug_state_logging', default_value='false'),
+        DeclareLaunchArgument('control_type', default_value='mpc'),
         DeclareLaunchArgument('joint_feedback_source', default_value='joint_trajectory'),
         DeclareLaunchArgument('joint_feedback_topic', default_value='htdw_joint_cmd'),
         DeclareLaunchArgument('joint_state_topic', default_value='joint_states'),
         DeclareLaunchArgument('imu_topic', default_value='imu/data'),
         DeclareLaunchArgument('odom_topic', default_value=''),
         DeclareLaunchArgument('hardware_command_topic', default_value='bridge_joint_command'),
+        DeclareLaunchArgument('mujoco_timestep', default_value='0.0'),
+        DeclareLaunchArgument('mujoco_control_frequency', default_value='0.0'),
+        DeclareLaunchArgument('mujoco_base_kp', default_value='0.0'),
+        DeclareLaunchArgument('mujoco_base_kd', default_value='0.0'),
 
         Node(
             package='real_robot_bridge',
@@ -74,11 +91,17 @@ def generate_launch_description():
                 {'xmlFile': xml_file},
                 {'simulatorFile': simulator_file},
                 {'taskFile': task_file},
+                {'rlFile': rl_file},
                 {'urdfFile': urdf_file},
                 {'contactSource': contact_source},
+                {'controlType': control_type},
                 {'alwaysPublishStateTopic': True},
                 {'publishRateHz': ParameterValue(publish_rate_hz, value_type=float)},
                 {'debugStateLogging': ParameterValue(debug_state_logging, value_type=bool)},
+                {'mujocoTimestep': ParameterValue(mujoco_timestep, value_type=float)},
+                {'mujocoControlFrequency': ParameterValue(mujoco_control_frequency, value_type=float)},
+                {'mujocoBaseKp': ParameterValue(mujoco_base_kp, value_type=float)},
+                {'mujocoBaseKd': ParameterValue(mujoco_base_kd, value_type=float)},
             ]
         ),
 

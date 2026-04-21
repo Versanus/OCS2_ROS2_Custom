@@ -1,6 +1,8 @@
 controller
 {
     timestep  0.001
+    baseKp  10.0
+    baseKd  0.30
     mpc_control_frequency  40
     wbc_control_frequency  200
 }

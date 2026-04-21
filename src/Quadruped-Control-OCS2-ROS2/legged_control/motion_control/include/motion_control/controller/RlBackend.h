@@ -52,6 +52,11 @@ class RlBackend final : public ControllerBackend {
     Raw,
   };
 
+  enum class FeedbackJointStateTransform {
+    None,
+    QuadMiniHardware,
+  };
+
   struct Settings {
     std::string modelPath;
     std::string inputName{"obs"};
@@ -59,10 +64,11 @@ class RlBackend final : public ControllerBackend {
     double policyHz = 50.0;
     double actionScale = 0.50;
     double actionClip = 1.0;
-    double kp = 1.0;
-    double kd = 1.0;
-    double poseKp = 4.0;
-    double poseKd = 2.0;
+    double actionRateLimit = 0.0;
+    double kpRatio = 1.0;
+    double kdRatio = 1.0;
+    double poseKpRatio = 4.0;
+    double poseKdRatio = 2.0;
     double stateTimeoutSec = 0.25;
     double commandTimeoutSec = 1.0;
     double startupHoldSec = 1.0;
@@ -72,12 +78,14 @@ class RlBackend final : public ControllerBackend {
     double policyCommandMaxX = 1.5;
     double policyCommandMaxY = 0.8;
     double policyCommandMaxYaw = 6.283185307179586;
-    bool requireCommandForPolicy = true;
+    bool requireCommandForPolicy = false;
     bool scaleCommandToPolicyLimits = true;
+    bool holdStandWhenPolicyIdle = false;
     std::size_t observationDim = 48;
     std::size_t actionDim = 12;
     ObservationLayout observationLayout = ObservationLayout::Legacy;
     JointPositionObservation jointPositionObservation = JointPositionObservation::RelativeToDefault;
+    FeedbackJointStateTransform feedbackJointStateTransform = FeedbackJointStateTransform::None;
     std::vector<std::size_t> actionToJointIndex;
     std::vector<std::size_t> observationToJointIndex;
   };
@@ -86,6 +94,7 @@ class RlBackend final : public ControllerBackend {
   bool loadReferencePoses(const std::string& referenceFile);
   static ObservationLayout parseObservationLayout(const std::string& value);
   static JointPositionObservation parseJointPositionObservation(const std::string& value);
+  static FeedbackJointStateTransform parseFeedbackJointStateTransform(const std::string& value);
   void setupRosInterfaces();
 
   void stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg);
@@ -103,8 +112,9 @@ class RlBackend final : public ControllerBackend {
   void beginPoseTransition(const ocs2::vector_t& targetPose, double durationSec);
   ocs2::vector_t transitionPoseCommand() const;
   bool buildObservation(std::vector<float>& observation) const;
+  void transformFeedbackJointState(std::vector<double>& jointPositions, std::vector<double>& jointVelocities) const;
   void publishPolicyCommand(const std::vector<float>& action);
-  void publishPoseCommand(const ocs2::vector_t& pose, double kp, double kd);
+  void publishPoseCommand(const ocs2::vector_t& pose, double kpRatio, double kdRatio);
   void publishZeroTorqueCommand();
   void publishEmergencyOverrideState() const;
   ocs2::vector_t poseForControlState() const;

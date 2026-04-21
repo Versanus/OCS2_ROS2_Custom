@@ -9,7 +9,7 @@ one_leg_inverse_dynamics_node:
 
     state_topic: "htdw_joint_state"
     command_topic: "joint_cmd"
-    control_rate_hz: 100.0
+    control_rate_hz: 50.0
     max_state_age_sec: 0.15
 
     # active_joint_names are the ROS/hardware names in htdw_joint_state and joint_cmd.
@@ -63,7 +63,7 @@ one_leg_inverse_dynamics_node:
     # Safety clamps. Increase only after bench testing with the leg unloaded.
     max_torque: [6.0, 6.0, 6.0]
     max_torque_rate: [15.0, 15.0, 15.0]
-    max_position_error: [0.8, 0.8, 0.8]
+    max_position_error: [10.0, 10.0, 10.0]
     max_velocity: [15.0, 15.0, 15.0]
     startup_ramp_sec: 2.0
 
@@ -84,8 +84,8 @@ one_leg_control_gui:
     default_id_kp: [1.5, 1.5, 1.0]
     default_id_kd: [0.08, 0.08, 0.05]
     default_max_torque: 6.0
-    default_command_kp: 0.0
-    default_command_kd: 0.0
+    default_command_kp: 1.0
+    default_command_kd: 1.0
     default_feedforward_torque_enabled: false
     default_joint_feedforward_enabled: [0.0, 0.0, 0.0]
 

@@ -32,6 +32,10 @@ double sanitizeGainRatio(double ratio) {
     return std::max(0.0, ratio);
 }
 
+double positiveOverride(double value, double fallback) {
+    return std::isfinite(value) && value > 0.0 ? value : fallback;
+}
+
 bool fillSensorValuesByName(const mjModel* model, const mjData* data, const char* sensorName, std::vector<double>& output) {
     output.clear();
     const int sensorId = mj_name2id(model, mjOBJ_SENSOR, sensorName);
@@ -53,6 +57,15 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     const std::string& xmlFile,
     const std::string& simulatorFile,
     bool exposeRosInterface)
+    : MujocoSimulation(node, xmlFile, simulatorFile, exposeRosInterface, RuntimeOptions{})
+{
+}
+
+MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
+    const std::string& xmlFile,
+    const std::string& simulatorFile,
+    bool exposeRosInterface,
+    const RuntimeOptions& runtimeOptions)
     : node_(node), model_(nullptr), data_(nullptr), window_(nullptr),
       exposeRosInterface_(exposeRosInterface),
       disturbance_rng_(static_cast<std::mt19937::result_type>(std::time(nullptr)))
@@ -80,7 +93,7 @@ MujocoSimulation::MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     mjr_defaultContext(&context_);
 
     // load model
-    loadModel(xmlFile, simulatorFile);
+    loadModel(xmlFile, simulatorFile, runtimeOptions);
     render_rtf_window_start_sim_time_ = data_ ? data_->time : 0.0;
 
     // set redering;
@@ -113,13 +126,23 @@ MujocoSimulation::~MujocoSimulation() {
     glfwTerminate();
 }
 
-void MujocoSimulation::loadModel(const std::string& modelPath, const std::string& configFile) {
+void MujocoSimulation::loadModel(const std::string& modelPath, const std::string& configFile, const RuntimeOptions& runtimeOptions) {
     // controller
     ocs2::loadData::loadCppDataType(configFile, "controller.timestep", timestep_);
     ocs2::loadData::loadCppDataType(configFile, "controller.wbc_control_frequency", control_frequency_);
 
     boost::property_tree::ptree pt;
     boost::property_tree::read_info(configFile, pt);
+    baseKp_ = pt.get<double>("controller.baseKp", baseKp_);
+    baseKd_ = pt.get<double>("controller.baseKd", baseKd_);
+    timestep_ = positiveOverride(runtimeOptions.timestep, timestep_);
+    control_frequency_ = positiveOverride(runtimeOptions.controlFrequency, control_frequency_);
+    baseKp_ = positiveOverride(runtimeOptions.baseKp, baseKp_);
+    baseKd_ = positiveOverride(runtimeOptions.baseKd, baseKd_);
+
+    RCLCPP_INFO(node_->get_logger(),
+                "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f.",
+                timestep_, control_frequency_, baseKp_, baseKd_);
 
     // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);

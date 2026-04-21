@@ -21,16 +21,29 @@
 class MujocoSimulation
 {
 public:
-    MujocoSimulation(const rclcpp::Node::SharedPtr& node, 
+    struct RuntimeOptions {
+        double timestep = 0.0;
+        double controlFrequency = 0.0;
+        double baseKp = 0.0;
+        double baseKd = 0.0;
+        RuntimeOptions() = default;
+    };
+
+    MujocoSimulation(const rclcpp::Node::SharedPtr& node,
     const std::string& xmlFile,
     const std::string& simulatorFile,
     bool exposeRosInterface = true);
+    MujocoSimulation(const rclcpp::Node::SharedPtr& node,
+    const std::string& xmlFile,
+    const std::string& simulatorFile,
+    bool exposeRosInterface,
+    const RuntimeOptions& runtimeOptions);
     ~MujocoSimulation();
     
     mjData* getData() { return data_; }
     bool* getSimuState() { return &Start_simulate_; }
     bool* getContrlState() { return &Start_control_; }
-    void loadModel(const std::string& modelPath, const std::string& configPath);
+    void loadModel(const std::string& modelPath, const std::string& configPath, const RuntimeOptions& runtimeOptions);
     //void copyControlFromBuffer();
     void simulateStep();
     void renderSetting(const std::string& configFile);
@@ -62,6 +75,9 @@ public:
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
     double getControlFrequency() const { return control_frequency_; }
     double getRenderFrequency() const { return render_frequency_; }
+    double getTimestep() const { return timestep_; }
+    double getBaseKp() const { return baseKp_; }
+    double getBaseKd() const { return baseKd_; }
     bool exposesRosInterface() const { return exposeRosInterface_; }
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
@@ -89,11 +105,11 @@ private:
     bool visualize_contacts_;
     bool tracking_base_;
     double render_frequency_ = 60.0;
-    double measured_render_fps_ = 0.0;
-    double measured_real_time_factor_ = 0.0;
+    double measured_render_fps_;
+    double measured_real_time_factor_;
     std::size_t rendered_frame_count_ = 0;
     std::chrono::steady_clock::time_point render_fps_window_start_ = std::chrono::steady_clock::now();
-    double render_rtf_window_start_sim_time_ = 0.0;
+    double render_rtf_window_start_sim_time_;
 
     // GLFW window
     GLFWwindow* window_;
@@ -116,8 +132,8 @@ private:
     double control_frequency_;
     double baseKp_ = 10.0;
     double baseKd_ = 0.30;
-    double kpRatio_ = 0.0;
-    double kdRatio_ = 0.0;
+    double kpRatio_;
+    double kdRatio_;
     bool Start_control_=false;
     bool Start_simulate_=false;
 
@@ -134,8 +150,8 @@ private:
     double disturbance_interval_max_ = 1.20;
     double disturbance_impulse_duration_ = 0.05;
     double disturbance_arrow_scale_ = 0.005;
-    double next_disturbance_update_time_ = 0.0;
-    double disturbance_active_until_time_ = 0.0;
+    double next_disturbance_update_time_;
+    double disturbance_active_until_time_;
     std::array<double, 6> current_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
     std::array<double, 6> last_disturbance_wrench_{{0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
     std::mt19937 disturbance_rng_;

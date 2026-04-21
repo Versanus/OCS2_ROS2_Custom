@@ -210,6 +210,18 @@ RlBackend::JointPositionObservation RlBackend::parseJointPositionObservation(con
   throw std::runtime_error("jointPositionObservation must be 'relative_to_default' or 'raw'.");
 }
 
+RlBackend::FeedbackJointStateTransform RlBackend::parseFeedbackJointStateTransform(const std::string& value) {
+  const std::string token = compactLowercase(value);
+  if (token.empty() || token == "none" || token == "off" || token == "false") {
+    return FeedbackJointStateTransform::None;
+  }
+  if (token == "quadminihardware" || token == "hardwaretopolicy" || token == "hardwaretomujoco") {
+    return FeedbackJointStateTransform::QuadMiniHardware;
+  }
+
+  throw std::runtime_error("feedbackJointStateTransform must be 'none' or 'quad_mini_hardware'.");
+}
+
 RlBackend::RlBackend(const rclcpp::Node::SharedPtr& node)
     : node_(node),
       controllerConfig_(),
@@ -283,11 +295,11 @@ bool RlBackend::configure(const ControllerConfig& config) {
 
   RCLCPP_INFO(node_->get_logger(),
               "Configured RL backend with model='%s' input='%s'(%zu) output='%s'(%zu) policy_hz=%.2f "
-              "action_scale=%.3f kp=%.3f kd=%.3f pose_kp=%.3f pose_kd=%.3f.",
+              "action_scale=%.3f kp_ratio=%.3f kd_ratio=%.3f pose_kp_ratio=%.3f pose_kd_ratio=%.3f.",
               settings_.modelPath.c_str(), policyRunner_->inputName().c_str(), policyRunner_->inputSize(),
               policyRunner_->outputName().c_str(), policyRunner_->outputSize(),
-              settings_.policyHz, settings_.actionScale, settings_.kp, settings_.kd,
-              settings_.poseKp, settings_.poseKd);
+              settings_.policyHz, settings_.actionScale, settings_.kpRatio, settings_.kdRatio,
+              settings_.poseKpRatio, settings_.poseKdRatio);
   return true;
 }
 
@@ -327,12 +339,11 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     settings_.policyHz = tree.get<double>("policyHz", settings_.policyHz);
     settings_.actionScale = tree.get<double>("actionScale", settings_.actionScale);
     settings_.actionClip = tree.get<double>("actionClip", settings_.actionClip);
-    const bool hasRawKp = static_cast<bool>(tree.get_optional<double>("kp"));
-    const bool hasRawKd = static_cast<bool>(tree.get_optional<double>("kd"));
-    settings_.kp = tree.get<double>("kp", tree.get<double>("kpRatio", settings_.kp));
-    settings_.kd = tree.get<double>("kd", tree.get<double>("kdRatio", settings_.kd));
-    settings_.poseKp = tree.get<double>("poseKp", (hasRawKp || hasRawKd) ? settings_.kp : settings_.poseKp);
-    settings_.poseKd = tree.get<double>("poseKd", (hasRawKp || hasRawKd) ? settings_.kd : settings_.poseKd);
+    settings_.actionRateLimit = tree.get<double>("actionRateLimit", settings_.actionRateLimit);
+    settings_.kpRatio = tree.get<double>("kpRatio", settings_.kpRatio);
+    settings_.kdRatio = tree.get<double>("kdRatio", settings_.kdRatio);
+    settings_.poseKpRatio = tree.get<double>("poseKpRatio", settings_.poseKpRatio);
+    settings_.poseKdRatio = tree.get<double>("poseKdRatio", settings_.poseKdRatio);
     settings_.stateTimeoutSec = tree.get<double>("stateTimeoutSec", settings_.stateTimeoutSec);
     settings_.commandTimeoutSec = tree.get<double>("commandTimeoutSec", settings_.commandTimeoutSec);
     settings_.startupHoldSec = tree.get<double>("startupHoldSec", settings_.startupHoldSec);
@@ -347,6 +358,8 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         tree.get<bool>("requireCommandForPolicy", settings_.requireCommandForPolicy);
     settings_.scaleCommandToPolicyLimits =
         tree.get<bool>("scaleCommandToPolicyLimits", settings_.scaleCommandToPolicyLimits);
+    settings_.holdStandWhenPolicyIdle =
+        tree.get<bool>("holdStandWhenPolicyIdle", settings_.holdStandWhenPolicyIdle);
     settings_.observationDim = static_cast<std::size_t>(tree.get<int>("obsDim", static_cast<int>(settings_.observationDim)));
     settings_.actionDim = static_cast<std::size_t>(tree.get<int>("actDim", static_cast<int>(settings_.actionDim)));
     settings_.observationLayout =
@@ -355,6 +368,8 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         settings_.observationLayout == ObservationLayout::Policy ? "raw" : "relative_to_default";
     settings_.jointPositionObservation = parseJointPositionObservation(
         tree.get<std::string>("jointPositionObservation", defaultJointPositionObservation));
+    settings_.feedbackJointStateTransform = parseFeedbackJointStateTransform(
+        tree.get<std::string>("feedbackJointStateTransform", "none"));
     settings_.actionToJointIndex = jointOrderFromInfo(tree, "policyActionJointOrder");
     settings_.observationToJointIndex = tree.get_child_optional("policyJointObservationOrder")
                                             ? jointOrderFromInfo(tree, "policyJointObservationOrder")
@@ -378,13 +393,15 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     if (settings_.observationToJointIndex.size() != kJointCount) {
       throw std::runtime_error("policyJointObservationOrder must contain 12 joints.");
     }
-    if (!std::isfinite(settings_.actionScale) || !std::isfinite(settings_.actionClip) || settings_.actionClip < 0.0) {
-      throw std::runtime_error("actionScale must be finite and actionClip must be finite and non-negative.");
+    if (!std::isfinite(settings_.actionScale) || !std::isfinite(settings_.actionClip) ||
+        !std::isfinite(settings_.actionRateLimit) || settings_.actionClip < 0.0 || settings_.actionRateLimit < 0.0) {
+      throw std::runtime_error("actionScale, actionClip, and actionRateLimit must be finite and non-negative.");
     }
-    if (!std::isfinite(settings_.kp) || !std::isfinite(settings_.kd) ||
-        !std::isfinite(settings_.poseKp) || !std::isfinite(settings_.poseKd) ||
-        settings_.kp < 0.0 || settings_.kd < 0.0 || settings_.poseKp < 0.0 || settings_.poseKd < 0.0) {
-      throw std::runtime_error("kp/kd and poseKp/poseKd must be finite and non-negative.");
+    if (!std::isfinite(settings_.kpRatio) || !std::isfinite(settings_.kdRatio) ||
+        !std::isfinite(settings_.poseKpRatio) || !std::isfinite(settings_.poseKdRatio) ||
+        settings_.kpRatio < 0.0 || settings_.kdRatio < 0.0 ||
+        settings_.poseKpRatio < 0.0 || settings_.poseKdRatio < 0.0) {
+      throw std::runtime_error("kpRatio/kdRatio and poseKpRatio/poseKdRatio must be finite and non-negative.");
     }
     if (!std::isfinite(settings_.standTransitionSec) || settings_.standTransitionSec < 0.0) {
       throw std::runtime_error("standTransitionSec must be finite and non-negative.");
@@ -534,6 +551,8 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
     case static_cast<int>(ControlCommand::ActivatePolicy):
       controlState_ = ControlState::Policy;
       startupHoldStarted_ = false;
+      hasHoldPose_ = true;
+      holdJointState_ = standJointState_;
       resetPoseTransition();
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_INFO(node_->get_logger(), "RL backend activated.");
@@ -557,8 +576,8 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(sitJointState_, settings_.sitTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_WARN(node_->get_logger(),
-                  "RL backend switched to sit pose. Sitting down over %.2f s with PD gains kp=%.3f kd=%.3f.",
-                  settings_.sitTransitionSec, settings_.poseKp, settings_.poseKd);
+                  "RL backend switched to sit pose. Sitting down over %.2f s with PD gain ratios kp=%.3f kd=%.3f.",
+                  settings_.sitTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio);
       break;
     case static_cast<int>(ControlCommand::ZeroTorque):
       controlState_ = ControlState::ZeroTorque;
@@ -572,8 +591,8 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(standJointState_, settings_.standTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_INFO(node_->get_logger(),
-                  "RL backend switched to stance PD. Standing up over %.2f s with PD gains kp=%.3f kd=%.3f.",
-                  settings_.standTransitionSec, settings_.poseKp, settings_.poseKd);
+                  "RL backend switched to stance PD. Standing up over %.2f s with PD gain ratios kp=%.3f kd=%.3f.",
+                  settings_.standTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio);
       break;
     default:
       RCLCPP_WARN(node_->get_logger(), "Ignoring unknown RL emergency override command %d.", msg->data);
@@ -598,7 +617,7 @@ void RlBackend::policyTimerCallback() {
       latchHoldPoseFromLatestState();
     }
     if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     }
     return;
   }
@@ -609,7 +628,7 @@ void RlBackend::policyTimerCallback() {
     if (poseTransitionStartTime_.nanoseconds() == 0) {
       beginPoseTransition(standJointState_, settings_.standTransitionSec);
     }
-    publishPoseCommand(transitionPoseCommand(), settings_.poseKp, settings_.poseKd);
+    publishPoseCommand(transitionPoseCommand(), settings_.poseKpRatio, settings_.poseKdRatio);
     return;
   }
 
@@ -619,14 +638,14 @@ void RlBackend::policyTimerCallback() {
     if (poseTransitionStartTime_.nanoseconds() == 0) {
       beginPoseTransition(sitJointState_, settings_.sitTransitionSec);
     }
-    publishPoseCommand(transitionPoseCommand(), settings_.poseKp, settings_.poseKd);
+    publishPoseCommand(transitionPoseCommand(), settings_.poseKpRatio, settings_.poseKdRatio);
     return;
   }
 
   if (controlState_ != ControlState::Policy) {
     startupHoldStarted_ = false;
     lastAction_.assign(settings_.actionDim, 0.0f);
-    publishPoseCommand(poseForControlState(), settings_.poseKp, settings_.poseKd);
+    publishPoseCommand(poseForControlState(), settings_.poseKpRatio, settings_.poseKdRatio);
     return;
   }
 
@@ -634,10 +653,8 @@ void RlBackend::policyTimerCallback() {
     startupHoldStarted_ = false;
     lastAction_.assign(settings_.actionDim, 0.0f);
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                         "RL backend lost fresh simulator state/sensor data. Holding last latched pose.");
-    if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
-    }
+                         "RL backend lost fresh simulator state/sensor data. Holding the training stand pose.");
+    publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     return;
   }
 
@@ -645,29 +662,38 @@ void RlBackend::policyTimerCallback() {
   if (!startupHoldStarted_) {
     startupHoldStarted_ = true;
     firstFreshStateTime_ = now;
-    latchHoldPoseFromLatestState();
+    hasHoldPose_ = true;
+    holdJointState_ = standJointState_;
     lastAction_.assign(settings_.actionDim, 0.0f);
-    RCLCPP_INFO(node_->get_logger(),
-                "Fresh simulator state and sensor data received. Holding current pose for %.2f s before allowing RL policy output.",
-                settings_.startupHoldSec);
+    if (settings_.startupHoldSec > 0.0) {
+      RCLCPP_INFO(node_->get_logger(),
+                  "Fresh simulator state and sensor data received. Holding the training stand pose for %.2f s before allowing RL policy output.",
+                  settings_.startupHoldSec);
+    } else {
+      RCLCPP_INFO(node_->get_logger(), "Fresh simulator state and sensor data received. RL policy output enabled.");
+    }
   }
 
-  if ((now - firstFreshStateTime_).seconds() < settings_.startupHoldSec) {
-    latchHoldPoseFromLatestState();
-    if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
-    }
+  if (settings_.startupHoldSec > 0.0 && (now - firstFreshStateTime_).seconds() < settings_.startupHoldSec) {
+    publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     return;
   }
 
   if (settings_.requireCommandForPolicy && !hasActiveVelocityCommand()) {
-    latchHoldPoseFromLatestState();
     lastAction_.assign(settings_.actionDim, 0.0f);
-    if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.kp, settings_.kd);
+    if (settings_.holdStandWhenPolicyIdle) {
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+    } else {
+      latchHoldPoseFromLatestState();
+      if (hasHoldPose_) {
+        publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+      }
     }
     return;
   }
+
+  hasHoldPose_ = true;
+  holdJointState_ = standJointState_;
 
   const auto computeStart = std::chrono::steady_clock::now();
   std::vector<float> observation;
@@ -675,9 +701,9 @@ void RlBackend::policyTimerCallback() {
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
                          "Failed to build RL observation. Holding the last latched pose.");
     if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     } else {
-      publishPoseCommand(standJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     }
     return;
   }
@@ -689,9 +715,9 @@ void RlBackend::policyTimerCallback() {
                           "RL inference failed or returned an unexpected action size. Holding the last latched pose.");
     lastAction_.assign(settings_.actionDim, 0.0f);
     if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     } else {
-      publishPoseCommand(standJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     }
     return;
   }
@@ -700,9 +726,9 @@ void RlBackend::policyTimerCallback() {
                           "RL inference produced non-finite actions. Holding the last latched pose.");
     lastAction_.assign(settings_.actionDim, 0.0f);
     if (hasHoldPose_) {
-      publishPoseCommand(holdJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     } else {
-      publishPoseCommand(standJointState_, settings_.poseKp, settings_.poseKd);
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     }
     return;
   }
@@ -821,6 +847,10 @@ bool RlBackend::buildObservation(std::vector<float>& observation) const {
   }
 
   try {
+    std::vector<double> jointPositions = latestSensor_.joint_position_values;
+    std::vector<double> jointVelocities = latestSensor_.joint_velocity_values;
+    transformFeedbackJointState(jointPositions, jointVelocities);
+
     const Eigen::Quaterniond quaternion = normalizedQuaternionFromSensor(latestSensor_);
     const Eigen::Matrix3d rotation = quaternion.toRotationMatrix();
     const Eigen::Vector3d projectedGravity = rotation.transpose() * Eigen::Vector3d(0.0, 0.0, -1.0);
@@ -869,13 +899,13 @@ bool RlBackend::buildObservation(std::vector<float>& observation) const {
       const std::size_t jointIndex = settings_.observationToJointIndex[observationIndex];
       const double jointPosition =
           settings_.jointPositionObservation == JointPositionObservation::Raw
-              ? latestSensor_.joint_position_values[jointIndex]
-              : latestSensor_.joint_position_values[jointIndex] - defaultJointState_[static_cast<Eigen::Index>(jointIndex)];
+              ? jointPositions[jointIndex]
+              : jointPositions[jointIndex] - defaultJointState_[static_cast<Eigen::Index>(jointIndex)];
       observation.push_back(static_cast<float>(jointPosition));
     }
     for (std::size_t observationIndex = 0; observationIndex < settings_.observationToJointIndex.size(); ++observationIndex) {
       const std::size_t jointIndex = settings_.observationToJointIndex[observationIndex];
-      observation.push_back(static_cast<float>(latestSensor_.joint_velocity_values[jointIndex]));
+      observation.push_back(static_cast<float>(jointVelocities[jointIndex]));
     }
     observation.insert(observation.end(), lastAction_.begin(), lastAction_.end());
     observation.push_back(static_cast<float>(velocityCommand.linear.x));
@@ -892,13 +922,70 @@ bool RlBackend::buildObservation(std::vector<float>& observation) const {
   }
 }
 
+void RlBackend::transformFeedbackJointState(std::vector<double>& jointPositions,
+                                            std::vector<double>& jointVelocities) const {
+  if (settings_.feedbackJointStateTransform != FeedbackJointStateTransform::QuadMiniHardware) {
+    return;
+  }
+  if (jointPositions.size() < kJointCount || jointVelocities.size() < kJointCount) {
+    return;
+  }
+
+  struct JointFeedbackTransform {
+    double referenceOffset;
+    double homeOffset;
+    double calibrationOffset;
+    double sign;
+    bool knee;
+    bool referenceUsesPositiveHomeOffset;
+  };
+
+  static constexpr std::array<JointFeedbackTransform, kJointCount> kQuadMiniHardwareFeedbackTransform = {{
+      {-0.322415828704834,    0.322415828704834,   0.0,                 -1.0, false, true},   // LF_HAA / FL_HipX
+      { 0.4309038817882538,   0.2509038817882538, -1.050324412,          1.0, false, true},   // LF_HFE / FL_HipY
+      {-0.4077022075653076,  -0.4077022075653076,  1.9584364492350666,   1.0, true,  true},   // LF_KFE / FL_Knee
+      {-0.32241925597190857,  0.32241925597190857, 0.0,                  1.0, false, false},  // LH_HAA / HL_HipX
+      { 0.43023791909217834,  0.25023791909217834,-0.950324412,          1.0, false, true},   // LH_HFE / HL_HipY
+      {-0.4072657823562622,  -0.4072657823562622,  1.9584364492350666,   1.0, true,  true},   // LH_KFE / HL_Knee
+      {-0.33759668469429016, -0.33759668469429016, 0.0,                 -1.0, false, false},  // RF_HAA / FR_HipX
+      { 0.44108203053474426,  0.25108203053474426, 1.050324412,         -1.0, false, false},  // RF_HFE / FR_HipY
+      { 0.42747020721435547, -0.42747020721435547,-1.9558436449235067,  -1.0, true,  false},  // RF_KFE / FR_Knee
+      {-0.3375966548919678,  -0.3375966548919678,  0.0,                  1.0, false, true},   // RH_HAA / HR_HipX
+      { 0.44040337204933167,  0.25040337204933167, 0.950324412,         -1.0, false, false},  // RH_HFE / HR_HipY
+      { 0.4270230531692505,  -0.4270230531692505, -1.9584364492350666,  -1.0, true,  false},  // RH_KFE / HR_Knee
+  }};
+
+  constexpr double kKneeDeviationScale = 1.5;
+  for (std::size_t i = 0; i < kJointCount; ++i) {
+    const auto& transform = kQuadMiniHardwareFeedbackTransform[i];
+    const double signedHomeOffset =
+        transform.sign > 0.0 ? transform.homeOffset : -transform.homeOffset;
+    const double commandOffset = transform.calibrationOffset + signedHomeOffset;
+    double unscaledHardwarePosition = jointPositions[i];
+    double velocityScale = transform.sign;
+
+    if (transform.knee) {
+      const double referenceHomeOffset =
+          transform.referenceUsesPositiveHomeOffset ? transform.homeOffset : -transform.homeOffset;
+      const double hardwareReference =
+          transform.referenceOffset + transform.calibrationOffset + referenceHomeOffset;
+      unscaledHardwarePosition =
+          hardwareReference + (jointPositions[i] - hardwareReference) / kKneeDeviationScale;
+      velocityScale *= kKneeDeviationScale;
+    }
+
+    jointPositions[i] = (unscaledHardwarePosition - commandOffset) / transform.sign;
+    jointVelocities[i] = jointVelocities[i] / velocityScale;
+  }
+}
+
 void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
   legged_msgs::msg::JointControlData msg;
   msg.joint_position.resize(kJointCount);
   msg.joint_velocity.assign(kJointCount, 0.0);
   msg.joint_torque.assign(kJointCount, 0.0);
-  msg.kp = settings_.kp;
-  msg.kd = settings_.kd;
+  msg.kp = settings_.kpRatio;
+  msg.kd = settings_.kdRatio;
 
   for (std::size_t i = 0; i < kJointCount; ++i) {
     msg.joint_position[i] = defaultJointState_[static_cast<Eigen::Index>(i)];
@@ -906,7 +993,13 @@ void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
 
   for (std::size_t actionIndex = 0; actionIndex < settings_.actionToJointIndex.size(); ++actionIndex) {
     const std::size_t jointIndex = settings_.actionToJointIndex[actionIndex];
-    const double clippedAction = clampMagnitude(static_cast<double>(action[actionIndex]), settings_.actionClip);
+    double clippedAction = clampMagnitude(static_cast<double>(action[actionIndex]), settings_.actionClip);
+    if (settings_.actionRateLimit > 0.0 && actionIndex < lastAction_.size()) {
+      const double previousAction = static_cast<double>(lastAction_[actionIndex]);
+      clippedAction = std::clamp(clippedAction,
+                                 previousAction - settings_.actionRateLimit,
+                                 previousAction + settings_.actionRateLimit);
+    }
     const double jointTarget =
         defaultJointState_[static_cast<Eigen::Index>(jointIndex)] + settings_.actionScale * clippedAction;
     msg.joint_position[jointIndex] = jointTarget;
@@ -917,13 +1010,13 @@ void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
   publishEmergencyOverrideState();
 }
 
-void RlBackend::publishPoseCommand(const ocs2::vector_t& pose, double kp, double kd) {
+void RlBackend::publishPoseCommand(const ocs2::vector_t& pose, double kpRatio, double kdRatio) {
   legged_msgs::msg::JointControlData msg;
   msg.joint_position.resize(kJointCount);
   msg.joint_velocity.assign(kJointCount, 0.0);
   msg.joint_torque.assign(kJointCount, 0.0);
-  msg.kp = kp;
-  msg.kd = kd;
+  msg.kp = kpRatio;
+  msg.kd = kdRatio;
 
   for (std::size_t i = 0; i < kJointCount; ++i) {
     msg.joint_position[i] = pose[static_cast<Eigen::Index>(i)];
