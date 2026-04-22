@@ -2,6 +2,7 @@
 set -e
 #./run.sh quad_mini sim mujoco debug rviz gui
 #./run.sh quad_mini sim mujoco nodebug norviz nogui
+#./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
 
 SESSION=quad
 WS=/workspaces/quad_ocs2_ws
@@ -15,6 +16,7 @@ RVIZ_AUTO=${5:-true}
 GUI_AUTO=${6:-true}
 RVIZ_SOURCE=${7:-auto}
 CONTROL_TYPE=${8:-mpc}
+MUJOCO_TERRAIN=${9:-flat}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-23}
 export ROS_DOMAIN_ID
 
@@ -97,6 +99,14 @@ case "$CONTROL_TYPE" in
     ;;
 esac
 
+case "$MUJOCO_TERRAIN" in
+  flat|rough) ;;
+  *)
+    echo "Invalid MuJoCo terrain: $MUJOCO_TERRAIN. Use 'flat' or 'rough'."
+    exit 1
+    ;;
+esac
+
 echo "Launching robot: $ROBOT_TYPE"
 echo "Backend: $BACKEND"
 echo "Contact source: $CONTACT_SOURCE"
@@ -105,6 +115,7 @@ echo "Auto launch RViz: $RVIZ_AUTO"
 echo "Auto launch GUI: $GUI_AUTO"
 echo "RViz source: $RVIZ_SOURCE"
 echo "Control type: $CONTROL_TYPE"
+echo "MuJoCo terrain: $MUJOCO_TERRAIN"
 echo "ROS domain ID: $ROS_DOMAIN_ID"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -157,6 +168,11 @@ if [ "$BACKEND" = "real" ] && [ "$CONTROL_TYPE" = "rl" ]; then
   BRIDGE_FEEDBACK_ARGS="joint_feedback_source:=joint_state joint_state_topic:=htdw_joint_state"
 fi
 
+RL_FEEDBACK_TRANSFORM="none"
+if [ "$BACKEND" = "real" ]; then
+  RL_FEEDBACK_TRANSFORM="quad_mini_hardware"
+fi
+
 # -------------------------
 # Shared bridge backend
 # -------------------------
@@ -167,7 +183,7 @@ source $WS/install/setup.bash
 if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
   source $WS/mujoco_env.sh
 fi
-ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING control_type:=$CONTROL_TYPE $BRIDGE_FEEDBACK_ARGS
+ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING control_type:=$CONTROL_TYPE mujoco_terrain:=$MUJOCO_TERRAIN $BRIDGE_FEEDBACK_ARGS
 '"
 
 
@@ -203,7 +219,7 @@ until ros2 service type /start_control >/dev/null 2>&1; do
 done
 echo /start_control is ready. Launching controller...
 if [ \"$CONTROL_TYPE\" = \"rl\" ]; then
-  ros2 launch launch_simulation controller.launch.py robot_type:=$ROBOT_TYPE robot_name:=legged_robot control_type:=rl
+  ros2 launch launch_simulation controller.launch.py robot_type:=$ROBOT_TYPE robot_name:=legged_robot control_type:=rl rl_feedback_joint_state_transform:=$RL_FEEDBACK_TRANSFORM
 else
   ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
 fi

@@ -305,6 +305,7 @@ bool RlBackend::configure(const ControllerConfig& config) {
 
 void RlBackend::launch() {
   setupRosInterfaces();
+  requestInitialHoldPose();
   RCLCPP_INFO(node_->get_logger(),
               "RL backend starts in hold. Enter mode:vel, press '1' for stance PD, then press '2' to arm RL policy output.");
 
@@ -368,8 +369,16 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         settings_.observationLayout == ObservationLayout::Policy ? "raw" : "relative_to_default";
     settings_.jointPositionObservation = parseJointPositionObservation(
         tree.get<std::string>("jointPositionObservation", defaultJointPositionObservation));
+    const std::string feedbackJointStateTransform =
+        config.rlFeedbackJointStateTransform.empty()
+            ? tree.get<std::string>("feedbackJointStateTransform", "none")
+            : config.rlFeedbackJointStateTransform;
     settings_.feedbackJointStateTransform = parseFeedbackJointStateTransform(
-        tree.get<std::string>("feedbackJointStateTransform", "none"));
+        feedbackJointStateTransform);
+    if (!config.rlFeedbackJointStateTransform.empty()) {
+      RCLCPP_INFO(node_->get_logger(), "Overriding RL feedback joint-state transform with '%s'.",
+                  feedbackJointStateTransform.c_str());
+    }
     settings_.actionToJointIndex = jointOrderFromInfo(tree, "policyActionJointOrder");
     settings_.observationToJointIndex = tree.get_child_optional("policyJointObservationOrder")
                                             ? jointOrderFromInfo(tree, "policyJointObservationOrder")
@@ -439,9 +448,11 @@ bool RlBackend::loadReferencePoses(const std::string& referenceFile) {
         throw std::runtime_error("policyDefaultJointState in rl.info must contain 12 finite values.");
       }
       defaultJointState_ = policyDefaultJointState;
+      standJointState_ = policyDefaultJointState;
       RCLCPP_INFO(node_->get_logger(),
-                  "Using policyDefaultJointState from rl.info for RL q_default.");
+                  "Using policyDefaultJointState from rl.info for RL q_default and stance pose.");
     }
+
     if (rlTree.get_child_optional("policyStandJointState")) {
       ocs2::vector_t policyStandJointState = ocs2::vector_t::Zero(kJointCount);
       ocs2::loadData::loadEigenMatrix(controllerConfig_.rlConfigFile, "policyStandJointState", policyStandJointState);
@@ -450,7 +461,7 @@ bool RlBackend::loadReferencePoses(const std::string& referenceFile) {
       }
       standJointState_ = policyStandJointState;
       RCLCPP_INFO(node_->get_logger(),
-                  "Using policyStandJointState from rl.info for RL stance/key '1'.");
+                  "Using policyStandJointState from rl.info for RL stance pose.");
     }
 
     boost::property_tree::ptree referenceTree;
@@ -522,6 +533,52 @@ void RlBackend::setupRosInterfaces() {
   emergencyOverrideSubscriber_ = node_->create_subscription<std_msgs::msg::Int32>(
       controllerConfig_.robotName + "_emergency_override", 1,
       std::bind(&RlBackend::emergencyOverrideCallback, this, std::placeholders::_1));
+  startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
+}
+
+bool RlBackend::requestInitialHoldPose() {
+  using namespace std::chrono_literals;
+
+  if (!startControlClient_) {
+    startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
+  }
+
+  if (!startControlClient_->wait_for_service(100ms)) {
+    RCLCPP_WARN(node_->get_logger(),
+                "/start_control is not ready yet. RL will start in hold and latch the first simulator state.");
+    return false;
+  }
+
+  auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
+  request->start = true;
+  auto result = startControlClient_->async_send_request(request);
+  if (rclcpp::spin_until_future_complete(node_, result, 500ms) != rclcpp::FutureReturnCode::SUCCESS) {
+    RCLCPP_WARN(node_->get_logger(),
+                "/start_control did not respond immediately. RL will latch hold from the first simulator state.");
+    return false;
+  }
+
+  auto response = result.get();
+  if (!response->success || !isFiniteVector(response->state.joint_position_values, kJointCount)) {
+    RCLCPP_WARN(node_->get_logger(),
+                "/start_control returned no valid initial joint state. RL will latch hold from simulator state.");
+    return false;
+  }
+
+  latestState_ = response->state;
+  hasState_ = true;
+  lastStateReceiptTime_ = node_->now();
+  for (std::size_t i = 0; i < kJointCount; ++i) {
+    holdJointState_[static_cast<Eigen::Index>(i)] = latestState_.joint_position_values[i];
+  }
+  hasHoldPose_ = true;
+  controlState_ = ControlState::Hold;
+  resetPoseTransition();
+  lastAction_.assign(settings_.actionDim, 0.0f);
+
+  RCLCPP_INFO(node_->get_logger(), "Latched RL initial hold pose from /start_control.");
+  publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+  return true;
 }
 
 void RlBackend::stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg) {
@@ -529,7 +586,7 @@ void RlBackend::stateCallback(const legged_msgs::msg::SimulatorStateData::Shared
   hasState_ = true;
   lastStateReceiptTime_ = node_->now();
 
-  if (controlState_ == ControlState::Hold) {
+  if (controlState_ == ControlState::Hold && !hasHoldPose_) {
     latchHoldPoseFromLatestState();
   }
 }
@@ -576,8 +633,11 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(sitJointState_, settings_.sitTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_WARN(node_->get_logger(),
-                  "RL backend switched to sit pose. Sitting down over %.2f s with PD gain ratios kp=%.3f kd=%.3f.",
-                  settings_.sitTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio);
+                  "RL backend switched to sit pose. Sitting down over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
+                  "start=[%s] target=[%s]",
+                  settings_.sitTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio,
+                  poseSummary(poseTransitionStartPose_).c_str(), poseSummary(poseTransitionTargetPose_).c_str());
+      publishPoseCommand(transitionPoseCommand(), settings_.poseKpRatio, settings_.poseKdRatio);
       break;
     case static_cast<int>(ControlCommand::ZeroTorque):
       controlState_ = ControlState::ZeroTorque;
@@ -591,8 +651,11 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(standJointState_, settings_.standTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_INFO(node_->get_logger(),
-                  "RL backend switched to stance PD. Standing up over %.2f s with PD gain ratios kp=%.3f kd=%.3f.",
-                  settings_.standTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio);
+                  "RL backend switched to stance PD. Standing up over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
+                  "start=[%s] target=[%s]",
+                  settings_.standTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio,
+                  poseSummary(poseTransitionStartPose_).c_str(), poseSummary(poseTransitionTargetPose_).c_str());
+      publishPoseCommand(transitionPoseCommand(), settings_.poseKpRatio, settings_.poseKdRatio);
       break;
     default:
       RCLCPP_WARN(node_->get_logger(), "Ignoring unknown RL emergency override command %d.", msg->data);
@@ -613,7 +676,7 @@ void RlBackend::policyTimerCallback() {
   if (controlState_ == ControlState::Hold) {
     startupHoldStarted_ = false;
     lastAction_.assign(settings_.actionDim, 0.0f);
-    if (hasFreshState()) {
+    if (!hasHoldPose_ && hasFreshState()) {
       latchHoldPoseFromLatestState();
     }
     if (hasHoldPose_) {
@@ -839,6 +902,19 @@ ocs2::vector_t RlBackend::transitionPoseCommand() const {
   const double elapsedSec = (node_->now() - poseTransitionStartTime_).seconds();
   const double alpha = smoothStep01(elapsedSec / poseTransitionDurationSec_);
   return (1.0 - alpha) * poseTransitionStartPose_ + alpha * poseTransitionTargetPose_;
+}
+
+std::string RlBackend::poseSummary(const ocs2::vector_t& pose) const {
+  std::ostringstream stream;
+  stream.setf(std::ios::fixed);
+  stream.precision(3);
+  for (std::size_t i = 0; i < kJointCount; ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << kInternalJointNames[i] << "=" << pose[static_cast<Eigen::Index>(i)];
+  }
+  return stream.str();
 }
 
 bool RlBackend::buildObservation(std::vector<float>& observation) const {

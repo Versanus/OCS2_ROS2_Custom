@@ -7,6 +7,7 @@
 #include "legged_msgs/msg/joint_control_data.hpp"
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/simulator_state_data.hpp"
+#include "legged_msgs/srv/start_control.hpp"
 #include "motion_control/common/Types.h"
 #include "motion_control/controller/ControllerBackend.h"
 #include "motion_control/controller/PolicyRunner.h"
@@ -96,6 +97,7 @@ class RlBackend final : public ControllerBackend {
   static JointPositionObservation parseJointPositionObservation(const std::string& value);
   static FeedbackJointStateTransform parseFeedbackJointStateTransform(const std::string& value);
   void setupRosInterfaces();
+  bool requestInitialHoldPose();
 
   void stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg);
   void sensorCallback(const legged_msgs::msg::SimulatorSensorData::SharedPtr msg);
@@ -111,6 +113,7 @@ class RlBackend final : public ControllerBackend {
   void resetPoseTransition();
   void beginPoseTransition(const ocs2::vector_t& targetPose, double durationSec);
   ocs2::vector_t transitionPoseCommand() const;
+  std::string poseSummary(const ocs2::vector_t& pose) const;
   bool buildObservation(std::vector<float>& observation) const;
   void transformFeedbackJointState(std::vector<double>& jointPositions, std::vector<double>& jointVelocities) const;
   void publishPolicyCommand(const std::vector<float>& action);
@@ -132,6 +135,7 @@ class RlBackend final : public ControllerBackend {
   rclcpp::Subscription<legged_msgs::msg::SimulatorSensorData>::SharedPtr simulatorSensorSubscriber_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityCommandSubscriber_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;
+  rclcpp::Client<legged_msgs::srv::StartControl>::SharedPtr startControlClient_;
   rclcpp::TimerBase::SharedPtr policyTimer_;
 
   legged_msgs::msg::SimulatorStateData latestState_;

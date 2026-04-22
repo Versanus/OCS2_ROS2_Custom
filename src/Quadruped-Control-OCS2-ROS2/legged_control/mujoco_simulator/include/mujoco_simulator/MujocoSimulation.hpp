@@ -26,6 +26,7 @@ public:
         double controlFrequency = 0.0;
         double baseKp = 0.0;
         double baseKd = 0.0;
+        bool directPositionControl = false;
         RuntimeOptions() = default;
     };
 
@@ -72,12 +73,14 @@ public:
     double getLastDisturbanceForceMagnitude() const;
     void resetRobotPose();
     void clearActuatorCommandState();
+    void latchDirectPositionTargetsFromCurrentState();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
     double getControlFrequency() const { return control_frequency_; }
     double getRenderFrequency() const { return render_frequency_; }
     double getTimestep() const { return timestep_; }
     double getBaseKp() const { return baseKp_; }
     double getBaseKd() const { return baseKd_; }
+    bool usesDirectPositionControl() const { return directPositionControl_; }
     bool exposesRosInterface() const { return exposeRosInterface_; }
 
     static void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods);
@@ -132,10 +135,16 @@ private:
     double control_frequency_;
     double baseKp_ = 10.0;
     double baseKd_ = 0.30;
+    bool directPositionControl_ = false;
+    std::array<int, 12> actuator_index_by_joint_{};
+    std::array<int, 12> joint_qpos_address_by_joint_{};
+    std::array<int, 12> joint_qvel_address_by_joint_{};
     double kpRatio_;
     double kdRatio_;
     bool Start_control_=false;
     bool Start_simulate_=false;
+    std::array<double, 12> last_logged_joint_position_command_{};
+    bool has_logged_joint_position_command_ = false;
 
     // random base disturbance
     bool disturbance_enabled_ = false;

@@ -60,6 +60,7 @@ ControllerConfig LeggedControllerRosInterface::loadConfig() const {
   config.referenceFile = getRequiredStringParameter(node_, "referenceFile");
   config.simulatorFile = getRequiredStringParameter(node_, "simulatorFile");
   config.rlConfigFile = getOptionalStringParameter(node_, "rlConfigFile", "");
+  config.rlFeedbackJointStateTransform = getOptionalStringParameter(node_, "rlFeedbackJointStateTransform", "");
   return config;
 }
 

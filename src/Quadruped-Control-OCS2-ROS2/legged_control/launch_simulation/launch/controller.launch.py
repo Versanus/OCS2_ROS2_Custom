@@ -11,6 +11,7 @@ def generate_launch_description():
     robot_name = LaunchConfiguration('robot_name')
     control_type = LaunchConfiguration('control_type')
     rl_config_file = LaunchConfiguration('rl_config_file')
+    rl_feedback_joint_state_transform = LaunchConfiguration('rl_feedback_joint_state_transform')
 
     urdf_file = PathJoinSubstitution([
         get_package_share_directory('mujoco_simulator'),
@@ -65,6 +66,10 @@ def generate_launch_description():
             'rl_config_file',
             default_value=default_rl_config_file
         ),
+        DeclareLaunchArgument(
+            'rl_feedback_joint_state_transform',
+            default_value=''
+        ),
         Node(
             package='motion_control',
             executable='legged_robot_controller',
@@ -77,7 +82,8 @@ def generate_launch_description():
                 {'taskFile': task_file},
                 {'referenceFile': reference_file},
                 {'simulatorFile': simulator_file},
-                {'rlConfigFile': rl_config_file}
+                {'rlConfigFile': rl_config_file},
+                {'rlFeedbackJointStateTransform': rl_feedback_joint_state_transform}
             ]
         )
     ])

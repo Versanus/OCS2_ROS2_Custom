@@ -10,4 +10,5 @@ struct ControllerConfig {
   std::string referenceFile;
   std::string simulatorFile;
   std::string rlConfigFile;
+  std::string rlFeedbackJointStateTransform;
 };

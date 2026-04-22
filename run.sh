@@ -5,6 +5,8 @@
 #./run.sh quad_mini sim mujoco debug rviz gui
 #./run.sh quad_mini sim mujoco nodebug norviz nogui
 #./run.sh quad_mini_real real estimated debug rviz gui
+#./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl
+#./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
 
 set -e
 
@@ -17,6 +19,7 @@ RVIZ_AUTO="${5:-}"
 GUI_AUTO="${6:-}"
 RVIZ_SOURCE="${7:-auto}"
 CONTROL_TYPE="${8:-mpc}"
+MUJOCO_TERRAIN="${9:-flat}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 HOST_UID="${HOST_UID:-$(id -u)}"
@@ -119,6 +122,15 @@ case "${CONTROL_TYPE}" in
         ;;
 esac
 
+case "${MUJOCO_TERRAIN}" in
+    flat|rough)
+        ;;
+    *)
+        echo "Invalid MuJoCo terrain: ${MUJOCO_TERRAIN}. Use 'flat' or 'rough'."
+        exit 1
+        ;;
+esac
+
 # Detect if running inside Docker
 if [ -f "/.dockerenv" ]; then
     echo "Running inside Docker container"
@@ -137,9 +149,9 @@ if [ -f "/.dockerenv" ]; then
     fi
 
     echo "Environment loaded ✅"
-    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} control_type=${CONTROL_TYPE} ros_domain_id=${ROS_DOMAIN_ID}..."
+    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} control_type=${CONTROL_TYPE} mujoco_terrain=${MUJOCO_TERRAIN} ros_domain_id=${ROS_DOMAIN_ID}..."
 
-    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
+    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}"
 
 else
     echo "Running on host system"
@@ -171,5 +183,5 @@ else
     docker exec -it \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         "$(docker compose ps -q quad_ocs2)" \
-        ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}"
+        ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}"
 fi

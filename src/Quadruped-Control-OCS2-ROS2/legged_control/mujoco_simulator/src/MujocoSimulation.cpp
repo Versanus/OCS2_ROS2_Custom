@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <limits>
 
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -17,6 +18,13 @@ double MujocoSimulation::lastx = 0.0;
 double MujocoSimulation::lasty = 0.0;
 
 namespace {
+constexpr std::array<const char*, 12> kCommandJointNames = {
+    "LF_HAA", "LF_HFE", "LF_KFE",
+    "LH_HAA", "LH_HFE", "LH_KFE",
+    "RF_HAA", "RF_HFE", "RF_KFE",
+    "RH_HAA", "RH_HFE", "RH_KFE",
+};
+
 constexpr std::array<const char*, 5> kDisturbanceBodyNames = {
     "trunk", "LF_FOOT", "RF_FOOT", "LH_FOOT", "RH_FOOT"
 };
@@ -139,10 +147,11 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     control_frequency_ = positiveOverride(runtimeOptions.controlFrequency, control_frequency_);
     baseKp_ = positiveOverride(runtimeOptions.baseKp, baseKp_);
     baseKd_ = positiveOverride(runtimeOptions.baseKd, baseKd_);
+    directPositionControl_ = runtimeOptions.directPositionControl;
 
     RCLCPP_INFO(node_->get_logger(),
-                "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f.",
-                timestep_, control_frequency_, baseKp_, baseKd_);
+                "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",
+                timestep_, control_frequency_, baseKp_, baseKd_, directPositionControl_ ? "true" : "false");
 
     // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
@@ -171,8 +180,48 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
         mju_error("Failed to load model");
     }
     model_->opt.timestep = timestep_; //simulation timestep
+    actuator_index_by_joint_.fill(-1);
+    joint_qpos_address_by_joint_.fill(-1);
+    joint_qvel_address_by_joint_.fill(-1);
+    for (std::size_t i = 0; i < kCommandJointNames.size(); ++i) {
+        const int joint_id = mj_name2id(model_, mjOBJ_JOINT, kCommandJointNames[i]);
+        if (joint_id < 0) {
+            RCLCPP_ERROR(node_->get_logger(), "MuJoCo model is missing joint '%s'.", kCommandJointNames[i]);
+            mju_error("MuJoCo model is missing a required joint.");
+        }
+        joint_qpos_address_by_joint_[i] = model_->jnt_qposadr[joint_id];
+        joint_qvel_address_by_joint_[i] = model_->jnt_dofadr[joint_id];
 
+        const int actuator_id = mj_name2id(model_, mjOBJ_ACTUATOR, kCommandJointNames[i]);
+        if (actuator_id < 0) {
+            RCLCPP_ERROR(node_->get_logger(), "MuJoCo model is missing actuator '%s'.", kCommandJointNames[i]);
+            mju_error("MuJoCo model is missing a required actuator.");
+        }
+        actuator_index_by_joint_[i] = actuator_id;
+    }
+    if (directPositionControl_) {
+        for (const int actuator_id : actuator_index_by_joint_) {
+            model_->actuator_gaintype[actuator_id] = mjGAIN_FIXED;
+            model_->actuator_biastype[actuator_id] = mjBIAS_AFFINE;
+            model_->actuator_gainprm[actuator_id * mjNGAIN] = baseKp_;
+            model_->actuator_biasprm[actuator_id * mjNBIAS] = 0.0;
+            model_->actuator_biasprm[actuator_id * mjNBIAS + 1] = -baseKp_;
+            model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = -baseKd_;
+        }
+        RCLCPP_INFO(node_->get_logger(),
+                    "Configured RL position actuator gains at runtime: kp=%.3f kd=%.3f.",
+                    baseKp_, baseKd_);
+    }
     data_ = mj_makeData(model_);
+    const int home_key_id = mj_name2id(model_, mjOBJ_KEY, "home");
+    if (home_key_id >= 0) {
+        mj_resetDataKeyframe(model_, data_, home_key_id);
+        RCLCPP_INFO(node_->get_logger(), "Initialized MuJoCo state from keyframe 'home'.");
+    } else if (directPositionControl_) {
+        RCLCPP_WARN(node_->get_logger(),
+                    "Direct position control is enabled, but the MuJoCo XML has no keyframe named 'home'.");
+    }
+    mj_forward(model_, data_);
     if (model_->nq >= 7) {
         initial_base_quat_[0] = data_->qpos[3];
         initial_base_quat_[1] = data_->qpos[4];
@@ -191,10 +240,10 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
                     "MuJoCo renderer could not select the window framebuffer during initialization.");
     }
 
-    for (int i = 0; i < 12; ++i) {
-        Joint_position_[i] = 0.0;
-        Joint_velocity_[i] = 0.0;
-        Joint_torque_[i] = 0.0;
+    clearActuatorCommandState();
+    if (directPositionControl_) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "Initialized RL direct-position targets from the current MuJoCo joint state.");
     }
 
     if (!setDisturbanceBody(kDisturbanceBodyNames[0], kDisturbanceBodyLabels[0])) {
@@ -252,6 +301,9 @@ void MujocoSimulation::renderSetting(const std::string& configFile)
     }
     if (render_inertia_) {
         opt_.geomgroup[2] = 1;
+    }
+    if (directPositionControl_) {
+        opt_.geomgroup[1] = 1;
     }
 
     glfwSetKeyCallback(window_, keyboard);
@@ -443,21 +495,23 @@ void MujocoSimulation::run()
 void MujocoSimulation::simulateStep() {
     updateDisturbanceForce();
 
-    if (!Start_simulate_)
-    {
+    if (directPositionControl_) {
+        for (int i = 0; i < 12; ++i) {
+            data_->ctrl[actuator_index_by_joint_[i]] = static_cast<double>(Joint_position_[i]);
+        }
+    } else if (!Start_simulate_) {
         const double effectiveKp = baseKp_ * kpRatio_;
         const double effectiveKd = baseKd_ * kdRatio_;
         double joint_position_value[12];
         double joint_velocity_value[12];
         double control_torque[12];
-        //control sequence: FR,FL,RR,RL(hip, thigh, calf)
         for (int i = 0; i < 12; ++i) {
-            joint_position_value[i] = data_->sensordata[i+10];
-            joint_velocity_value[i] = data_->sensordata[i+22];
+            joint_position_value[i] = data_->qpos[joint_qpos_address_by_joint_[i]];
+            joint_velocity_value[i] = data_->qvel[joint_qvel_address_by_joint_[i]];
             control_torque[i] = static_cast<double>(Joint_torque_[i]) +
                 effectiveKp * (static_cast<double>(Joint_position_[i]) - joint_position_value[i]) +
                 effectiveKd * (static_cast<double>(Joint_velocity_[i]) - joint_velocity_value[i]);
-            data_->ctrl[i] = control_torque[i];
+            data_->ctrl[actuator_index_by_joint_[i]] = control_torque[i];
             //std::cout << "data_->ctrl[" << i << "] = " << data_->ctrl[i] << std::endl;
         }
     }
@@ -651,6 +705,7 @@ void MujocoSimulation::render() {
         appendDisturbanceArrowToScene();
 
         // Render the scene
+        mjr_rectangle(viewport, 0.05f, 0.05f, 0.05f, 1.0f);
         mjr_render(viewport, &scene_, &context_);
         renderDisturbanceOverlay(viewport);
 
@@ -760,6 +815,30 @@ void MujocoSimulation::appendDisturbanceArrowToScene() {
     scene_.ngeom++;
 }
 
+void MujocoSimulation::latchDirectPositionTargetsFromCurrentState() {
+    if (model_ == nullptr || data_ == nullptr || !directPositionControl_) {
+        return;
+    }
+
+    for (std::size_t i = 0; i < kCommandJointNames.size(); ++i) {
+        const int qpos_address = joint_qpos_address_by_joint_[i];
+        const int qvel_address = joint_qvel_address_by_joint_[i];
+        const double joint_position = data_->qpos[qpos_address];
+        const double joint_velocity = data_->qvel[qvel_address];
+
+        Joint_position_[i] = joint_position;
+        Joint_velocity_[i] = joint_velocity;
+        Joint_torque_[i] = 0.0;
+        Joint_position_buffer_[i] = joint_position;
+        Joint_velocity_buffer_[i] = joint_velocity;
+        Joint_torque_buffer_[i] = 0.0;
+
+        if (actuator_index_by_joint_[i] >= 0) {
+            data_->ctrl[actuator_index_by_joint_[i]] = joint_position;
+        }
+    }
+}
+
 void MujocoSimulation::clearActuatorCommandState() {
     for (int i = 0; i < 12; ++i) {
         Joint_position_buffer_[i] = 0.0;
@@ -773,7 +852,9 @@ void MujocoSimulation::clearActuatorCommandState() {
     kpRatio_ = 0.0;
     kdRatio_ = 0.0;
 
-    if (data_ != nullptr) {
+    if (data_ != nullptr && model_ != nullptr && directPositionControl_) {
+        latchDirectPositionTargetsFromCurrentState();
+    } else if (data_ != nullptr) {
         std::fill(data_->ctrl, data_->ctrl + model_->nu, 0.0);
     }
 }
@@ -846,6 +927,30 @@ void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlDat
         Joint_velocity_[i] = msg.joint_velocity[i];
         Joint_torque_[i] = msg.joint_torque[i];
     }
+
+    double max_command_delta = has_logged_joint_position_command_ ? 0.0 : std::numeric_limits<double>::infinity();
+    if (has_logged_joint_position_command_) {
+        for (std::size_t i = 0; i < msg.joint_position.size(); ++i) {
+            max_command_delta = std::max(
+                max_command_delta,
+                std::abs(static_cast<double>(msg.joint_position[i]) - last_logged_joint_position_command_[i]));
+        }
+    }
+
+    if (!has_logged_joint_position_command_ || max_command_delta > 0.05) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "Applied joint target: LF=[%.3f %.3f %.3f] LH=[%.3f %.3f %.3f] "
+                    "RF=[%.3f %.3f %.3f] RH=[%.3f %.3f %.3f] kp=%.3f kd=%.3f direct_position=%s",
+                    Joint_position_[0], Joint_position_[1], Joint_position_[2],
+                    Joint_position_[3], Joint_position_[4], Joint_position_[5],
+                    Joint_position_[6], Joint_position_[7], Joint_position_[8],
+                    Joint_position_[9], Joint_position_[10], Joint_position_[11],
+                    kpRatio_, kdRatio_, directPositionControl_ ? "true" : "false");
+        for (std::size_t i = 0; i < msg.joint_position.size(); ++i) {
+            last_logged_joint_position_command_[i] = msg.joint_position[i];
+        }
+        has_logged_joint_position_command_ = true;
+    }
 }
 
 
@@ -880,9 +985,9 @@ void MujocoSimulation::populate_state_message(legged_msgs::msg::SimulatorStateDa
     state.joint_velocity_values.clear();
     state.joint_torque_values.clear();
     for (int i = 0; i < 12; ++i) {
-        state.joint_position_values.push_back(static_cast<double>(data_->sensordata[i + 10]));
-        state.joint_velocity_values.push_back(static_cast<double>(data_->sensordata[i + 22]));
-        state.joint_torque_values.push_back(static_cast<double>(data_->actuator_force[i]));
+        state.joint_position_values.push_back(static_cast<double>(data_->qpos[joint_qpos_address_by_joint_[i]]));
+        state.joint_velocity_values.push_back(static_cast<double>(data_->qvel[joint_qvel_address_by_joint_[i]]));
+        state.joint_torque_values.push_back(static_cast<double>(data_->actuator_force[actuator_index_by_joint_[i]]));
     }
 
     state.contact_flags.resize(geom_ids_.size() - 1);
@@ -956,8 +1061,8 @@ void MujocoSimulation::populate_sensor_message(legged_msgs::msg::SimulatorSensor
     message.joint_position_values.clear();
     message.joint_velocity_values.clear();
     for (int i = 0; i < 12; ++i) {
-        message.joint_position_values.push_back(static_cast<double>(data_->sensordata[i + 10]));
-        message.joint_velocity_values.push_back(static_cast<double>(data_->sensordata[i + 22]));
+        message.joint_position_values.push_back(static_cast<double>(data_->qpos[joint_qpos_address_by_joint_[i]]));
+        message.joint_velocity_values.push_back(static_cast<double>(data_->qvel[joint_qvel_address_by_joint_[i]]));
     }
 
     message.contact_flags.resize(geom_ids_.size() - 1);
@@ -1022,6 +1127,11 @@ void MujocoSimulation::start_control_service(const std::shared_ptr<legged_msgs::
 
     //stop simulate and wait for control message
     Start_simulate_=false;
+    if (directPositionControl_) {
+        resetRobotPose();
+        RCLCPP_INFO(node_->get_logger(),
+                    "Reset RL direct-position simulation to the initial keyframe for /start_control.");
+    }
 
     legged_msgs::msg::SimulatorStateData state;
     populate_state_message(state);

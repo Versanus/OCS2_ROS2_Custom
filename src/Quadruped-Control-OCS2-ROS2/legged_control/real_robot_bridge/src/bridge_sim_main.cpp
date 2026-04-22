@@ -23,6 +23,8 @@ void loadRlRuntimeOptions(const std::string& rl_file,
     return;
   }
 
+  runtime_options.directPositionControl = true;
+
   boost::property_tree::ptree pt;
   try {
     boost::property_tree::read_info(rl_file, pt);
@@ -35,10 +37,13 @@ void loadRlRuntimeOptions(const std::string& rl_file,
   runtime_options.controlFrequency = pt.get<double>("mujocoControlFrequency", runtime_options.controlFrequency);
   runtime_options.baseKp = pt.get<double>("mujocoBaseKp", runtime_options.baseKp);
   runtime_options.baseKd = pt.get<double>("mujocoBaseKd", runtime_options.baseKd);
+  runtime_options.directPositionControl =
+      pt.get<bool>("mujocoDirectPositionControl", runtime_options.directPositionControl);
 
   RCLCPP_INFO(logger,
-              "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f.",
-              runtime_options.timestep, runtime_options.controlFrequency, runtime_options.baseKp, runtime_options.baseKd);
+              "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",
+              runtime_options.timestep, runtime_options.controlFrequency, runtime_options.baseKp, runtime_options.baseKd,
+              runtime_options.directPositionControl ? "true" : "false");
 }
 }  // namespace
 
@@ -57,6 +62,7 @@ class SimBridgeNode final : public BridgeNodeBase {
         positiveOverride(declare_parameter<double>("mujocoControlFrequency", 0.0), runtime_options.controlFrequency);
     runtime_options.baseKp = positiveOverride(declare_parameter<double>("mujocoBaseKp", 0.0), runtime_options.baseKp);
     runtime_options.baseKd = positiveOverride(declare_parameter<double>("mujocoBaseKd", 0.0), runtime_options.baseKd);
+    RCLCPP_INFO(get_logger(), "Using MuJoCo XML: %s", xml_file.c_str());
     initializeBackend(std::make_unique<MujocoBackend>(xml_file, simulator_file, runtime_options));
   }
 };
