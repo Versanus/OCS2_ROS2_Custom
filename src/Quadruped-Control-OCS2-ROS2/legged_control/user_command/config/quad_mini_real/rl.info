@@ -101,7 +101,7 @@ sitTransitionSec 1.5
 requireCommandForPolicy true
 holdStandWhenPolicyIdle true
 resetSimulatorOnPolicyActivation true
-policyCommandMaxX 1.5
+policyCommandMaxX 3.0
 policyCommandMaxY 0.5
 policyCommandMaxYaw 1.5
 ; Policy command observation is real velocity units: [x_vel, y_vel, yaw_vel].
