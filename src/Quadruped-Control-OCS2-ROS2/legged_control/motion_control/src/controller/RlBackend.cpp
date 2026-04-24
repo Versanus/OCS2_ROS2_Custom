@@ -6,6 +6,8 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -38,6 +40,18 @@ std::filesystem::path resolvePath(const std::filesystem::path& baseFile, const s
 template <typename T>
 T clampMagnitude(T value, T limit) {
   return std::clamp(value, -limit, limit);
+}
+
+template <typename T>
+void writeJsonArray(std::ostream& stream, const std::vector<T>& values) {
+  stream << "[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << values[i];
+  }
+  stream << "]";
 }
 
 double smoothStep01(double alpha) {
@@ -292,6 +306,7 @@ bool RlBackend::configure(const ControllerConfig& config) {
   }
 
   lastAction_.assign(settings_.actionDim, 0.0f);
+  prepareDebugDumpDirectory();
 
   RCLCPP_INFO(node_->get_logger(),
               "Configured RL backend with model='%s' input='%s'(%zu) output='%s'(%zu) policy_hz=%.2f "
@@ -307,7 +322,7 @@ void RlBackend::launch() {
   setupRosInterfaces();
   requestInitialHoldPose();
   RCLCPP_INFO(node_->get_logger(),
-              "RL backend starts in hold. Enter mode:vel, press '1' for stance PD, then press '2' to arm RL policy output.");
+              "RL backend starts in policyDefaultJointState position hold. Enter mode:vel and press '2' to arm RL policy output.");
 
   const auto period = std::chrono::duration<double>(1.0 / std::max(1.0, settings_.policyHz));
   policyTimer_ = node_->create_wall_timer(
@@ -361,6 +376,8 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         tree.get<bool>("scaleCommandToPolicyLimits", settings_.scaleCommandToPolicyLimits);
     settings_.holdStandWhenPolicyIdle =
         tree.get<bool>("holdStandWhenPolicyIdle", settings_.holdStandWhenPolicyIdle);
+    settings_.resetSimulatorOnPolicyActivation =
+        tree.get<bool>("resetSimulatorOnPolicyActivation", settings_.resetSimulatorOnPolicyActivation);
     settings_.observationDim = static_cast<std::size_t>(tree.get<int>("obsDim", static_cast<int>(settings_.observationDim)));
     settings_.actionDim = static_cast<std::size_t>(tree.get<int>("actDim", static_cast<int>(settings_.actionDim)));
     settings_.observationLayout =
@@ -383,6 +400,10 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     settings_.observationToJointIndex = tree.get_child_optional("policyJointObservationOrder")
                                             ? jointOrderFromInfo(tree, "policyJointObservationOrder")
                                             : settings_.actionToJointIndex;
+    settings_.debugDumpEnabled = tree.get<bool>("debugDumpEnabled", settings_.debugDumpEnabled);
+    settings_.debugDumpDir = tree.get<std::string>("debugDumpDir", settings_.debugDumpDir);
+    settings_.debugDumpMaxSteps =
+        static_cast<std::size_t>(tree.get<int>("debugDumpMaxSteps", static_cast<int>(settings_.debugDumpMaxSteps)));
 
     if (settings_.modelPath.empty()) {
       throw std::runtime_error("onnxModelPath must not be empty.");
@@ -422,6 +443,9 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         !std::isfinite(settings_.policyCommandMaxYaw)) {
       throw std::runtime_error("policyCommandMaxX/Y/Yaw must be finite.");
     }
+    if (settings_.debugDumpEnabled && settings_.debugDumpDir.empty()) {
+      settings_.debugDumpDir = "/tmp/quad_mini_rl_debug";
+    }
     return true;
   } catch (const std::exception& error) {
     RCLCPP_ERROR(node_->get_logger(), "Failed to load RL config '%s': %s", config.rlConfigFile.c_str(), error.what());
@@ -450,18 +474,7 @@ bool RlBackend::loadReferencePoses(const std::string& referenceFile) {
       defaultJointState_ = policyDefaultJointState;
       standJointState_ = policyDefaultJointState;
       RCLCPP_INFO(node_->get_logger(),
-                  "Using policyDefaultJointState from rl.info for RL q_default and stance pose.");
-    }
-
-    if (rlTree.get_child_optional("policyStandJointState")) {
-      ocs2::vector_t policyStandJointState = ocs2::vector_t::Zero(kJointCount);
-      ocs2::loadData::loadEigenMatrix(controllerConfig_.rlConfigFile, "policyStandJointState", policyStandJointState);
-      if (!isFiniteEigenVector(policyStandJointState, kJointCount)) {
-        throw std::runtime_error("policyStandJointState in rl.info must contain 12 finite values.");
-      }
-      standJointState_ = policyStandJointState;
-      RCLCPP_INFO(node_->get_logger(),
-                  "Using policyStandJointState from rl.info for RL stance pose.");
+                  "Using policyDefaultJointState from rl.info for RL q_default and home hold pose.");
     }
 
     boost::property_tree::ptree referenceTree;
@@ -539,13 +552,16 @@ void RlBackend::setupRosInterfaces() {
 bool RlBackend::requestInitialHoldPose() {
   using namespace std::chrono_literals;
 
+  resetToPolicyHomeHold();
+
   if (!startControlClient_) {
     startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
   }
 
   if (!startControlClient_->wait_for_service(100ms)) {
     RCLCPP_WARN(node_->get_logger(),
-                "/start_control is not ready yet. RL will start in hold and latch the first simulator state.");
+                "/start_control is not ready yet. RL will hold policyDefaultJointState.");
+    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     return false;
   }
 
@@ -554,31 +570,87 @@ bool RlBackend::requestInitialHoldPose() {
   auto result = startControlClient_->async_send_request(request);
   if (rclcpp::spin_until_future_complete(node_, result, 500ms) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_WARN(node_->get_logger(),
-                "/start_control did not respond immediately. RL will latch hold from the first simulator state.");
+                "/start_control did not respond immediately. RL will hold policyDefaultJointState.");
+    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     return false;
   }
 
   auto response = result.get();
   if (!response->success || !isFiniteVector(response->state.joint_position_values, kJointCount)) {
     RCLCPP_WARN(node_->get_logger(),
-                "/start_control returned no valid initial joint state. RL will latch hold from simulator state.");
+                "/start_control returned no valid initial joint state. RL will hold policyDefaultJointState.");
+    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
     return false;
   }
 
   latestState_ = response->state;
   hasState_ = true;
   lastStateReceiptTime_ = node_->now();
-  for (std::size_t i = 0; i < kJointCount; ++i) {
-    holdJointState_[static_cast<Eigen::Index>(i)] = latestState_.joint_position_values[i];
-  }
-  hasHoldPose_ = true;
-  controlState_ = ControlState::Hold;
-  resetPoseTransition();
-  lastAction_.assign(settings_.actionDim, 0.0f);
 
-  RCLCPP_INFO(node_->get_logger(), "Latched RL initial hold pose from /start_control.");
+  RCLCPP_INFO(node_->get_logger(), "Reset RL simulator and holding policyDefaultJointState.");
   publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
   return true;
+}
+
+bool RlBackend::beginAsyncPolicyActivationReset() {
+  if (!startControlClient_) {
+    startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
+  }
+
+  if (!startControlClient_->service_is_ready()) {
+    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                         "/start_control is not ready yet. Waiting before RL policy reset.");
+    return false;
+  }
+
+  auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
+  request->start = true;
+  startControlFuture_ = startControlClient_->async_send_request(request);
+  policyActivationResetInFlight_ = true;
+  RCLCPP_INFO(node_->get_logger(), "Requested MuJoCo reset for RL policy activation.");
+  return true;
+}
+
+bool RlBackend::finishAsyncPolicyActivationReset() {
+  using namespace std::chrono_literals;
+
+  if (!policyActivationResetInFlight_ || !startControlFuture_.valid()) {
+    return false;
+  }
+
+  if (startControlFuture_.wait_for(0s) != std::future_status::ready) {
+    return false;
+  }
+
+  policyActivationResetInFlight_ = false;
+  auto response = startControlFuture_.get();
+  if (!response->success || !isFiniteVector(response->state.joint_position_values, kJointCount)) {
+    RCLCPP_WARN(node_->get_logger(),
+                "/start_control returned no valid initial joint state during RL policy activation reset.");
+    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+    return true;
+  }
+
+  latestState_ = response->state;
+  hasState_ = true;
+  hasSensor_ = false;
+  lastStateReceiptTime_ = node_->now();
+  startupHoldStarted_ = false;
+  lastAction_.assign(settings_.actionDim, 0.0f);
+  RCLCPP_INFO(node_->get_logger(), "Reset RL simulator at policy activation. Waiting for fresh sensor data.");
+  publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+  return true;
+}
+
+void RlBackend::resetToPolicyHomeHold() {
+  controlState_ = ControlState::Hold;
+  startupHoldStarted_ = false;
+  hasHoldPose_ = true;
+  holdJointState_ = standJointState_;
+  resetPoseTransition();
+  lastAction_.assign(settings_.actionDim, 0.0f);
+  pendingPolicyActivationReset_ = false;
+  policyActivationResetInFlight_ = false;
 }
 
 void RlBackend::stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg) {
@@ -612,6 +684,8 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       holdJointState_ = standJointState_;
       resetPoseTransition();
       lastAction_.assign(settings_.actionDim, 0.0f);
+      pendingPolicyActivationReset_ = settings_.resetSimulatorOnPolicyActivation;
+      policyActivationResetInFlight_ = false;
       RCLCPP_INFO(node_->get_logger(), "RL backend activated.");
       break;
     case static_cast<int>(ControlCommand::Hold):
@@ -651,7 +725,7 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(standJointState_, settings_.standTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_INFO(node_->get_logger(),
-                  "RL backend switched to stance PD. Standing up over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
+                  "RL backend switched to policyDefaultJointState hold over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
                   "start=[%s] target=[%s]",
                   settings_.standTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio,
                   poseSummary(poseTransitionStartPose_).c_str(), poseSummary(poseTransitionTargetPose_).c_str());
@@ -716,8 +790,21 @@ void RlBackend::policyTimerCallback() {
     startupHoldStarted_ = false;
     lastAction_.assign(settings_.actionDim, 0.0f);
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                         "RL backend lost fresh simulator state/sensor data. Holding the training stand pose.");
+                         "RL backend lost fresh simulator state/sensor data. Holding policyDefaultJointState.");
     publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+    return;
+  }
+
+  if (pendingPolicyActivationReset_) {
+    if (!policyActivationResetInFlight_ && !beginAsyncPolicyActivationReset()) {
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+      return;
+    }
+    if (!finishAsyncPolicyActivationReset()) {
+      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
+      return;
+    }
+    pendingPolicyActivationReset_ = false;
     return;
   }
 
@@ -730,7 +817,7 @@ void RlBackend::policyTimerCallback() {
     lastAction_.assign(settings_.actionDim, 0.0f);
     if (settings_.startupHoldSec > 0.0) {
       RCLCPP_INFO(node_->get_logger(),
-                  "Fresh simulator state and sensor data received. Holding the training stand pose for %.2f s before allowing RL policy output.",
+                  "Fresh simulator state and sensor data received. Holding policyDefaultJointState for %.2f s before allowing RL policy output.",
                   settings_.startupHoldSec);
     } else {
       RCLCPP_INFO(node_->get_logger(), "Fresh simulator state and sensor data received. RL policy output enabled.");
@@ -759,8 +846,8 @@ void RlBackend::policyTimerCallback() {
   holdJointState_ = standJointState_;
 
   const auto computeStart = std::chrono::steady_clock::now();
-  std::vector<float> observation;
-  if (!buildObservation(observation)) {
+  ObservationSnapshot observationSnapshot;
+  if (!buildObservationSnapshot(observationSnapshot)) {
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
                          "Failed to build RL observation. Holding the last latched pose.");
     if (hasHoldPose_) {
@@ -773,7 +860,7 @@ void RlBackend::policyTimerCallback() {
 
   const auto inferStart = std::chrono::steady_clock::now();
   std::vector<float> action;
-  if (!policyRunner_->infer(observation, action) || action.size() != settings_.actionDim) {
+  if (!policyRunner_->infer(observationSnapshot.observation, action) || action.size() != settings_.actionDim) {
     RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
                           "RL inference failed or returned an unexpected action size. Holding the last latched pose.");
     lastAction_.assign(settings_.actionDim, 0.0f);
@@ -810,7 +897,9 @@ void RlBackend::policyTimerCallback() {
                        velocityCommand.linear.x, velocityCommand.linear.y, velocityCommand.angular.z,
                        computeMs, inferMs, maxAbsAction);
 
-  publishPolicyCommand(action);
+  const PolicyCommandSnapshot commandSnapshot = buildPolicyCommandSnapshot(action);
+  dumpPolicyStep(observationSnapshot, commandSnapshot);
+  publishPolicyCommand(commandSnapshot);
 }
 
 bool RlBackend::hasFreshState() const {
@@ -917,7 +1006,7 @@ std::string RlBackend::poseSummary(const ocs2::vector_t& pose) const {
   return stream.str();
 }
 
-bool RlBackend::buildObservation(std::vector<float>& observation) const {
+bool RlBackend::buildObservationSnapshot(ObservationSnapshot& snapshot) const {
   if (!hasFreshSensor()) {
     return false;
   }
@@ -942,22 +1031,36 @@ bool RlBackend::buildObservation(std::vector<float>& observation) const {
     }
     const geometry_msgs::msg::Twist velocityCommand = policyVelocityCommand();
 
-    observation.clear();
-    observation.reserve(settings_.observationDim);
+    snapshot = ObservationSnapshot{};
+    snapshot.sensorTime = latestSensor_.simulation_time;
+    snapshot.imuQuaternion = {
+        static_cast<float>(latestSensor_.imu_quat_values[0]),
+        static_cast<float>(latestSensor_.imu_quat_values[1]),
+        static_cast<float>(latestSensor_.imu_quat_values[2]),
+        static_cast<float>(latestSensor_.imu_quat_values[3]),
+    };
+    snapshot.observation.clear();
+    snapshot.observation.reserve(settings_.observationDim);
 
     const auto appendProjectedGravity = [&]() {
       for (int i = 0; i < 3; ++i) {
-        observation.push_back(static_cast<float>(projectedGravity[i]));
+        const float value = static_cast<float>(projectedGravity[i]);
+        snapshot.projectedGravity.push_back(value);
+        snapshot.observation.push_back(value);
       }
     };
     const auto appendBaseLinearVelocity = [&]() {
       for (int i = 0; i < 3; ++i) {
-        observation.push_back(static_cast<float>(baseLinearVelocity[i]));
+        const float value = static_cast<float>(baseLinearVelocity[i]);
+        snapshot.baseLinearVelocity.push_back(value);
+        snapshot.observation.push_back(value);
       }
     };
     const auto appendBaseAngularVelocity = [&]() {
       for (int i = 0; i < 3; ++i) {
-        observation.push_back(static_cast<float>(latestSensor_.imu_angvel_values[i]));
+        const float value = static_cast<float>(latestSensor_.imu_angvel_values[i]);
+        snapshot.baseAngularVelocity.push_back(value);
+        snapshot.observation.push_back(value);
       }
     };
 
@@ -973,26 +1076,36 @@ bool RlBackend::buildObservation(std::vector<float>& observation) const {
 
     for (std::size_t observationIndex = 0; observationIndex < settings_.observationToJointIndex.size(); ++observationIndex) {
       const std::size_t jointIndex = settings_.observationToJointIndex[observationIndex];
-      const double jointPosition =
+      const double jointPositionRaw = jointPositions[jointIndex];
+      const float jointPositionRelativeToDefault = static_cast<float>(
+          jointPositionRaw - defaultJointState_[static_cast<Eigen::Index>(jointIndex)]);
+      const float jointPosition =
           settings_.jointPositionObservation == JointPositionObservation::Raw
-              ? jointPositions[jointIndex]
-              : jointPositions[jointIndex] - defaultJointState_[static_cast<Eigen::Index>(jointIndex)];
-      observation.push_back(static_cast<float>(jointPosition));
+              ? static_cast<float>(jointPositionRaw)
+              : jointPositionRelativeToDefault;
+      snapshot.jointPositionRelativeToDefault.push_back(jointPositionRelativeToDefault);
+      snapshot.observation.push_back(jointPosition);
     }
     for (std::size_t observationIndex = 0; observationIndex < settings_.observationToJointIndex.size(); ++observationIndex) {
       const std::size_t jointIndex = settings_.observationToJointIndex[observationIndex];
-      observation.push_back(static_cast<float>(jointVelocities[jointIndex]));
+      const float jointVelocity = static_cast<float>(jointVelocities[jointIndex]);
+      snapshot.jointVelocity.push_back(jointVelocity);
+      snapshot.observation.push_back(jointVelocity);
     }
-    observation.insert(observation.end(), lastAction_.begin(), lastAction_.end());
-    observation.push_back(static_cast<float>(velocityCommand.linear.x));
-    observation.push_back(static_cast<float>(velocityCommand.linear.y));
-    observation.push_back(static_cast<float>(velocityCommand.angular.z));
+    snapshot.previousAction = lastAction_;
+    snapshot.observation.insert(snapshot.observation.end(), lastAction_.begin(), lastAction_.end());
+    snapshot.command = {
+        static_cast<float>(velocityCommand.linear.x),
+        static_cast<float>(velocityCommand.linear.y),
+        static_cast<float>(velocityCommand.angular.z),
+    };
+    snapshot.observation.insert(snapshot.observation.end(), snapshot.command.begin(), snapshot.command.end());
 
-    if (observation.size() != settings_.observationDim) {
+    if (snapshot.observation.size() != settings_.observationDim) {
       return false;
     }
 
-    return std::all_of(observation.begin(), observation.end(), [](float value) { return std::isfinite(value); });
+    return std::all_of(snapshot.observation.begin(), snapshot.observation.end(), [](float value) { return std::isfinite(value); });
   } catch (...) {
     return false;
   }
@@ -1055,16 +1168,14 @@ void RlBackend::transformFeedbackJointState(std::vector<double>& jointPositions,
   }
 }
 
-void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
-  legged_msgs::msg::JointControlData msg;
-  msg.joint_position.resize(kJointCount);
-  msg.joint_velocity.assign(kJointCount, 0.0);
-  msg.joint_torque.assign(kJointCount, 0.0);
-  msg.kp = settings_.kpRatio;
-  msg.kd = settings_.kdRatio;
+RlBackend::PolicyCommandSnapshot RlBackend::buildPolicyCommandSnapshot(const std::vector<float>& action) const {
+  PolicyCommandSnapshot snapshot;
+  snapshot.actionRaw = action;
+  snapshot.actionClipped.resize(settings_.actionDim, 0.0f);
+  snapshot.jointTarget.resize(kJointCount, 0.0f);
 
   for (std::size_t i = 0; i < kJointCount; ++i) {
-    msg.joint_position[i] = defaultJointState_[static_cast<Eigen::Index>(i)];
+    snapshot.jointTarget[i] = static_cast<float>(defaultJointState_[static_cast<Eigen::Index>(i)]);
   }
 
   for (std::size_t actionIndex = 0; actionIndex < settings_.actionToJointIndex.size(); ++actionIndex) {
@@ -1076,13 +1187,109 @@ void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
                                  previousAction - settings_.actionRateLimit,
                                  previousAction + settings_.actionRateLimit);
     }
-    const double jointTarget =
-        defaultJointState_[static_cast<Eigen::Index>(jointIndex)] + settings_.actionScale * clippedAction;
-    msg.joint_position[jointIndex] = jointTarget;
-    lastAction_[actionIndex] = static_cast<float>(clippedAction);
+    snapshot.actionClipped[actionIndex] = static_cast<float>(clippedAction);
+    snapshot.jointTarget[jointIndex] = static_cast<float>(
+        defaultJointState_[static_cast<Eigen::Index>(jointIndex)] + settings_.actionScale * clippedAction);
+  }
+
+  return snapshot;
+}
+
+void RlBackend::prepareDebugDumpDirectory() {
+  debugDumpDir_.clear();
+  debugDumpedPolicySteps_ = 0;
+
+  if (!settings_.debugDumpEnabled) {
+    return;
+  }
+
+  try {
+    debugDumpDir_ = std::filesystem::path(settings_.debugDumpDir) / "controller";
+    std::filesystem::create_directories(debugDumpDir_);
+    RCLCPP_INFO(node_->get_logger(), "RL debug dump enabled. Writing policy snapshots to '%s'.",
+                debugDumpDir_.string().c_str());
+  } catch (const std::exception& error) {
+    debugDumpDir_.clear();
+    RCLCPP_ERROR(node_->get_logger(), "Failed to prepare RL debug dump directory '%s': %s",
+                 settings_.debugDumpDir.c_str(), error.what());
+  }
+}
+
+void RlBackend::dumpPolicyStep(const ObservationSnapshot& observationSnapshot,
+                               const PolicyCommandSnapshot& commandSnapshot) const {
+  if (!settings_.debugDumpEnabled || debugDumpDir_.empty()) {
+    return;
+  }
+  if (settings_.debugDumpMaxSteps > 0 && debugDumpedPolicySteps_ >= settings_.debugDumpMaxSteps) {
+    return;
+  }
+
+  try {
+    const auto filePath = debugDumpDir_ /
+        ("policy_step_" + [&]() {
+          std::ostringstream name;
+          name << std::setw(6) << std::setfill('0') << debugDumpedPolicySteps_;
+          return name.str();
+        }() + ".json");
+    std::ofstream stream(filePath);
+    stream.setf(std::ios::fixed);
+    stream.precision(9);
+    stream << "{\n";
+    stream << "  \"policy_step\": " << debugDumpedPolicySteps_ << ",\n";
+    stream << "  \"sensor_time\": " << observationSnapshot.sensorTime << ",\n";
+    stream << "  \"imu_quat\": ";
+    writeJsonArray(stream, observationSnapshot.imuQuaternion);
+    stream << ",\n  \"base_lin_vel\": ";
+    writeJsonArray(stream, observationSnapshot.baseLinearVelocity);
+    stream << ",\n  \"base_ang_vel\": ";
+    writeJsonArray(stream, observationSnapshot.baseAngularVelocity);
+    stream << ",\n  \"projected_gravity\": ";
+    writeJsonArray(stream, observationSnapshot.projectedGravity);
+    stream << ",\n  \"joint_pos_rel_default\": ";
+    writeJsonArray(stream, observationSnapshot.jointPositionRelativeToDefault);
+    stream << ",\n  \"joint_vel\": ";
+    writeJsonArray(stream, observationSnapshot.jointVelocity);
+    stream << ",\n  \"previous_action\": ";
+    writeJsonArray(stream, observationSnapshot.previousAction);
+    stream << ",\n  \"command\": ";
+    writeJsonArray(stream, observationSnapshot.command);
+    stream << ",\n  \"onnx_input\": ";
+    writeJsonArray(stream, observationSnapshot.observation);
+    stream << ",\n  \"onnx_output_raw\": ";
+    writeJsonArray(stream, commandSnapshot.actionRaw);
+    stream << ",\n  \"action_clipped\": ";
+    writeJsonArray(stream, commandSnapshot.actionClipped);
+    stream << ",\n  \"q_des\": ";
+    writeJsonArray(stream, commandSnapshot.jointTarget);
+    stream << "\n}\n";
+  } catch (const std::exception& error) {
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                          "Failed to write RL debug snapshot: %s", error.what());
+  }
+}
+
+void RlBackend::publishPolicyCommand(const std::vector<float>& action) {
+  publishPolicyCommand(buildPolicyCommandSnapshot(action));
+}
+
+void RlBackend::publishPolicyCommand(const PolicyCommandSnapshot& commandSnapshot) {
+  legged_msgs::msg::JointControlData msg;
+  msg.joint_position.resize(kJointCount);
+  msg.joint_velocity.assign(kJointCount, 0.0);
+  msg.joint_torque.assign(kJointCount, 0.0);
+  msg.kp = settings_.kpRatio;
+  msg.kd = settings_.kdRatio;
+
+  for (std::size_t i = 0; i < kJointCount; ++i) {
+    msg.joint_position[i] = commandSnapshot.jointTarget[i];
+  }
+
+  for (std::size_t actionIndex = 0; actionIndex < commandSnapshot.actionClipped.size(); ++actionIndex) {
+    lastAction_[actionIndex] = commandSnapshot.actionClipped[actionIndex];
   }
 
   jointControlPublisher_->publish(msg);
+  ++debugDumpedPolicySteps_;
   publishEmergencyOverrideState();
 }
 

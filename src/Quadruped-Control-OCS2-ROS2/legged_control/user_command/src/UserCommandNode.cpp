@@ -554,8 +554,9 @@ void printVelocityModeHelp(ControllerType controllerType, const std::string& sta
       << "  q/e : yaw left/right\n";
   if (controllerType == ControllerType::Rl) {
     std::cout
-        << "  1 : RL stance with PD hold at the configured stand pose\n"
-        << "  2 : activate RL policy from RL stance\n"
+        << "  startup: RL home position hold from policyDefaultJointState\n"
+        << "  1 : return to RL home position hold\n"
+        << "  2 : activate RL policy from home hold\n"
         << "  0 : raw recovery pose\n"
         << "  z : sit down with strong PD\n"
         << "  c : true zero torque mode\n"
@@ -572,7 +573,7 @@ void printVelocityModeHelp(ControllerType controllerType, const std::string& sta
         << "  d-pad up/down : o/l\n"
         << "  B : z, LB : space(hold), RB : 0, X : c\n"
         << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
-        << "Press 1 first to go to RL stance, then press 2 to arm RL walking.\n"
+        << "Press 2 to arm RL walking from the startup home hold.\n"
         << "Motion keys only move the robot once RL policy is active.\n";
   } else {
     std::cout
@@ -726,9 +727,9 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             targetPoseCommand.publishHoldPositionCommand(false);
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateRlStand);
             controlState = ControlState::RlStand;
-            showVelocityModeHelp("RL stance PD requested.");
+            showVelocityModeHelp("RL home position hold requested.");
           } else if (key == '2') {
-            if (controlState == ControlState::RlStand) {
+            if (controlState == ControlState::Hold || controlState == ControlState::RlStand) {
               targetVelocityCommand.setZero();
               filteredVelocityCommand.setZero();
               teleopState.resetAxes();
@@ -741,7 +742,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             } else if (controlState == ControlState::RlPolicy) {
               showVelocityModeHelp("RL policy is already active.");
             } else {
-              showVelocityModeHelp("Press 1 first to move the robot into RL stance.");
+              showVelocityModeHelp("Return to RL home hold with 1 before activating policy.");
             }
           } else if (key == 'z') {
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::SitDown);
@@ -766,7 +767,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             targetPoseCommand.publishHoldPositionCommand(false);
             showVelocityModeHelp("RL zero torque requested.");
           } else {
-            showVelocityModeHelp("RL safe mode active. Use 1=stance PD, 2=RL, 0=recovery, z=sit, c=zero torque, space=hold.");
+            showVelocityModeHelp("RL safe mode active. Use 1=home hold, 2=RL, 0=recovery, z=sit, c=zero torque, space=hold.");
           }
           continue;
         }
@@ -885,7 +886,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.stabilizeModeActive = false;
           gamepadMotionRequiresRecenter = true;
           targetPoseCommand.publishHoldPositionCommand(false);
-          showVelocityModeHelp("Switched back to RL stance PD.");
+          showVelocityModeHelp("Switched back to RL home position hold.");
           continue;
         }
         if (key == '2') {
@@ -998,7 +999,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
                              std::to_string(lateralSpeed) + " yaw: " + std::to_string(yawSpeed));
       } else if (key == 'r') {
         if (controllerType == ControllerType::Rl) {
-          showVelocityModeHelp("RL mode uses 1 for stance PD and 2 for policy activation.");
+          showVelocityModeHelp("RL mode uses 1 for home hold and 2 for policy activation.");
         } else {
           targetVelocityCommand.setZero();
           filteredVelocityCommand.setZero();
@@ -1198,7 +1199,7 @@ int main(int argc, char* argv[]) {
   const std::string commadMsg =
     controllerType == ControllerType::Rl
         ? "Current mode starts as 'goal'.\n"
-          "RL control starts in hold. Enter 'mode:vel', press '1' for stance PD, then press '2' to activate RL.\n"
+          "RL control starts in policyDefaultJointState hold. Enter 'mode:vel' and press '2' to activate RL.\n"
           "Enter 'mode:goal' or 'mode:vel' to switch modes,\n"
           "Enter 'gait:xxx' for the desired gait,\n"
           "Enter 'gait:list' for the list of available gaits,\n"

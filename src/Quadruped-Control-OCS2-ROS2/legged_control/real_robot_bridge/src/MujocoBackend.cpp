@@ -40,6 +40,9 @@ double MujocoBackend::defaultPublishRateHz() const {
 void MujocoBackend::prepareForControlStart() {
   *simulation_->getSimuState() = false;
   *simulation_->getContrlState() = false;
+  if (simulation_->usesDirectPositionControl()) {
+    simulation_->resetRobotPose();
+  }
   sim_time_reference_ = simulation_->getData()->time;
   wall_time_reference_ = std::chrono::steady_clock::now();
 }

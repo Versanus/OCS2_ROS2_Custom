@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <filesystem>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -82,13 +85,36 @@ class RlBackend final : public ControllerBackend {
     bool requireCommandForPolicy = false;
     bool scaleCommandToPolicyLimits = true;
     bool holdStandWhenPolicyIdle = false;
+    bool resetSimulatorOnPolicyActivation = false;
     std::size_t observationDim = 48;
     std::size_t actionDim = 12;
     ObservationLayout observationLayout = ObservationLayout::Legacy;
     JointPositionObservation jointPositionObservation = JointPositionObservation::RelativeToDefault;
     FeedbackJointStateTransform feedbackJointStateTransform = FeedbackJointStateTransform::None;
+    bool debugDumpEnabled = false;
+    std::string debugDumpDir;
+    std::size_t debugDumpMaxSteps = 0;
     std::vector<std::size_t> actionToJointIndex;
     std::vector<std::size_t> observationToJointIndex;
+  };
+
+  struct ObservationSnapshot {
+    double sensorTime = 0.0;
+    std::vector<float> imuQuaternion;
+    std::vector<float> baseLinearVelocity;
+    std::vector<float> baseAngularVelocity;
+    std::vector<float> projectedGravity;
+    std::vector<float> jointPositionRelativeToDefault;
+    std::vector<float> jointVelocity;
+    std::vector<float> previousAction;
+    std::vector<float> command;
+    std::vector<float> observation;
+  };
+
+  struct PolicyCommandSnapshot {
+    std::vector<float> actionRaw;
+    std::vector<float> actionClipped;
+    std::vector<float> jointTarget;
   };
 
   bool loadSettings(const ControllerConfig& config);
@@ -98,6 +124,9 @@ class RlBackend final : public ControllerBackend {
   static FeedbackJointStateTransform parseFeedbackJointStateTransform(const std::string& value);
   void setupRosInterfaces();
   bool requestInitialHoldPose();
+  bool beginAsyncPolicyActivationReset();
+  bool finishAsyncPolicyActivationReset();
+  void resetToPolicyHomeHold();
 
   void stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg);
   void sensorCallback(const legged_msgs::msg::SimulatorSensorData::SharedPtr msg);
@@ -114,9 +143,14 @@ class RlBackend final : public ControllerBackend {
   void beginPoseTransition(const ocs2::vector_t& targetPose, double durationSec);
   ocs2::vector_t transitionPoseCommand() const;
   std::string poseSummary(const ocs2::vector_t& pose) const;
-  bool buildObservation(std::vector<float>& observation) const;
+  bool buildObservationSnapshot(ObservationSnapshot& snapshot) const;
   void transformFeedbackJointState(std::vector<double>& jointPositions, std::vector<double>& jointVelocities) const;
+  PolicyCommandSnapshot buildPolicyCommandSnapshot(const std::vector<float>& action) const;
+  void prepareDebugDumpDirectory();
+  void dumpPolicyStep(const ObservationSnapshot& observationSnapshot,
+                      const PolicyCommandSnapshot& commandSnapshot) const;
   void publishPolicyCommand(const std::vector<float>& action);
+  void publishPolicyCommand(const PolicyCommandSnapshot& commandSnapshot);
   void publishPoseCommand(const ocs2::vector_t& pose, double kpRatio, double kdRatio);
   void publishZeroTorqueCommand();
   void publishEmergencyOverrideState() const;
@@ -136,6 +170,7 @@ class RlBackend final : public ControllerBackend {
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityCommandSubscriber_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;
   rclcpp::Client<legged_msgs::srv::StartControl>::SharedPtr startControlClient_;
+  rclcpp::Client<legged_msgs::srv::StartControl>::SharedFuture startControlFuture_;
   rclcpp::TimerBase::SharedPtr policyTimer_;
 
   legged_msgs::msg::SimulatorStateData latestState_;
@@ -149,6 +184,8 @@ class RlBackend final : public ControllerBackend {
   bool hasSensor_ = false;
   bool startupHoldStarted_ = false;
   bool hasHoldPose_ = false;
+  bool pendingPolicyActivationReset_ = false;
+  bool policyActivationResetInFlight_ = false;
 
   ControlState controlState_ = ControlState::Hold;
   rclcpp::Time poseTransitionStartTime_;
@@ -162,4 +199,6 @@ class RlBackend final : public ControllerBackend {
   ocs2::vector_t sitJointState_ = ocs2::vector_t::Zero(12);
   ocs2::vector_t commandObservationScale_ = ocs2::vector_t::Ones(3);
   std::vector<float> lastAction_;
+  std::filesystem::path debugDumpDir_;
+  std::size_t debugDumpedPolicySteps_ = 0;
 };

@@ -411,21 +411,21 @@
 
     <!-- ================= ACTUATORS ================= -->
   <actuator>
-    <position name="RF_HAA" joint="RF_HAA" forcerange="-6 6" forcelimited="true"/>
-    <position name="RF_HFE" joint="RF_HFE" forcerange="-12 12" forcelimited="true"/>
-    <position name="RF_KFE" joint="RF_KFE" forcerange="-12 12" forcelimited="true"/>
+    <position name="RF_HAA" joint="RF_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
+    <position name="RF_HFE" joint="RF_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <position name="RF_KFE" joint="RF_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
 
-    <position name="LF_HAA" joint="LF_HAA" forcerange="-6 6" forcelimited="true"/>
-    <position name="LF_HFE" joint="LF_HFE" forcerange="-12 12" forcelimited="true"/>
-    <position name="LF_KFE" joint="LF_KFE" forcerange="-12 12" forcelimited="true"/>
+    <position name="LF_HAA" joint="LF_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
+    <position name="LF_HFE" joint="LF_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <position name="LF_KFE" joint="LF_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
 
-    <position name="RH_HAA" joint="RH_HAA" forcerange="-6 6" forcelimited="true"/>
-    <position name="RH_HFE" joint="RH_HFE" forcerange="-12 12" forcelimited="true"/>
-    <position name="RH_KFE" joint="RH_KFE" forcerange="-12 12" forcelimited="true"/>
+    <position name="RH_HAA" joint="RH_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
+    <position name="RH_HFE" joint="RH_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <position name="RH_KFE" joint="RH_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
 
-    <position name="LH_HAA" joint="LH_HAA" forcerange="-6 6" forcelimited="true"/>
-    <position name="LH_HFE" joint="LH_HFE" forcerange="-12 12" forcelimited="true"/>
-    <position name="LH_KFE" joint="LH_KFE" forcerange="-12 12" forcelimited="true"/>
+    <position name="LH_HAA" joint="LH_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
+    <position name="LH_HFE" joint="LH_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <position name="LH_KFE" joint="LH_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
   </actuator>
   <keyframe>
     <key name="home"

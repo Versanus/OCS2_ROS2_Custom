@@ -39,6 +39,10 @@ void loadRlRuntimeOptions(const std::string& rl_file,
   runtime_options.baseKd = pt.get<double>("mujocoBaseKd", runtime_options.baseKd);
   runtime_options.directPositionControl =
       pt.get<bool>("mujocoDirectPositionControl", runtime_options.directPositionControl);
+  runtime_options.debugDumpEnabled = pt.get<bool>("debugDumpEnabled", runtime_options.debugDumpEnabled);
+  runtime_options.debugDumpDir = pt.get<std::string>("debugDumpDir", runtime_options.debugDumpDir);
+  runtime_options.debugDumpMaxSteps =
+      static_cast<std::size_t>(pt.get<int>("debugDumpMaxSteps", static_cast<int>(runtime_options.debugDumpMaxSteps)));
 
   RCLCPP_INFO(logger,
               "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",

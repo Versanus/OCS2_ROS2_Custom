@@ -6,6 +6,7 @@
 #include <GLFW/glfw3.h>  // For rendering and window handling
 #include <array>
 #include <chrono>
+#include <filesystem>
 #include <mutex>
 #include <random>
 #include <string>
@@ -27,6 +28,9 @@ public:
         double baseKp = 0.0;
         double baseKd = 0.0;
         bool directPositionControl = false;
+        bool debugDumpEnabled = false;
+        std::string debugDumpDir;
+        std::size_t debugDumpMaxSteps = 0;
         RuntimeOptions() = default;
     };
 
@@ -50,7 +54,7 @@ public:
     void renderSetting(const std::string& configFile);
     void render();
     void control_callback(const legged_msgs::msg::JointControlData::SharedPtr msg);
-    void applyJointControl(const legged_msgs::msg::JointControlData& msg);
+    bool applyJointControl(const legged_msgs::msg::JointControlData& msg);
     bool checkCollision(const mjData* d, int geom1_id, int geom2_id);
     void run();
     void publish_state_data();
@@ -75,6 +79,17 @@ public:
     void clearActuatorCommandState();
     void latchDirectPositionTargetsFromCurrentState();
     void emergencyOverrideStateCallback(const std_msgs::msg::Int32::SharedPtr msg);
+    void prepareDebugDumpDirectory(const RuntimeOptions& runtimeOptions);
+    void dumpControlPeriodSnapshot(std::size_t controlStep,
+                                   const std::vector<double>& preQpos,
+                                   const std::vector<double>& preQvel,
+                                   const legged_msgs::msg::SimulatorStateData& preState,
+                                   const legged_msgs::msg::SimulatorSensorData& preSensor,
+                                   const std::vector<double>& postQpos,
+                                   const std::vector<double>& postQvel,
+                                   const std::vector<double>& postCtrl,
+                                   const legged_msgs::msg::SimulatorStateData& postState,
+                                   const legged_msgs::msg::SimulatorSensorData& postSensor) const;
     double getControlFrequency() const { return control_frequency_; }
     double getRenderFrequency() const { return render_frequency_; }
     double getTimestep() const { return timestep_; }
@@ -167,6 +182,10 @@ private:
     std::array<double, 4> initial_base_quat_{{1.0, 0.0, 0.0, 0.0}};
     std::vector<double> initial_qpos_;
     std::vector<double> initial_qvel_;
+    bool debugDumpEnabled_ = false;
+    std::filesystem::path debugDumpDir_;
+    std::size_t debugDumpMaxSteps_ = 0;
+    std::size_t debugDumpedControlSteps_ = 0;
 
     // contact flag
     std::vector<int> geom_ids_; // floor, LF_FOOT, RF_FOOT, LH_FOOT, RH_FOOT

@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 
 #include <boost/property_tree/info_parser.hpp>
@@ -58,6 +60,18 @@ bool fillSensorValuesByName(const mjModel* model, const mjData* data, const char
         output.push_back(static_cast<double>(data->sensordata[sensorAddress + i]));
     }
     return true;
+}
+
+template <typename T>
+void writeJsonArray(std::ostream& stream, const std::vector<T>& values) {
+    stream << "[";
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            stream << ", ";
+        }
+        stream << values[i];
+    }
+    stream << "]";
 }
 }  // namespace
 
@@ -149,9 +163,16 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     baseKd_ = positiveOverride(runtimeOptions.baseKd, baseKd_);
     directPositionControl_ = runtimeOptions.directPositionControl;
 
-    RCLCPP_INFO(node_->get_logger(),
-                "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",
-                timestep_, control_frequency_, baseKp_, baseKd_, directPositionControl_ ? "true" : "false");
+    if (directPositionControl_) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f actuator_kp=%.3f joint_damping=%.3f direct_position_control=true.",
+                    timestep_, control_frequency_, baseKp_, baseKd_);
+    } else {
+        RCLCPP_INFO(node_->get_logger(),
+                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=false.",
+                    timestep_, control_frequency_, baseKp_, baseKd_);
+    }
+    prepareDebugDumpDirectory(runtimeOptions);
 
     // disturbance with optional config override
     disturbance_force_min_ = pt.get<double>("disturbance.force_min", disturbance_force_min_);
@@ -200,16 +221,18 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
         actuator_index_by_joint_[i] = actuator_id;
     }
     if (directPositionControl_) {
-        for (const int actuator_id : actuator_index_by_joint_) {
+        for (std::size_t i = 0; i < actuator_index_by_joint_.size(); ++i) {
+            const int actuator_id = actuator_index_by_joint_[i];
             model_->actuator_gaintype[actuator_id] = mjGAIN_FIXED;
             model_->actuator_biastype[actuator_id] = mjBIAS_AFFINE;
             model_->actuator_gainprm[actuator_id * mjNGAIN] = baseKp_;
             model_->actuator_biasprm[actuator_id * mjNBIAS] = 0.0;
             model_->actuator_biasprm[actuator_id * mjNBIAS + 1] = -baseKp_;
-            model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = -baseKd_;
+            model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = 0.0;
+            model_->dof_damping[joint_qvel_address_by_joint_[i]] = baseKd_;
         }
         RCLCPP_INFO(node_->get_logger(),
-                    "Configured RL position actuator gains at runtime: kp=%.3f kd=%.3f.",
+                    "Configured RL position actuators with kp=%.3f, actuator kv=0.000, joint damping %.3f. Force limits come from the MuJoCo XML.",
                     baseKp_, baseKd_);
     }
     data_ = mj_makeData(model_);
@@ -310,6 +333,113 @@ void MujocoSimulation::renderSetting(const std::string& configFile)
     glfwSetCursorPosCallback(window_, mouse_move);
     glfwSetMouseButtonCallback(window_, mouse_button);
     glfwSetScrollCallback(window_, scroll);
+}
+
+void MujocoSimulation::prepareDebugDumpDirectory(const RuntimeOptions& runtimeOptions) {
+    debugDumpEnabled_ = runtimeOptions.debugDumpEnabled;
+    debugDumpDir_.clear();
+    debugDumpMaxSteps_ = runtimeOptions.debugDumpMaxSteps;
+    debugDumpedControlSteps_ = 0;
+
+    if (!debugDumpEnabled_) {
+        return;
+    }
+
+    std::string debugDumpDir = runtimeOptions.debugDumpDir.empty() ? "/tmp/quad_mini_rl_debug" : runtimeOptions.debugDumpDir;
+    try {
+        debugDumpDir_ = std::filesystem::path(debugDumpDir) / "simulator";
+        std::filesystem::create_directories(debugDumpDir_);
+        RCLCPP_INFO(node_->get_logger(), "MuJoCo debug dump enabled. Writing control-period snapshots to '%s'.",
+                    debugDumpDir_.string().c_str());
+    } catch (const std::exception& error) {
+        debugDumpEnabled_ = false;
+        debugDumpDir_.clear();
+        RCLCPP_ERROR(node_->get_logger(), "Failed to prepare MuJoCo debug dump directory '%s': %s",
+                     debugDumpDir.c_str(), error.what());
+    }
+}
+
+void MujocoSimulation::dumpControlPeriodSnapshot(std::size_t controlStep,
+                                                 const std::vector<double>& preQpos,
+                                                 const std::vector<double>& preQvel,
+                                                 const legged_msgs::msg::SimulatorStateData& preState,
+                                                 const legged_msgs::msg::SimulatorSensorData& preSensor,
+                                                 const std::vector<double>& postQpos,
+                                                 const std::vector<double>& postQvel,
+                                                 const std::vector<double>& postCtrl,
+                                                 const legged_msgs::msg::SimulatorStateData& postState,
+                                                 const legged_msgs::msg::SimulatorSensorData& postSensor) const {
+    if (!debugDumpEnabled_ || debugDumpDir_.empty()) {
+        return;
+    }
+    if (debugDumpMaxSteps_ > 0 && controlStep >= debugDumpMaxSteps_) {
+        return;
+    }
+
+    try {
+        std::ostringstream name;
+        name << "control_step_" << std::setw(6) << std::setfill('0') << controlStep << ".json";
+        const auto filePath = debugDumpDir_ / name.str();
+        std::ofstream stream(filePath, std::ios::out | std::ios::trunc);
+        if (!stream.is_open()) {
+            RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                  "Failed to open MuJoCo debug snapshot '%s' for writing.",
+                                  filePath.string().c_str());
+            return;
+        }
+        stream.setf(std::ios::fixed);
+        stream.precision(9);
+        stream << "{\n";
+        stream << "  \"control_step\": " << controlStep << ",\n";
+        stream << "  \"pre_time\": " << preState.simulation_time << ",\n";
+        stream << "  \"post_time\": " << postState.simulation_time << ",\n";
+        stream << "  \"pre_qpos\": ";
+        writeJsonArray(stream, preQpos);
+        stream << ",\n  \"pre_qvel\": ";
+        writeJsonArray(stream, preQvel);
+        stream << ",\n  \"post_qpos\": ";
+        writeJsonArray(stream, postQpos);
+        stream << ",\n  \"post_qvel\": ";
+        writeJsonArray(stream, postQvel);
+        stream << ",\n  \"post_ctrl\": ";
+        writeJsonArray(stream, postCtrl);
+        stream << ",\n  \"pre_state_joint_pos\": ";
+        writeJsonArray(stream, preState.joint_position_values);
+        stream << ",\n  \"pre_state_joint_vel\": ";
+        writeJsonArray(stream, preState.joint_velocity_values);
+        stream << ",\n  \"post_state_joint_pos\": ";
+        writeJsonArray(stream, postState.joint_position_values);
+        stream << ",\n  \"post_state_joint_vel\": ";
+        writeJsonArray(stream, postState.joint_velocity_values);
+        stream << ",\n  \"pre_sensor_imu_quat\": ";
+        writeJsonArray(stream, preSensor.imu_quat_values);
+        stream << ",\n  \"pre_sensor_imu_angvel\": ";
+        writeJsonArray(stream, preSensor.imu_angvel_values);
+        stream << ",\n  \"pre_sensor_local_linvel\": ";
+        writeJsonArray(stream, preSensor.local_linvel_values);
+        stream << ",\n  \"post_sensor_imu_quat\": ";
+        writeJsonArray(stream, postSensor.imu_quat_values);
+        stream << ",\n  \"post_sensor_imu_angvel\": ";
+        writeJsonArray(stream, postSensor.imu_angvel_values);
+        stream << ",\n  \"post_sensor_local_linvel\": ";
+        writeJsonArray(stream, postSensor.local_linvel_values);
+        stream << "\n}\n";
+        stream.flush();
+        if (!stream.good()) {
+            RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                                  "Failed while writing MuJoCo debug snapshot '%s'.",
+                                  filePath.string().c_str());
+            return;
+        }
+        if (controlStep < 3) {
+            RCLCPP_INFO(node_->get_logger(),
+                        "MuJoCo debug trace: wrote snapshot '%s' (%zu bytes).",
+                        filePath.string().c_str(), static_cast<std::size_t>(stream.tellp()));
+        }
+    } catch (const std::exception& error) {
+        RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+                              "Failed to write MuJoCo debug snapshot: %s", error.what());
+    }
 }
 
 void MujocoSimulation::keyboard(GLFWwindow* window, int key, int scancode, int act, int mods)
@@ -458,6 +588,17 @@ void MujocoSimulation::run()
             //mujoco_sim.render();
 
             Start_control_ = false;
+            const std::size_t controlStep = debugDumpedControlSteps_;
+            std::vector<double> preQpos;
+            std::vector<double> preQvel;
+            legged_msgs::msg::SimulatorStateData preState;
+            legged_msgs::msg::SimulatorSensorData preSensor;
+            if (debugDumpEnabled_ && (!debugDumpMaxSteps_ || controlStep < debugDumpMaxSteps_)) {
+                preQpos.assign(data_->qpos, data_->qpos + model_->nq);
+                preQvel.assign(data_->qvel, data_->qvel + model_->nv);
+                populate_state_message(preState);
+                populate_sensor_message(preSensor);
+            }
             mjtNum simstart = data_->time;
 
             // Perform simulation for 1.0 / Control_frequency_ seconds
@@ -470,6 +611,24 @@ void MujocoSimulation::run()
                 render();
                 last_render_time = data_->time;
             }
+            if (debugDumpEnabled_ && (!debugDumpMaxSteps_ || controlStep < debugDumpMaxSteps_)) {
+                std::vector<double> postQpos(data_->qpos, data_->qpos + model_->nq);
+                std::vector<double> postQvel(data_->qvel, data_->qvel + model_->nv);
+                std::vector<double> postCtrl(data_->ctrl, data_->ctrl + model_->nu);
+                legged_msgs::msg::SimulatorStateData postState;
+                legged_msgs::msg::SimulatorSensorData postSensor;
+                populate_state_message(postState);
+                populate_sensor_message(postSensor);
+                if (controlStep < 3) {
+                    RCLCPP_INFO(node_->get_logger(),
+                                "MuJoCo debug trace: entering dump for control_step=%zu pre_time=%.6f post_time=%.6f dir='%s'.",
+                                controlStep, preState.simulation_time, postState.simulation_time,
+                                debugDumpDir_.string().c_str());
+                }
+                dumpControlPeriodSnapshot(controlStep, preQpos, preQvel, preState, preSensor,
+                                          postQpos, postQvel, postCtrl, postState, postSensor);
+            }
+            ++debugDumpedControlSteps_;
             
         }
         else if (Start_simulate_)
@@ -899,12 +1058,14 @@ void MujocoSimulation::emergencyOverrideStateCallback(const std_msgs::msg::Int32
 
 void MujocoSimulation::control_callback(legged_msgs::msg::JointControlData::SharedPtr msg)
 {
-    applyJointControl(*msg);
+    if (!applyJointControl(*msg)) {
+        return;
+    }
     publish_state_data();
     publish_sensor_data();
 }
 
-void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlData& msg)
+bool MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlData& msg)
 {
     const bool valid_position_size = msg.joint_position.size() == 12;
     const bool valid_velocity_size = msg.joint_velocity.size() == 12;
@@ -914,7 +1075,7 @@ void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlDat
         RCLCPP_ERROR(node_->get_logger(),
                      "Invalid joint command. position=%zu velocity=%zu torque=%zu kp=%f kd=%f. Ignoring command.",
                      msg.joint_position.size(), msg.joint_velocity.size(), msg.joint_torque.size(), msg.kp, msg.kd);
-        return;
+        return false;
     }
 
     Start_simulate_ = false;
@@ -951,6 +1112,7 @@ void MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlDat
         }
         has_logged_joint_position_command_ = true;
     }
+    return true;
 }
 
 
@@ -1113,10 +1275,41 @@ void MujocoSimulation::publish_sensor_data()
 
 void MujocoSimulation::stepControlPeriod()
 {
+    const std::size_t controlStep = debugDumpedControlSteps_;
+    std::vector<double> preQpos;
+    std::vector<double> preQvel;
+    legged_msgs::msg::SimulatorStateData preState;
+    legged_msgs::msg::SimulatorSensorData preSensor;
+    if (debugDumpEnabled_ && (!debugDumpMaxSteps_ || controlStep < debugDumpMaxSteps_)) {
+        preQpos.assign(data_->qpos, data_->qpos + model_->nq);
+        preQvel.assign(data_->qvel, data_->qvel + model_->nv);
+        populate_state_message(preState);
+        populate_sensor_message(preSensor);
+    }
+
     const mjtNum simstart = data_->time;
     while (data_->time - simstart < 1.0 / control_frequency_) {
         simulateStep();
     }
+
+    if (debugDumpEnabled_ && (!debugDumpMaxSteps_ || controlStep < debugDumpMaxSteps_)) {
+        std::vector<double> postQpos(data_->qpos, data_->qpos + model_->nq);
+        std::vector<double> postQvel(data_->qvel, data_->qvel + model_->nv);
+        std::vector<double> postCtrl(data_->ctrl, data_->ctrl + model_->nu);
+        legged_msgs::msg::SimulatorStateData postState;
+        legged_msgs::msg::SimulatorSensorData postSensor;
+        populate_state_message(postState);
+        populate_sensor_message(postSensor);
+        if (controlStep < 3) {
+            RCLCPP_INFO(node_->get_logger(),
+                        "MuJoCo debug trace: stepControlPeriod dump for control_step=%zu pre_time=%.6f post_time=%.6f dir='%s'.",
+                        controlStep, preState.simulation_time, postState.simulation_time,
+                        debugDumpDir_.string().c_str());
+        }
+        dumpControlPeriodSnapshot(controlStep, preQpos, preQvel, preState, preSensor,
+                                  postQpos, postQvel, postCtrl, postState, postSensor);
+    }
+    ++debugDumpedControlSteps_;
 }
 
 

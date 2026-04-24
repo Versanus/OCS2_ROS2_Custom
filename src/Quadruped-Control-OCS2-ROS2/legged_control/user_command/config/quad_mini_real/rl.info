@@ -5,9 +5,11 @@
 ; Policy action and joint observation layout follow the training MuJoCo order:
 ;   RF, LF, RH, LH.
 ; Exported checkpoint:
-;   Kp=30.0, Kd=1.0, actionScale=0.5, ctrl_dt=0.02.
-; RL publishes gain ratios. In MuJoCo RL mode, ratio 1.0 maps to Kp=30.0, Kd=1.0.
-; MuJoCo sim overrides below are used only when launching sim with controlType=rl.
+;   XML position actuators use kp=30.0, actuator kv=0.0, joint damping=1.0, actionScale=0.5, ctrl_dt=0.02.
+; In MuJoCo direct-position RL mode, mujocoBaseKp is applied to the position actuator gain/bias.
+; Force limits come from robot_RL.xml / robot_rough_RL.xml.
+; mujocoBaseKd is applied to model.dof_damping for the 12 actuated joints, matching training.
+; MuJoCo sim timing overrides below are used only when launching sim with controlType=rl.
 
 onnxModelPath ../../models/quad_mini_rough_policy.onnx
 onnxInputName obs
@@ -57,8 +59,10 @@ policyJointObservationOrder
   [11] LH_KFE
 }
 
+
 ; Internal controller order is LF, LH, RF, RH. Values match the training XML home keyframe.
-; This is only the RL q_default used in q_des = q_default + actionScale * action.
+; RL q_default used in q_des = q_default + actionScale * action.
+; The RL backend also starts by holding this pose with position control.
 policyDefaultJointState
 {
    (0,0)   0.0   ; LF_HAA
@@ -85,11 +89,18 @@ kdRatio 1.0
 poseKpRatio 1.0
 poseKdRatio 1.0
 
+debugDumpEnabled true
+debugDumpDir /tmp/quad_mini_rl_debug_flat_final
+debugDumpMaxSteps 5000
+
 stateTimeoutSec 0.25
 commandTimeoutSec 1.0
 startupHoldSec 0.0
 standTransitionSec 1.0
-sitTransitionSec 1.0
+sitTransitionSec 1.5
+requireCommandForPolicy true
+holdStandWhenPolicyIdle true
+resetSimulatorOnPolicyActivation true
 policyCommandMaxX 1.5
 policyCommandMaxY 0.5
 policyCommandMaxYaw 1.5

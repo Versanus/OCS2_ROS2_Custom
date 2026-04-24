@@ -20,7 +20,7 @@ disturbance
 {
     force_min            20.0
     force_max            45.0
-    trunk_force_scale    1.0
+    trunk_force_scale    1.5
     lf_foot_force_scale  0.5
     rf_foot_force_scale  0.5
     lh_foot_force_scale  0.5
