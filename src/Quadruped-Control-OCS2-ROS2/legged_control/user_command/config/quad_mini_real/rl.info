@@ -6,8 +6,9 @@ onnxModelPath ../../models/quad_mini_rough_policy.onnx
 mujocoTimestep 0.001
 mujocoControlFrequency 50.0
 mujocoBaseKp 30.0
-mujocoBaseKd 1.0
-mujocoDirectPositionControl true
+mujocoBaseKd 0.0
+mujocoJointDamping 1.0
+mujocoDirectPositionControl false
 
 ; Policy joint order in MuJoCo training convention: RF, LF, RH, LH.
 policyActionJointOrder
@@ -95,7 +96,7 @@ rlRecoveryJointState
    (11,0) -1.20   ; RH_KFE
 }
 
-poseKpRatio 4.0
+poseKpRatio 1.5
 poseKdRatio 1.0
 
 startupHoldSec 0.0
@@ -103,3 +104,6 @@ standTransitionSec 1.0
 velocityCommandCap 2.0
 requireCommandForPolicy false
 holdStandWhenPolicyIdle false
+
+
+actionClip 2.0

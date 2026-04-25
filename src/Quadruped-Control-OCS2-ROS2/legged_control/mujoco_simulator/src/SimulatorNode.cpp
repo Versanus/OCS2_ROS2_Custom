@@ -36,12 +36,14 @@ void loadRlRuntimeOptions(const std::string& rlFile,
     runtimeOptions.controlFrequency = pt.get<double>("mujocoControlFrequency", runtimeOptions.controlFrequency);
     runtimeOptions.baseKp = pt.get<double>("mujocoBaseKp", runtimeOptions.baseKp);
     runtimeOptions.baseKd = pt.get<double>("mujocoBaseKd", runtimeOptions.baseKd);
+    runtimeOptions.jointDamping = pt.get<double>("mujocoJointDamping", runtimeOptions.jointDamping);
     runtimeOptions.directPositionControl =
         pt.get<bool>("mujocoDirectPositionControl", runtimeOptions.directPositionControl);
 
     RCLCPP_INFO(logger,
-                "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",
+                "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f joint_damping=%.3f direct_position_control=%s.",
                 runtimeOptions.timestep, runtimeOptions.controlFrequency, runtimeOptions.baseKp, runtimeOptions.baseKd,
+                runtimeOptions.jointDamping,
                 runtimeOptions.directPositionControl ? "true" : "false");
 }
 }  // namespace

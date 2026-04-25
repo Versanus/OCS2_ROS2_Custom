@@ -27,6 +27,7 @@ public:
         double controlFrequency = 0.0;
         double baseKp = 0.0;
         double baseKd = 0.0;
+        double jointDamping = -1.0;
         bool directPositionControl = false;
         bool debugDumpEnabled = false;
         std::string debugDumpDir;

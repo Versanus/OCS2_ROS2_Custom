@@ -37,6 +37,7 @@ void loadRlRuntimeOptions(const std::string& rl_file,
   runtime_options.controlFrequency = pt.get<double>("mujocoControlFrequency", runtime_options.controlFrequency);
   runtime_options.baseKp = pt.get<double>("mujocoBaseKp", runtime_options.baseKp);
   runtime_options.baseKd = pt.get<double>("mujocoBaseKd", runtime_options.baseKd);
+  runtime_options.jointDamping = pt.get<double>("mujocoJointDamping", runtime_options.jointDamping);
   runtime_options.directPositionControl =
       pt.get<bool>("mujocoDirectPositionControl", runtime_options.directPositionControl);
   runtime_options.debugDumpEnabled = pt.get<bool>("debugDumpEnabled", runtime_options.debugDumpEnabled);
@@ -45,8 +46,9 @@ void loadRlRuntimeOptions(const std::string& rl_file,
       static_cast<std::size_t>(pt.get<int>("debugDumpMaxSteps", static_cast<int>(runtime_options.debugDumpMaxSteps)));
 
   RCLCPP_INFO(logger,
-              "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f direct_position_control=%s.",
+              "Loaded RL MuJoCo settings from rl.info: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f joint_damping=%.3f direct_position_control=%s.",
               runtime_options.timestep, runtime_options.controlFrequency, runtime_options.baseKp, runtime_options.baseKd,
+              runtime_options.jointDamping,
               runtime_options.directPositionControl ? "true" : "false");
 }
 }  // namespace
