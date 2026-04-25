@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <filesystem>
-#include <future>
 #include <string>
 #include <vector>
 
@@ -10,7 +9,6 @@
 #include "legged_msgs/msg/joint_control_data.hpp"
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/simulator_state_data.hpp"
-#include "legged_msgs/srv/start_control.hpp"
 #include "motion_control/common/Types.h"
 #include "motion_control/controller/ControllerBackend.h"
 #include "motion_control/controller/PolicyRunner.h"
@@ -79,13 +77,9 @@ class RlBackend final : public ControllerBackend {
     double standTransitionSec = 1.5;
     double sitTransitionSec = 1.5;
     double commandActivationThreshold = 0.02;
-    double policyCommandMaxX = 1.5;
-    double policyCommandMaxY = 0.8;
-    double policyCommandMaxYaw = 6.283185307179586;
+    double velocityCommandCap = 0.0;
     bool requireCommandForPolicy = false;
-    bool scaleCommandToPolicyLimits = true;
     bool holdStandWhenPolicyIdle = false;
-    bool resetSimulatorOnPolicyActivation = false;
     std::size_t observationDim = 48;
     std::size_t actionDim = 12;
     ObservationLayout observationLayout = ObservationLayout::Legacy;
@@ -118,15 +112,12 @@ class RlBackend final : public ControllerBackend {
   };
 
   bool loadSettings(const ControllerConfig& config);
-  bool loadReferencePoses(const std::string& referenceFile);
+  bool loadPoses(const std::string& rlConfigFile);
   static ObservationLayout parseObservationLayout(const std::string& value);
   static JointPositionObservation parseJointPositionObservation(const std::string& value);
   static FeedbackJointStateTransform parseFeedbackJointStateTransform(const std::string& value);
   void setupRosInterfaces();
-  bool requestInitialHoldPose();
-  bool beginAsyncPolicyActivationReset();
-  bool finishAsyncPolicyActivationReset();
-  void resetToPolicyHomeHold();
+  void initializeStandState();
 
   void stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg);
   void sensorCallback(const legged_msgs::msg::SimulatorSensorData::SharedPtr msg);
@@ -169,8 +160,6 @@ class RlBackend final : public ControllerBackend {
   rclcpp::Subscription<legged_msgs::msg::SimulatorSensorData>::SharedPtr simulatorSensorSubscriber_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityCommandSubscriber_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr emergencyOverrideSubscriber_;
-  rclcpp::Client<legged_msgs::srv::StartControl>::SharedPtr startControlClient_;
-  rclcpp::Client<legged_msgs::srv::StartControl>::SharedFuture startControlFuture_;
   rclcpp::TimerBase::SharedPtr policyTimer_;
 
   legged_msgs::msg::SimulatorStateData latestState_;
@@ -184,10 +173,8 @@ class RlBackend final : public ControllerBackend {
   bool hasSensor_ = false;
   bool startupHoldStarted_ = false;
   bool hasHoldPose_ = false;
-  bool pendingPolicyActivationReset_ = false;
-  bool policyActivationResetInFlight_ = false;
 
-  ControlState controlState_ = ControlState::Hold;
+  ControlState controlState_ = ControlState::Stand;
   rclcpp::Time poseTransitionStartTime_;
   double poseTransitionDurationSec_ = 0.0;
   ocs2::vector_t defaultJointState_ = ocs2::vector_t::Zero(12);
@@ -197,7 +184,6 @@ class RlBackend final : public ControllerBackend {
   ocs2::vector_t standJointState_ = ocs2::vector_t::Zero(12);
   ocs2::vector_t recoveryJointState_ = ocs2::vector_t::Zero(12);
   ocs2::vector_t sitJointState_ = ocs2::vector_t::Zero(12);
-  ocs2::vector_t commandObservationScale_ = ocs2::vector_t::Ones(3);
   std::vector<float> lastAction_;
   std::filesystem::path debugDumpDir_;
   std::size_t debugDumpedPolicySteps_ = 0;

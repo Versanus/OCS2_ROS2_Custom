@@ -259,7 +259,7 @@ RlBackend::RlBackend(const rclcpp::Node::SharedPtr& node)
       hasSensor_(false),
       startupHoldStarted_(false),
       hasHoldPose_(false),
-      controlState_(ControlState::Hold),
+      controlState_(ControlState::Stand),
       poseTransitionStartTime_(0, 0, RCL_ROS_TIME),
       poseTransitionDurationSec_(0.0),
       defaultJointState_(ocs2::vector_t::Zero(kJointCount)),
@@ -269,7 +269,6 @@ RlBackend::RlBackend(const rclcpp::Node::SharedPtr& node)
       standJointState_(ocs2::vector_t::Zero(kJointCount)),
       recoveryJointState_(ocs2::vector_t::Zero(kJointCount)),
       sitJointState_(ocs2::vector_t::Zero(kJointCount)),
-      commandObservationScale_(ocs2::vector_t::Ones(3)),
       lastAction_(kJointCount, 0.0f) {}
 
 RlBackend::~RlBackend() = default;
@@ -278,9 +277,9 @@ bool RlBackend::configure(const ControllerConfig& config) {
   if (!node_) {
     return false;
   }
-  if (config.referenceFile.empty() || config.rlConfigFile.empty()) {
+  if (config.rlConfigFile.empty()) {
     RCLCPP_ERROR(node_->get_logger(),
-                 "RL backend requires non-empty referenceFile and rlConfigFile parameters.");
+                 "RL backend requires a non-empty rlConfigFile parameter.");
     return false;
   }
 
@@ -288,7 +287,7 @@ bool RlBackend::configure(const ControllerConfig& config) {
   if (!loadSettings(config)) {
     return false;
   }
-  if (!loadReferencePoses(config.referenceFile)) {
+  if (!loadPoses(config.rlConfigFile)) {
     return false;
   }
 
@@ -320,9 +319,9 @@ bool RlBackend::configure(const ControllerConfig& config) {
 
 void RlBackend::launch() {
   setupRosInterfaces();
-  requestInitialHoldPose();
+  initializeStandState();
   RCLCPP_INFO(node_->get_logger(),
-              "RL backend starts in policyDefaultJointState position hold. Enter mode:vel and press '2' to arm RL policy output.");
+              "RL backend starts in rlStandJointState position hold. Enter mode:vel and press '2' to arm RL policy output.");
 
   const auto period = std::chrono::duration<double>(1.0 / std::max(1.0, settings_.policyHz));
   policyTimer_ = node_->create_wall_timer(
@@ -330,6 +329,7 @@ void RlBackend::launch() {
       std::bind(&RlBackend::policyTimerCallback, this));
 
   publishEmergencyOverrideState();
+  publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
   rclcpp::spin(node_);
 }
 
@@ -367,17 +367,12 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     settings_.sitTransitionSec = tree.get<double>("sitTransitionSec", settings_.sitTransitionSec);
     settings_.commandActivationThreshold =
         tree.get<double>("commandActivationThreshold", settings_.commandActivationThreshold);
-    settings_.policyCommandMaxX = tree.get<double>("policyCommandMaxX", settings_.policyCommandMaxX);
-    settings_.policyCommandMaxY = tree.get<double>("policyCommandMaxY", settings_.policyCommandMaxY);
-    settings_.policyCommandMaxYaw = tree.get<double>("policyCommandMaxYaw", settings_.policyCommandMaxYaw);
+    settings_.velocityCommandCap =
+        tree.get<double>("velocityCommandCap", settings_.velocityCommandCap);
     settings_.requireCommandForPolicy =
         tree.get<bool>("requireCommandForPolicy", settings_.requireCommandForPolicy);
-    settings_.scaleCommandToPolicyLimits =
-        tree.get<bool>("scaleCommandToPolicyLimits", settings_.scaleCommandToPolicyLimits);
     settings_.holdStandWhenPolicyIdle =
         tree.get<bool>("holdStandWhenPolicyIdle", settings_.holdStandWhenPolicyIdle);
-    settings_.resetSimulatorOnPolicyActivation =
-        tree.get<bool>("resetSimulatorOnPolicyActivation", settings_.resetSimulatorOnPolicyActivation);
     settings_.observationDim = static_cast<std::size_t>(tree.get<int>("obsDim", static_cast<int>(settings_.observationDim)));
     settings_.actionDim = static_cast<std::size_t>(tree.get<int>("actDim", static_cast<int>(settings_.actionDim)));
     settings_.observationLayout =
@@ -439,9 +434,8 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     if (!std::isfinite(settings_.sitTransitionSec) || settings_.sitTransitionSec < 0.0) {
       throw std::runtime_error("sitTransitionSec must be finite and non-negative.");
     }
-    if (!std::isfinite(settings_.policyCommandMaxX) || !std::isfinite(settings_.policyCommandMaxY) ||
-        !std::isfinite(settings_.policyCommandMaxYaw)) {
-      throw std::runtime_error("policyCommandMaxX/Y/Yaw must be finite.");
+    if (!std::isfinite(settings_.velocityCommandCap) || settings_.velocityCommandCap < 0.0) {
+      throw std::runtime_error("velocityCommandCap must be finite and non-negative.");
     }
     if (settings_.debugDumpEnabled && settings_.debugDumpDir.empty()) {
       settings_.debugDumpDir = "/tmp/quad_mini_rl_debug";
@@ -453,81 +447,38 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
   }
 }
 
-bool RlBackend::loadReferencePoses(const std::string& referenceFile) {
+bool RlBackend::loadPoses(const std::string& rlConfigFile) {
   try {
-    ocs2::loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
-    standJointState_ = defaultJointState_;
-    recoveryJointState_ = defaultJointState_;
-    sitJointState_.setZero(defaultJointState_.size());
-    ocs2::loadData::loadEigenMatrix(referenceFile, "standJointState", standJointState_);
-    ocs2::loadData::loadEigenMatrix(referenceFile, "recoveryJointState", recoveryJointState_);
-    ocs2::loadData::loadEigenMatrix(referenceFile, "sitJointState", sitJointState_);
-
     boost::property_tree::ptree rlTree;
-    boost::property_tree::read_info(controllerConfig_.rlConfigFile, rlTree);
+    boost::property_tree::read_info(rlConfigFile, rlTree);
+
+    ocs2::loadData::loadEigenMatrix(rlConfigFile, "rlStandJointState", standJointState_);
+    ocs2::loadData::loadEigenMatrix(rlConfigFile, "rlRecoveryJointState", recoveryJointState_);
+    ocs2::loadData::loadEigenMatrix(rlConfigFile, "rlSitJointState", sitJointState_);
+    defaultJointState_ = standJointState_;
+
     if (rlTree.get_child_optional("policyDefaultJointState")) {
       ocs2::vector_t policyDefaultJointState = ocs2::vector_t::Zero(kJointCount);
-      ocs2::loadData::loadEigenMatrix(controllerConfig_.rlConfigFile, "policyDefaultJointState", policyDefaultJointState);
+      ocs2::loadData::loadEigenMatrix(rlConfigFile, "policyDefaultJointState", policyDefaultJointState);
       if (!isFiniteEigenVector(policyDefaultJointState, kJointCount)) {
         throw std::runtime_error("policyDefaultJointState in rl.info must contain 12 finite values.");
       }
       defaultJointState_ = policyDefaultJointState;
-      standJointState_ = policyDefaultJointState;
       RCLCPP_INFO(node_->get_logger(),
-                  "Using policyDefaultJointState from rl.info for RL q_default and home hold pose.");
+                  "Using policyDefaultJointState from rl.info for RL q_default.");
     }
 
-    boost::property_tree::ptree referenceTree;
-    boost::property_tree::read_info(referenceFile, referenceTree);
-    const double fallbackForwardVelocity = referenceTree.get<double>("targetDisplacementVelocity", 0.5);
-    const double referenceForwardVelocity =
-        referenceTree.get<double>("targetDisplacementVelocityForward", fallbackForwardVelocity);
-    const double referenceLateralVelocity =
-        referenceTree.get<double>("targetDisplacementVelocityLateral", fallbackForwardVelocity);
-    const double referenceYawVelocity = referenceTree.get<double>("targetRotationVelocity", 0.6);
-    const double commandAxisX = referenceTree.get<double>("command_axis.x", 1.0);
-    const double commandAxisY = referenceTree.get<double>("command_axis.y", 1.0);
-    const double commandAxisYaw = referenceTree.get<double>("command_axis.yaw", 1.0);
-
-    const auto computeCommandScale = [](double policyMax, double referenceMax, double axisScale) {
-      const double denominator = referenceMax * axisScale;
-      if (!std::isfinite(policyMax) || !std::isfinite(referenceMax) || !std::isfinite(axisScale) ||
-          std::abs(denominator) < 1e-9) {
-        throw std::runtime_error("Invalid reference teleop scaling while computing RL command remap.");
-      }
-      return policyMax / denominator;
-    };
-    const auto computeAxisOnlyScale = [](double axisScale) {
-      if (!std::isfinite(axisScale) || std::abs(axisScale) < 1e-9) {
-        throw std::runtime_error("Invalid reference teleop axis while computing RL command remap.");
-      }
-      return 1.0 / axisScale;
-    };
-
-    if (settings_.scaleCommandToPolicyLimits) {
-      commandObservationScale_ =
-          (ocs2::vector_t(3)
-               << computeCommandScale(settings_.policyCommandMaxX, referenceForwardVelocity, commandAxisX),
-                  computeCommandScale(settings_.policyCommandMaxY, referenceLateralVelocity, commandAxisY),
-                  computeCommandScale(settings_.policyCommandMaxYaw, referenceYawVelocity, commandAxisYaw))
-                  .finished();
-    } else {
-      commandObservationScale_ =
-          (ocs2::vector_t(3)
-               << computeAxisOnlyScale(commandAxisX),
-                  computeAxisOnlyScale(commandAxisY),
-                  computeAxisOnlyScale(commandAxisYaw))
-                  .finished();
+    if (!isFiniteEigenVector(defaultJointState_, kJointCount) ||
+        !isFiniteEigenVector(standJointState_, kJointCount) ||
+        !isFiniteEigenVector(recoveryJointState_, kJointCount) ||
+        !isFiniteEigenVector(sitJointState_, kJointCount)) {
+      throw std::runtime_error("RL pose blocks must contain 12 finite joint values.");
     }
 
-    RCLCPP_INFO(node_->get_logger(),
-                "RL command remap derived from reference.info: raw->policy scale = [%.3f, %.3f, %.3f] (%s).",
-                commandObservationScale_(0), commandObservationScale_(1), commandObservationScale_(2),
-                settings_.scaleCommandToPolicyLimits ? "reference speed to policy limits" : "axis only, velocity units");
-    return defaultJointState_.size() == static_cast<Eigen::Index>(kJointCount);
+    return true;
   } catch (const std::exception& error) {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to load RL reference poses from '%s': %s",
-                 referenceFile.c_str(), error.what());
+    RCLCPP_ERROR(node_->get_logger(), "Failed to load RL poses from '%s': %s",
+                 rlConfigFile.c_str(), error.what());
     return false;
   }
 }
@@ -546,111 +497,15 @@ void RlBackend::setupRosInterfaces() {
   emergencyOverrideSubscriber_ = node_->create_subscription<std_msgs::msg::Int32>(
       controllerConfig_.robotName + "_emergency_override", 1,
       std::bind(&RlBackend::emergencyOverrideCallback, this, std::placeholders::_1));
-  startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
 }
 
-bool RlBackend::requestInitialHoldPose() {
-  using namespace std::chrono_literals;
-
-  resetToPolicyHomeHold();
-
-  if (!startControlClient_) {
-    startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
-  }
-
-  if (!startControlClient_->wait_for_service(100ms)) {
-    RCLCPP_WARN(node_->get_logger(),
-                "/start_control is not ready yet. RL will hold policyDefaultJointState.");
-    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-    return false;
-  }
-
-  auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
-  request->start = true;
-  auto result = startControlClient_->async_send_request(request);
-  if (rclcpp::spin_until_future_complete(node_, result, 500ms) != rclcpp::FutureReturnCode::SUCCESS) {
-    RCLCPP_WARN(node_->get_logger(),
-                "/start_control did not respond immediately. RL will hold policyDefaultJointState.");
-    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-    return false;
-  }
-
-  auto response = result.get();
-  if (!response->success || !isFiniteVector(response->state.joint_position_values, kJointCount)) {
-    RCLCPP_WARN(node_->get_logger(),
-                "/start_control returned no valid initial joint state. RL will hold policyDefaultJointState.");
-    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-    return false;
-  }
-
-  latestState_ = response->state;
-  hasState_ = true;
-  lastStateReceiptTime_ = node_->now();
-
-  RCLCPP_INFO(node_->get_logger(), "Reset RL simulator and holding policyDefaultJointState.");
-  publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-  return true;
-}
-
-bool RlBackend::beginAsyncPolicyActivationReset() {
-  if (!startControlClient_) {
-    startControlClient_ = node_->create_client<legged_msgs::srv::StartControl>("start_control");
-  }
-
-  if (!startControlClient_->service_is_ready()) {
-    RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                         "/start_control is not ready yet. Waiting before RL policy reset.");
-    return false;
-  }
-
-  auto request = std::make_shared<legged_msgs::srv::StartControl::Request>();
-  request->start = true;
-  startControlFuture_ = startControlClient_->async_send_request(request);
-  policyActivationResetInFlight_ = true;
-  RCLCPP_INFO(node_->get_logger(), "Requested MuJoCo reset for RL policy activation.");
-  return true;
-}
-
-bool RlBackend::finishAsyncPolicyActivationReset() {
-  using namespace std::chrono_literals;
-
-  if (!policyActivationResetInFlight_ || !startControlFuture_.valid()) {
-    return false;
-  }
-
-  if (startControlFuture_.wait_for(0s) != std::future_status::ready) {
-    return false;
-  }
-
-  policyActivationResetInFlight_ = false;
-  auto response = startControlFuture_.get();
-  if (!response->success || !isFiniteVector(response->state.joint_position_values, kJointCount)) {
-    RCLCPP_WARN(node_->get_logger(),
-                "/start_control returned no valid initial joint state during RL policy activation reset.");
-    publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-    return true;
-  }
-
-  latestState_ = response->state;
-  hasState_ = true;
-  hasSensor_ = false;
-  lastStateReceiptTime_ = node_->now();
+void RlBackend::initializeStandState() {
+  controlState_ = ControlState::Stand;
   startupHoldStarted_ = false;
-  lastAction_.assign(settings_.actionDim, 0.0f);
-  RCLCPP_INFO(node_->get_logger(), "Reset RL simulator at policy activation. Waiting for fresh sensor data.");
-  publishPoseCommand(holdJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-  return true;
-}
-
-void RlBackend::resetToPolicyHomeHold() {
-  controlState_ = ControlState::Hold;
-  startupHoldStarted_ = false;
-  hasHoldPose_ = true;
   holdJointState_ = standJointState_;
+  hasHoldPose_ = true;
   resetPoseTransition();
   lastAction_.assign(settings_.actionDim, 0.0f);
-  pendingPolicyActivationReset_ = false;
-  policyActivationResetInFlight_ = false;
 }
 
 void RlBackend::stateCallback(const legged_msgs::msg::SimulatorStateData::SharedPtr msg) {
@@ -684,8 +539,6 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       holdJointState_ = standJointState_;
       resetPoseTransition();
       lastAction_.assign(settings_.actionDim, 0.0f);
-      pendingPolicyActivationReset_ = settings_.resetSimulatorOnPolicyActivation;
-      policyActivationResetInFlight_ = false;
       RCLCPP_INFO(node_->get_logger(), "RL backend activated.");
       break;
     case static_cast<int>(ControlCommand::Hold):
@@ -725,7 +578,7 @@ void RlBackend::emergencyOverrideCallback(const std_msgs::msg::Int32::SharedPtr 
       beginPoseTransition(standJointState_, settings_.standTransitionSec);
       lastAction_.assign(settings_.actionDim, 0.0f);
       RCLCPP_INFO(node_->get_logger(),
-                  "RL backend switched to policyDefaultJointState hold over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
+                  "RL backend switched to rlStandJointState hold over %.2f s with PD gain ratios kp=%.3f kd=%.3f. "
                   "start=[%s] target=[%s]",
                   settings_.standTransitionSec, settings_.poseKpRatio, settings_.poseKdRatio,
                   poseSummary(poseTransitionStartPose_).c_str(), poseSummary(poseTransitionTargetPose_).c_str());
@@ -790,21 +643,8 @@ void RlBackend::policyTimerCallback() {
     startupHoldStarted_ = false;
     lastAction_.assign(settings_.actionDim, 0.0f);
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
-                         "RL backend lost fresh simulator state/sensor data. Holding policyDefaultJointState.");
+                         "RL backend lost fresh simulator state/sensor data. Holding rlStandJointState.");
     publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-    return;
-  }
-
-  if (pendingPolicyActivationReset_) {
-    if (!policyActivationResetInFlight_ && !beginAsyncPolicyActivationReset()) {
-      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-      return;
-    }
-    if (!finishAsyncPolicyActivationReset()) {
-      publishPoseCommand(standJointState_, settings_.poseKpRatio, settings_.poseKdRatio);
-      return;
-    }
-    pendingPolicyActivationReset_ = false;
     return;
   }
 
@@ -817,7 +657,7 @@ void RlBackend::policyTimerCallback() {
     lastAction_.assign(settings_.actionDim, 0.0f);
     if (settings_.startupHoldSec > 0.0) {
       RCLCPP_INFO(node_->get_logger(),
-                  "Fresh simulator state and sensor data received. Holding policyDefaultJointState for %.2f s before allowing RL policy output.",
+                  "Fresh simulator state and sensor data received. Holding rlStandJointState for %.2f s before allowing RL policy output.",
                   settings_.startupHoldSec);
     } else {
       RCLCPP_INFO(node_->get_logger(), "Fresh simulator state and sensor data received. RL policy output enabled.");
@@ -1362,9 +1202,13 @@ geometry_msgs::msg::Twist RlBackend::activeVelocityCommand() const {
 }
 
 geometry_msgs::msg::Twist RlBackend::policyVelocityCommand() const {
-  geometry_msgs::msg::Twist command = activeVelocityCommand();
-  command.linear.x = clampMagnitude(command.linear.x * commandObservationScale_(0), settings_.policyCommandMaxX);
-  command.linear.y = clampMagnitude(command.linear.y * commandObservationScale_(1), settings_.policyCommandMaxY);
-  command.angular.z = clampMagnitude(command.angular.z * commandObservationScale_(2), settings_.policyCommandMaxYaw);
+  auto command = activeVelocityCommand();
+  command.linear.x = -command.linear.x;
+  command.linear.y = -command.linear.y;
+  if (settings_.velocityCommandCap > 0.0) {
+    command.linear.x = clampMagnitude(command.linear.x, settings_.velocityCommandCap);
+    command.linear.y = clampMagnitude(command.linear.y, settings_.velocityCommandCap);
+    command.angular.z = clampMagnitude(command.angular.z, settings_.velocityCommandCap);
+  }
   return command;
 }

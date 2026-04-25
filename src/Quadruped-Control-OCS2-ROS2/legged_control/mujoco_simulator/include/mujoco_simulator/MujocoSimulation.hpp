@@ -158,9 +158,6 @@ private:
     double kdRatio_;
     bool Start_control_=false;
     bool Start_simulate_=false;
-    std::array<double, 12> last_logged_joint_position_command_{};
-    bool has_logged_joint_position_command_ = false;
-
     // random base disturbance
     bool disturbance_enabled_ = false;
     int disturbance_body_id_ = -1;

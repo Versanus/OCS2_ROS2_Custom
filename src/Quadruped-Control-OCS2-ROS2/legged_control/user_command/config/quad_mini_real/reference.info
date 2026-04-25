@@ -1,9 +1,14 @@
+; Shared command limits.
+; Used by user_command teleop and also by the RL backend to derive command remapping.
 targetDisplacementVelocityForward   0.30;
 targetDisplacementVelocityLateral   0.10;
 targetRotationVelocity              0.5;
 
+; Primarily MPC / whole-body-control side.
 comHeight                           0.22
 
+; Teleop / keyboard / gamepad settings.
+; Not used directly by ONNX inference, but still used by user_command tooling.
 teleop
 {
   velocity_accel_limit_vx                1.50
@@ -35,6 +40,8 @@ teleop
   }
 }
 
+; Shared between RL and MPC paths.
+; RL uses this for command sign / axis remap.
 command_axis
 {
   x                                   -1.0
@@ -42,6 +49,9 @@ command_axis
   yaw                                  1.0
 }
 
+; Shared joint-state references.
+; RL startup/pose modes read these, but RL q_default/home is overridden by policyDefaultJointState in rl.info.
+; MPC/WBC interfaces also use these pose targets.
 defaultJointState
 {
    (0,0)  -0.10   ; LF_HAA
@@ -58,6 +68,7 @@ defaultJointState
    (11,0)  -1.20  ; RH_KFE
 }
 
+; Shared pose target.
 standJointState
 {
    (0,0)  -0.00   ; LF_HAA
@@ -74,6 +85,7 @@ standJointState
    (11,0)  -1.10  ; RH_KFE
 }
 
+; Shared pose target.
 sitJointState
 {
    (0,0)   0.0   ; LF_HAA
@@ -90,6 +102,7 @@ sitJointState
    (11,0)  -0.20   ; RH_KFE
 }
 
+; Shared pose target.
 recoveryJointState
 {
    (0,0)  -0.00   ; LF_HAA
@@ -106,6 +119,8 @@ recoveryJointState
    (11,0)  -1.20  ; RH_KFE
 }
 
+; MPC gait / mode-schedule default.
+; Not used by the ONNX policy backend itself.
 initialModeSchedule
 {
   modeSequence
@@ -119,6 +134,8 @@ initialModeSchedule
   }
 }
 
+; MPC gait / template default.
+; Not used by the ONNX policy backend itself.
 defaultModeSequenceTemplate
 {
   modeSequence

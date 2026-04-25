@@ -7,7 +7,7 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
-#include <limits>
+#include <sstream>
 
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -912,8 +912,23 @@ void MujocoSimulation::renderDisturbanceOverlay(const mjrRect& viewport) {
                   measured_render_fps_, render_frequency_, measured_real_time_factor_);
     mjr_overlay(mjFONT_NORMAL, mjGRID_TOPRIGHT, viewport, fpsText, nullptr, &context_);
 
+    std::vector<double> baseLinvel;
+    std::vector<double> baseAngvel;
+    const bool hasBaseLinvel = data_ != nullptr && fillSensorValuesByName(model_, data_, "base_linvel", baseLinvel) &&
+                               baseLinvel.size() >= 2;
+    const bool hasBaseAngvel = data_ != nullptr && fillSensorValuesByName(model_, data_, "base_angvel", baseAngvel) &&
+                               baseAngvel.size() >= 3;
+    const double planarSpeed = hasBaseLinvel
+                                   ? std::sqrt(baseLinvel[0] * baseLinvel[0] + baseLinvel[1] * baseLinvel[1])
+                                   : 0.0;
+    const double yawRate = hasBaseAngvel ? baseAngvel[2] : 0.0;
+
+    std::ostringstream overlayText;
+    overlayText << std::fixed << std::setprecision(2)
+                << "Body speed: " << planarSpeed << " m/s\n"
+                << "Yaw rate: " << yawRate << " rad/s";
+
     if (disturbance_enabled_ && disturbance_body_id_ >= 0) {
-        char overlayText[256];
         double fx = 0.0;
         double fy = 0.0;
         double fz = 0.0;
@@ -931,11 +946,21 @@ void MujocoSimulation::renderDisturbanceOverlay(const mjrRect& viewport) {
         }
 
         const double forceMagnitude = forceActive ? currentForceMagnitude : getLastDisturbanceForceMagnitude();
-        std::snprintf(overlayText, sizeof(overlayText),
-                      "Disturbance: ON\nTarget: %s\nScale: %.2f\nLast force: %.1f N\nFx: %.1f   Fy: %.1f   Fz: %.1f\nKeys: 0 trunk, 1 LF, 2 RF, 3 LH, 4 RH",
-                      getDisturbanceBodyLabel(), getCurrentDisturbanceForceScale(), forceMagnitude, fx, fy, fz);
-        mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, overlayText, nullptr, &context_);
+        std::ostringstream disturbanceText;
+        disturbanceText << overlayText.str()
+                        << "\n\nDisturbance: ON\n"
+                        << "Target: " << getDisturbanceBodyLabel() << "\n"
+                        << "Scale: " << std::fixed << std::setprecision(2) << getCurrentDisturbanceForceScale() << "\n"
+                        << "Last force: " << std::setprecision(1) << forceMagnitude << " N\n"
+                        << "Fx: " << fx << "   Fy: " << fy << "   Fz: " << fz << "\n"
+                        << "Keys: 0 trunk, 1 LF, 2 RF, 3 LH, 4 RH";
+        const std::string text = disturbanceText.str();
+        mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, text.c_str(), nullptr, &context_);
+        return;
     }
+
+    const std::string text = overlayText.str();
+    mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, viewport, text.c_str(), nullptr, &context_);
 }
 
 void MujocoSimulation::appendDisturbanceArrowToScene() {
@@ -1089,29 +1114,6 @@ bool MujocoSimulation::applyJointControl(const legged_msgs::msg::JointControlDat
         Joint_torque_[i] = msg.joint_torque[i];
     }
 
-    double max_command_delta = has_logged_joint_position_command_ ? 0.0 : std::numeric_limits<double>::infinity();
-    if (has_logged_joint_position_command_) {
-        for (std::size_t i = 0; i < msg.joint_position.size(); ++i) {
-            max_command_delta = std::max(
-                max_command_delta,
-                std::abs(static_cast<double>(msg.joint_position[i]) - last_logged_joint_position_command_[i]));
-        }
-    }
-
-    if (!has_logged_joint_position_command_ || max_command_delta > 0.05) {
-        RCLCPP_INFO(node_->get_logger(),
-                    "Applied joint target: LF=[%.3f %.3f %.3f] LH=[%.3f %.3f %.3f] "
-                    "RF=[%.3f %.3f %.3f] RH=[%.3f %.3f %.3f] kp=%.3f kd=%.3f direct_position=%s",
-                    Joint_position_[0], Joint_position_[1], Joint_position_[2],
-                    Joint_position_[3], Joint_position_[4], Joint_position_[5],
-                    Joint_position_[6], Joint_position_[7], Joint_position_[8],
-                    Joint_position_[9], Joint_position_[10], Joint_position_[11],
-                    kpRatio_, kdRatio_, directPositionControl_ ? "true" : "false");
-        for (std::size_t i = 0; i < msg.joint_position.size(); ++i) {
-            last_logged_joint_position_command_[i] = msg.joint_position[i];
-        }
-        has_logged_joint_position_command_ = true;
-    }
     return true;
 }
 
@@ -1167,45 +1169,6 @@ void MujocoSimulation::publish_state_data()
     if (!state_pub_) {
         return;
     }
-
-    RCLCPP_INFO(node_->get_logger(),
-            "Simulation time = [%f], \n"
-            "Publishing base quat data: [%f, %f, %f, %f], \n"
-            "Publishing base pos data: [%f, %f, %f], \n"
-            "Publishing base angvel data: [%f, %f, %f], \n"
-            "Publishing base linvel data: [%f, %f, %f], \n"
-            "Publishing joint position data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Publishing joint velocity data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Publishing joint torque data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Publishing contact flag: [%zu, %zu, %zu, %zu]",
-            message.simulation_time,
-            message.base_quat_values[0], message.base_quat_values[1], 
-            message.base_quat_values[2],message.base_quat_values[3],
-            message.base_pose_values[0], message.base_pose_values[1],message.base_pose_values[2], 
-            message.base_angvel_values[0], message.base_angvel_values[1],message.base_angvel_values[2], 
-            message.base_linvel_values[0], message.base_linvel_values[1],message.base_linvel_values[2],
-            message.joint_position_values[0], message.joint_position_values[1],
-            message.joint_position_values[2], message.joint_position_values[3],
-            message.joint_position_values[4], message.joint_position_values[5],
-            message.joint_position_values[6], message.joint_position_values[7],
-            message.joint_position_values[8], message.joint_position_values[9],
-            message.joint_position_values[10], message.joint_position_values[11],
-            message.joint_velocity_values[0], message.joint_velocity_values[1],
-            message.joint_velocity_values[2], message.joint_velocity_values[3],
-            message.joint_velocity_values[4], message.joint_velocity_values[5],
-            message.joint_velocity_values[6], message.joint_velocity_values[7],
-            message.joint_velocity_values[8], message.joint_velocity_values[9],
-            message.joint_velocity_values[10], message.joint_velocity_values[11],
-            message.joint_torque_values[0], message.joint_torque_values[1],
-            message.joint_torque_values[2], message.joint_torque_values[3],
-            message.joint_torque_values[4], message.joint_torque_values[5],
-            message.joint_torque_values[6], message.joint_torque_values[7],
-            message.joint_torque_values[8], message.joint_torque_values[9],
-            message.joint_torque_values[10], message.joint_torque_values[11],
-            static_cast<size_t>(message.contact_flags[0]), static_cast<size_t>(message.contact_flags[1]),
-            static_cast<size_t>(message.contact_flags[2]), static_cast<size_t>(message.contact_flags[3]));
-    RCLCPP_INFO(node_->get_logger(),
-            "Simulation time = [%f]",message.simulation_time);
 
     state_pub_->publish(message);
 }
@@ -1333,40 +1296,5 @@ void MujocoSimulation::start_control_service(const std::shared_ptr<legged_msgs::
     response->state = state;
     response->success = true;
 
-    RCLCPP_INFO(node_->get_logger(),
-            "Simulation time = [%f], \n"
-            "Responding base quat data: [%f, %f, %f, %f], \n"
-            "Responding base pos data: [%f, %f, %f], \n"
-            "Responding base angvel data: [%f, %f, %f], \n"
-            "Responding base linvel data: [%f, %f, %f], \n"
-            "Responding joint position data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Responding joint velocity data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Responding joint torque data: [%f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f, %f], \n"
-            "Responding contact flag: [%zu, %zu, %zu, %zu]",
-            response->state.simulation_time,
-            response->state.base_quat_values[0], response->state.base_quat_values[1], 
-            response->state.base_quat_values[2],response->state.base_quat_values[3],
-            response->state.base_pose_values[0], response->state.base_pose_values[1],response->state.base_pose_values[2], 
-            response->state.base_angvel_values[0], response->state.base_angvel_values[1],response->state.base_angvel_values[2], 
-            response->state.base_linvel_values[0], response->state.base_linvel_values[1],response->state.base_linvel_values[2],
-            response->state.joint_position_values[0], response->state.joint_position_values[1],
-            response->state.joint_position_values[2], response->state.joint_position_values[3],
-            response->state.joint_position_values[4], response->state.joint_position_values[5],
-            response->state.joint_position_values[6], response->state.joint_position_values[7],
-            response->state.joint_position_values[8], response->state.joint_position_values[9],
-            response->state.joint_position_values[10], response->state.joint_position_values[11],
-            response->state.joint_velocity_values[0], response->state.joint_velocity_values[1],
-            response->state.joint_velocity_values[2], response->state.joint_velocity_values[3],
-            response->state.joint_velocity_values[4], response->state.joint_velocity_values[5],
-            response->state.joint_velocity_values[6], response->state.joint_velocity_values[7],
-            response->state.joint_velocity_values[8], response->state.joint_velocity_values[9],
-            response->state.joint_velocity_values[10], response->state.joint_velocity_values[11],
-            response->state.joint_torque_values[0], response->state.joint_torque_values[1],
-            response->state.joint_torque_values[2], response->state.joint_torque_values[3],
-            response->state.joint_torque_values[4], response->state.joint_torque_values[5],
-            response->state.joint_torque_values[6], response->state.joint_torque_values[7],
-            response->state.joint_torque_values[8], response->state.joint_torque_values[9],
-            response->state.joint_torque_values[10], response->state.joint_torque_values[11],
-            static_cast<size_t>(response->state.contact_flags[0]), static_cast<size_t>(response->state.contact_flags[1]),
-            static_cast<size_t>(response->state.contact_flags[2]), static_cast<size_t>(response->state.contact_flags[3]));
+    RCLCPP_INFO(node_->get_logger(), "Responded to /start_control at sim time %.3f.", response->state.simulation_time);
 }
