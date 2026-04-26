@@ -6,7 +6,7 @@ onnxModelPath ../../models/quad_mini_rough_policy.onnx
 mujocoTimestep 0.001
 mujocoControlFrequency 50.0
 mujocoBaseKp 30.0
-mujocoBaseKd 0.0
+mujocoBaseKd 0.50
 mujocoJointDamping 1.0
 mujocoDirectPositionControl false
 

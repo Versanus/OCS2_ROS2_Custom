@@ -10,7 +10,7 @@ from launch.substitutions import LaunchConfiguration
 
 def _selected_xml_name(control_type, terrain):
     if terrain == 'rough':
-        return 'robot_rough_RL.xml' if control_type == 'rl' else 'robot_rough.xml'
+        return 'robot_rough_RL_motor.xml' if control_type == 'rl' else 'robot_rough.xml'
     if terrain == 'flat':
         return 'robot_RL_motor.xml' if control_type == 'rl' else 'robot.xml'
     raise RuntimeError("mujoco_terrain must be 'flat' or 'rough'.")

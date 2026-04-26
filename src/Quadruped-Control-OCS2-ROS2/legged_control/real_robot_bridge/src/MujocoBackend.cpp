@@ -34,7 +34,7 @@ MujocoBackend::MujocoBackend(const std::string& xml_file,
 }
 
 double MujocoBackend::defaultPublishRateHz() const {
-  return std::max(1.0, simulation_->getControlFrequency());
+  return std::max({1.0, simulation_->getControlFrequency(), simulation_->getRenderFrequency()});
 }
 
 void MujocoBackend::prepareForControlStart() {

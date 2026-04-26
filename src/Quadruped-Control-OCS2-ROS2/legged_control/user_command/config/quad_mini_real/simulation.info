@@ -13,7 +13,7 @@ render
   render_inertia false
   visualize_contacts true
   tracking_base true
-  render_frequency 120
+  render_frequency 110
 }
 
 disturbance

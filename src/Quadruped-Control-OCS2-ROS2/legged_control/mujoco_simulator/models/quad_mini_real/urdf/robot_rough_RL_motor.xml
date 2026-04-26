@@ -49,7 +49,7 @@
     <mesh name="lidar_mesh" file="Helios_Lidar.obj"/>
     <mesh name="camera_mesh" file="AC_Camera.obj"/>
     
-    <hfield name="hfield" file="hfield.png" size="30 30 0.08 0.3"/>
+    <hfield name="hfield" file="hfield.png" size="25 25 0.10 0.3"/>
   </asset>
 
 <worldbody>
@@ -62,6 +62,7 @@
         friction="1 0.005 0.0001"
         condim="3"/>
         
+
   <body name="trunk" pos="0 0 0.12">
     <camera name="track" pos="0.846 -1.3 0.316" xyaxes="0.866 0.500 0.000 -0.171 0.296 0.940" mode="trackcom"/>
     <camera name="top" pos="-1 0 1" xyaxes="0 -1 0 0.7 0 0.7" mode="trackcom"/>
@@ -412,21 +413,21 @@
 
     <!-- ================= ACTUATORS ================= -->
   <actuator>
-    <position name="RF_HAA" joint="RF_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
-    <position name="RF_HFE" joint="RF_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
-    <position name="RF_KFE" joint="RF_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <motor name="RF_HAA" joint="RF_HAA" gear="1" ctrlrange="-6 6" ctrllimited="true"/>
+    <motor name="RF_HFE" joint="RF_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RF_KFE" joint="RF_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <position name="LF_HAA" joint="LF_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
-    <position name="LF_HFE" joint="LF_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
-    <position name="LF_KFE" joint="LF_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <motor name="LF_HAA" joint="LF_HAA" gear="1" ctrlrange="-6 6" ctrllimited="true"/>
+    <motor name="LF_HFE" joint="LF_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LF_KFE" joint="LF_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <position name="RH_HAA" joint="RH_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
-    <position name="RH_HFE" joint="RH_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
-    <position name="RH_KFE" joint="RH_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <motor name="RH_HAA" joint="RH_HAA" gear="1" ctrlrange="-6 6" ctrllimited="true"/>
+    <motor name="RH_HFE" joint="RH_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="RH_KFE" joint="RH_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
 
-    <position name="LH_HAA" joint="LH_HAA" kp="30" forcerange="-6 6" forcelimited="true"/>
-    <position name="LH_HFE" joint="LH_HFE" kp="30" forcerange="-12 12" forcelimited="true"/>
-    <position name="LH_KFE" joint="LH_KFE" kp="30" forcerange="-12 12" forcelimited="true"/>
+    <motor name="LH_HAA" joint="LH_HAA" gear="1" ctrlrange="-6 6" ctrllimited="true"/>
+    <motor name="LH_HFE" joint="LH_HFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
+    <motor name="LH_KFE" joint="LH_KFE" gear="1" ctrlrange="-12 12" ctrllimited="true"/>
   </actuator>
   <keyframe>
     <key name="home"

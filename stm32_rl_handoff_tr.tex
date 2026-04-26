@@ -165,6 +165,42 @@ g_world = [0, 0, -1];
 g_proj = transpose(R) * g_world;
 \end{lstlisting}
 
+\subsection*{Local Linear Velocity Icin Pratik Fallback}
+Ideal durumda observation icindeki govde lineer hizi \textbf{olculen veya kestirilen local/body frame velocity} olmalidir.
+
+\noindent
+Ama eger gercek sistemde su anda:
+\begin{itemize}
+  \item odom yoksa
+  \item velocity estimator yoksa
+  \item dogrudan body linear velocity olcumu yoksa
+\end{itemize}
+gecici ve pratik fallback olarak sunu kullanabilirsin:
+
+\begin{lstlisting}
+v_body_fallback = [vx_policy, vy_policy, 0.0f]
+\end{lstlisting}
+
+\noindent
+Yani observation icindeki ilk 3 elemani:
+\begin{lstlisting}
+obs[0] = vx_policy;
+obs[1] = vy_policy;
+obs[2] = 0.0f;
+\end{lstlisting}
+seklinde doldurabilirsin.
+
+\noindent
+Bu cozum \textbf{ideal degildir}, ama sistemde hic velocity bilgisi yoksa sifirdan daha iyi bir baslangic olabilir. Politika, en azindan komut edilen yon/hiz bilgisini observation tarafinda gormus olur.
+
+\noindent
+Onerilen oncelik sirasi:
+\begin{enumerate}
+  \item gercek local/body linear velocity
+  \item estimator cikisi
+  \item fallback olarak desired velocity input
+\end{enumerate}
+
 \section{Komut Isaretleri}
 Politika icine girmeden once komut su sekilde ayarlanir:
 
@@ -290,6 +326,15 @@ for (i = 0; i < 12; ++i) {
 }
 \end{lstlisting}
 
+\noindent
+Eger \texttt{v\_body} mevcut degilse, bu satiri soyle degistirebilirsin:
+
+\begin{lstlisting}
+obs[0] = vx_policy;
+obs[1] = vy_policy;
+obs[2] = 0.0f;
+\end{lstlisting}
+
 \section{Opsiyonel Pozlar}
 Eger STM tarafinda stand/sit/recovery de olsun istiyorsan, asagidaki pozlari da ayni joint order ile kullan:
 
@@ -354,5 +399,71 @@ STM tarafinda ihtiyaci olan seyler sadece sunlar:
 
 \noindent
 Bunlari uygularsa mevcut politikanin STM32 tarafinda calismasi icin gerekli temel bilgi tamamlanmis olur.
+
+\section{Odom Yoksa: Teacher-Student Yaklasimi}
+Eger gercek robot tarafinda odom veya acik bir base velocity estimator yoksa, en temiz cozumlerden biri \textbf{teacher-student} yaklasimidir.
+
+\subsection*{Temel Fikir}
+\begin{itemize}
+  \item \textbf{Teacher policy}: sim icinde privileged bilgi kullanir.
+  \item \textbf{Student policy}: sadece gercekte elde edilebilecek sensorleri kullanir.
+\end{itemize}
+
+\noindent
+Teacher sunlari gorebilir:
+\begin{itemize}
+  \item gercek base linear velocity
+  \item gercek contact bilgisi
+  \item tam state
+\end{itemize}
+
+\noindent
+Student ise sadece sunlari alir:
+\begin{itemize}
+  \item IMU quaternion veya projected gravity
+  \item IMU angular velocity
+  \item IMU linear acceleration
+  \item joint position
+  \item joint velocity
+  \item previous action
+  \item command
+\end{itemize}
+
+\section{Neden Daha Iyi Olabilir?}
+Bu yaklasim, politikaya ``ham sensorlerden kendi icinde state tahmini yap'' deme fikrinden genelde daha saglamdir.
+
+Avantajlari:
+\begin{itemize}
+  \item egitim daha kolay olur
+  \item teacher davranisi student'a net hedef verir
+  \item odom olmadan deploy etmek kolaylasir
+  \item ayri bir estimator gerekmeyebilir
+\end{itemize}
+
+\section{Onemli Nokta: History Gerekir}
+Sadece tek bir IMU ornegi vermek genelde yeterli olmaz.
+
+\noindent
+Student policy'nin daha saglam olmasi icin genelde sunlardan biri kullanilir:
+\begin{itemize}
+  \item son \(N\) observation'i stack etmek
+  \item recurrent policy kullanmak (GRU/LSTM)
+  \item kisa zaman gecmisi ile implicit velocity tahmini yaptirmak
+\end{itemize}
+
+\section{Pratik Oneri}
+Eger uzun vadede odomsuz donanim hedefleniyorsa, en mantikli yol:
+\begin{enumerate}
+  \item mevcut velocity-bilgili policy ile iyi bir teacher egitmek
+  \item student policy'yi sadece deploy edilebilir sensorlerle teacher'a imitation ettirmek
+  \item donanimda student policy'yi kullanmak
+\end{enumerate}
+
+\noindent
+Kisaca:
+\begin{itemize}
+  \item \textbf{sim ve arastirma icin}: privileged velocity kullanan teacher mantikli
+  \item \textbf{gercek donanim ve odomsuz deploy icin}: teacher-student genelde daha iyi
+\end{itemize}
 
 \end{document}
