@@ -14,7 +14,7 @@ model_settings
   phaseTransitionStanceTime     0.1
 
   verboseCppAd                  true
-  recompileLibrariesCppAd       false
+  recompileLibrariesCppAd       true
   modelFolderCppAd              /workspaces/quad_ocs2_ws/.cache/legged_control/a1_custom
 }
 
