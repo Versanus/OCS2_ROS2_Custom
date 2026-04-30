@@ -33,6 +33,7 @@ install(DIRECTORY
 install(PROGRAMS
   scripts/gui_status.py
   scripts/joint_status.py
+  scripts/joint_plotter.py
   scripts/motor_status.py
   scripts/digitalTwin.py
   scripts/mujoco_to_joint_state.py
