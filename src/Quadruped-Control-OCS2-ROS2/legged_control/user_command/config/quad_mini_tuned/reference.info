@@ -1,0 +1,150 @@
+; Shared command limits.
+; Used by user_command teleop and also by the RL backend to derive command remapping.
+targetDisplacementVelocityForward   0.30;
+targetDisplacementVelocityLateral   0.10;
+targetRotationVelocity              0.5;
+
+; Primarily MPC / whole-body-control side.
+comHeight                           0.22
+
+; Teleop / keyboard / gamepad settings.
+; Not used directly by ONNX inference, but still used by user_command tooling.
+teleop
+{
+  velocity_accel_limit_vx                1.50
+  velocity_accel_limit_vy                1.00
+  velocity_accel_limit_yaw               1.00
+  velocity_preview_distance_low_speed   1.0
+  velocity_preview_distance_high_speed  2.0
+  velocity_preview_speed_low            0.5
+  velocity_preview_speed_high           2.0
+
+  gamepad
+  {
+    enabled                              true
+    device                               /dev/input/js0
+    axisDeadzone                         0.20
+    digitalPressThreshold                0.60
+    axisLateral                          0
+    axisForward                          1
+    axisYaw                              3
+    dpadHorizontalAxis                   6
+    dpadVerticalAxis                     7
+    leftTriggerAxis                      2
+    rightTriggerAxis                     5
+    buttonB                              1
+    buttonX                              2
+    buttonY                              3
+    buttonLb                             4
+    buttonRb                             5
+  }
+}
+
+; Shared between RL and MPC paths.
+; RL uses this for command sign / axis remap.
+command_axis
+{
+  x                                   1.0
+  y                                   1.0
+  yaw                                  1.0
+}
+
+; Shared joint-state references.
+; RL startup/pose modes read these, but RL q_default/home is overridden by policyDefaultJointState in rl.info.
+; MPC/WBC interfaces also use these pose targets.
+defaultJointState
+{
+   (0,0)  -0.10   ; LF_HAA
+   (1,0)  -0.70   ; LF_HFE
+   (2,0)   1.30   ; LF_KFE
+   (3,0) 0.10   ; LH_HAA
+   (4,0)  -0.30   ; LH_HFE
+   (5,0)   1.20   ; LH_KFE
+   (6,0)   0.10   ; RF_HAA
+   (7,0)   0.70  ; RF_HFE
+   (8,0)   -1.30   ; RF_KFE
+   (9,0)   -0.10   ; RH_HAA
+   (10,0)  0.30   ; RH_HFE
+   (11,0)  -1.20  ; RH_KFE
+}
+
+; Shared pose target.
+standJointState
+{
+   (0,0)  -0.00   ; LF_HAA
+   (1,0)  -0.30   ; LF_HFE
+   (2,0)   1.10   ; LF_KFE
+   (3,0) 0.00   ; LH_HAA
+   (4,0)  -0.30   ; LH_HFE
+   (5,0)   1.10   ; LH_KFE
+   (6,0)   0.00   ; RF_HAA
+   (7,0)   0.30  ; RF_HFE
+   (8,0)   -1.10   ; RF_KFE
+   (9,0)   -0.00   ; RH_HAA
+   (10,0)  0.30   ; RH_HFE
+   (11,0)  -1.10  ; RH_KFE
+}
+
+; Shared pose target.
+sitJointState
+{
+   (0,0)   0.0   ; LF_HAA
+   (1,0)   0.0   ; LF_HFE
+   (2,0)   0.20   ; LF_KFE
+   (3,0)   0.0   ; LH_HAA
+   (4,0)   0.0   ; LH_HFE
+   (5,0)   0.20   ; LH_KFE
+   (6,0)   0.0   ; RF_HAA
+   (7,0)   0.0   ; RF_HFE
+   (8,0)   -0.20   ; RF_KFE
+   (9,0)   0.0   ; RH_HAA
+   (10,0)  0.0   ; RH_HFE
+   (11,0)  -0.20   ; RH_KFE
+}
+
+; Shared pose target.
+recoveryJointState
+{
+   (0,0)  -0.00   ; LF_HAA
+   (1,0)  -0.70   ; LF_HFE
+   (2,0)   1.30   ; LF_KFE
+   (3,0)   0.00   ; LH_HAA
+   (4,0)  -0.30   ; LH_HFE
+   (5,0)   1.20   ; LH_KFE
+   (6,0)   0.00   ; RF_HAA
+   (7,0)   0.70  ; RF_HFE
+   (8,0)   -1.30   ; RF_KFE
+   (9,0)   -0.00   ; RH_HAA
+   (10,0)  0.30   ; RH_HFE
+   (11,0)  -1.20  ; RH_KFE
+}
+
+; MPC gait / mode-schedule default.
+; Not used by the ONNX policy backend itself.
+initialModeSchedule
+{
+  modeSequence
+  {
+    [0]  STANCE
+    [1]  STANCE
+  }
+  eventTimes
+  {
+    [0]  0.5
+  }
+}
+
+; MPC gait / template default.
+; Not used by the ONNX policy backend itself.
+defaultModeSequenceTemplate
+{
+  modeSequence
+  {
+    [0]  STANCE
+  }
+  switchingTimes
+  {
+    [0]  0.0
+    [1]  1.0
+  }
+}

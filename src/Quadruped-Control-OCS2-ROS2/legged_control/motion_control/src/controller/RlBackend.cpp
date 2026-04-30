@@ -369,6 +369,8 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
         tree.get<double>("commandActivationThreshold", settings_.commandActivationThreshold);
     settings_.velocityCommandCap =
         tree.get<double>("velocityCommandCap", settings_.velocityCommandCap);
+    settings_.invertVelocityCommandXY =
+        tree.get<bool>("invertVelocityCommandXY", settings_.invertVelocityCommandXY);
     settings_.requireCommandForPolicy =
         tree.get<bool>("requireCommandForPolicy", settings_.requireCommandForPolicy);
     settings_.holdStandWhenPolicyIdle =
@@ -1203,8 +1205,10 @@ geometry_msgs::msg::Twist RlBackend::activeVelocityCommand() const {
 
 geometry_msgs::msg::Twist RlBackend::policyVelocityCommand() const {
   auto command = activeVelocityCommand();
-  command.linear.x = -command.linear.x;
-  command.linear.y = -command.linear.y;
+  if (settings_.invertVelocityCommandXY) {
+    command.linear.x = -command.linear.x;
+    command.linear.y = -command.linear.y;
+  }
   if (settings_.velocityCommandCap > 0.0) {
     command.linear.x = clampMagnitude(command.linear.x, settings_.velocityCommandCap);
     command.linear.y = clampMagnitude(command.linear.y, settings_.velocityCommandCap);

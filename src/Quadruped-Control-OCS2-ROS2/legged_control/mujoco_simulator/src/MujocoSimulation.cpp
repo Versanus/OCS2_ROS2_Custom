@@ -162,17 +162,23 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
     baseKp_ = positiveOverride(runtimeOptions.baseKp, baseKp_);
     baseKd_ = positiveOverride(runtimeOptions.baseKd, baseKd_);
     directPositionControl_ = runtimeOptions.directPositionControl;
-    const double jointDamping =
-        runtimeOptions.jointDamping >= 0.0 ? runtimeOptions.jointDamping : (directPositionControl_ ? baseKd_ : -1.0);
+    const bool useXmlJointDynamics = runtimeOptions.useXmlJointDynamics;
+    const double jointDamping = useXmlJointDynamics
+                                    ? -1.0
+                                    : (runtimeOptions.jointDamping >= 0.0
+                                           ? runtimeOptions.jointDamping
+                                           : (directPositionControl_ ? baseKd_ : -1.0));
 
     if (directPositionControl_) {
         RCLCPP_INFO(node_->get_logger(),
-                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f actuator_kp=%.3f controller_kd=%.3f joint_damping=%.3f direct_position_control=true.",
-                    timestep_, control_frequency_, baseKp_, baseKd_, jointDamping >= 0.0 ? jointDamping : 0.0);
+                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f actuator_kp=%.3f controller_kd=%.3f joint_damping_source=%s direct_position_control=true.",
+                    timestep_, control_frequency_, baseKp_, baseKd_,
+                    useXmlJointDynamics ? "xml" : "runtime_override");
     } else {
         RCLCPP_INFO(node_->get_logger(),
-                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f joint_damping_override=%.3f direct_position_control=false.",
-                    timestep_, control_frequency_, baseKp_, baseKd_, jointDamping);
+                    "MuJoCo control config: timestep=%.6f control_frequency=%.2f base_kp=%.3f base_kd=%.3f joint_damping_source=%s direct_position_control=false.",
+                    timestep_, control_frequency_, baseKp_, baseKd_,
+                    useXmlJointDynamics ? "xml" : "runtime_override");
     }
     prepareDebugDumpDirectory(runtimeOptions);
 
@@ -236,8 +242,8 @@ void MujocoSimulation::loadModel(const std::string& modelPath, const std::string
             model_->actuator_biasprm[actuator_id * mjNBIAS + 2] = 0.0;
         }
         RCLCPP_INFO(node_->get_logger(),
-                    "Configured RL position actuators with kp=%.3f, actuator kv=0.000, joint damping %.3f. Force limits come from the MuJoCo XML.",
-                    baseKp_, jointDamping >= 0.0 ? jointDamping : 0.0);
+                    "Configured RL position actuators with kp=%.3f, actuator kv=0.000, joint dynamics from %s. Force limits come from the MuJoCo XML.",
+                    baseKp_, useXmlJointDynamics ? "the MuJoCo XML" : "the RL runtime override");
     }
     data_ = mj_makeData(model_);
     const int home_key_id = mj_name2id(model_, mjOBJ_KEY, "home");

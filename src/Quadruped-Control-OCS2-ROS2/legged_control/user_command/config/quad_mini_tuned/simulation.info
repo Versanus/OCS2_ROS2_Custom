@@ -1,0 +1,34 @@
+controller
+{
+    timestep  0.001
+    mpc_control_frequency  40
+    wbc_control_frequency  200
+}
+
+render
+{
+  render_appearance true
+  render_inertia false
+  visualize_contacts false
+  tracking_base true
+  render_frequency 120
+}
+
+pid
+{
+    kp                   10.0
+    kd                   0.30
+    estop_kp             25.0
+    estop_kd             0.40
+}
+
+disturbance
+{
+    force_min            20.0
+    force_max            30.0
+    vertical_scale       0.20
+    interval_min         1.0
+    interval_max         1.5
+    impulse_duration     0.25
+    arrow_scale          0.015
+}

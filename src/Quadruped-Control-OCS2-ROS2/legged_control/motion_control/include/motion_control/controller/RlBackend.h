@@ -78,6 +78,7 @@ class RlBackend final : public ControllerBackend {
     double sitTransitionSec = 1.5;
     double commandActivationThreshold = 0.02;
     double velocityCommandCap = 0.0;
+    bool invertVelocityCommandXY = true;
     bool requireCommandForPolicy = false;
     bool holdStandWhenPolicyIdle = false;
     std::size_t observationDim = 48;
