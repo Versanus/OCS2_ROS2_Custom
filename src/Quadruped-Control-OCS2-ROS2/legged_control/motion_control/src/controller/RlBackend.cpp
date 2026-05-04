@@ -15,8 +15,10 @@
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <ocs2_core/misc/LoadData.h>
+#include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
 
 #include "motion_control/controller/OrtCpuRunner.h"
+#include "motion_control/legged_estimation/StateEstimatorFactory.h"
 
 namespace {
 
@@ -290,6 +292,9 @@ bool RlBackend::configure(const ControllerConfig& config) {
   if (!loadPoses(config.rlConfigFile)) {
     return false;
   }
+  if (!setupStateEstimator()) {
+    return false;
+  }
 
   policyRunner_ = std::make_unique<OrtCpuRunner>();
   if (!policyRunner_->load(settings_.modelPath, settings_.inputName, settings_.outputName)) {
@@ -348,6 +353,7 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
 
     boost::property_tree::ptree tree;
     boost::property_tree::read_info(rlConfigPath.string(), tree);
+    estimatorConfig_ = loadEstimatorConfig(rlConfigPath.string(), false);
 
     settings_.modelPath = resolvePath(rlConfigPath, tree.get<std::string>("onnxModelPath")).string();
     settings_.inputName = tree.get<std::string>("onnxInputName", settings_.inputName);
@@ -442,9 +448,45 @@ bool RlBackend::loadSettings(const ControllerConfig& config) {
     if (settings_.debugDumpEnabled && settings_.debugDumpDir.empty()) {
       settings_.debugDumpDir = "/tmp/quad_mini_rl_debug";
     }
+    RCLCPP_INFO(node_->get_logger(), "Configured RL state estimator: enabled=%s type=%s orientationSource=%s",
+                estimatorConfig_.enabled ? "true" : "false", toString(estimatorConfig_.type),
+                toString(estimatorConfig_.orientationSource));
     return true;
   } catch (const std::exception& error) {
     RCLCPP_ERROR(node_->get_logger(), "Failed to load RL config '%s': %s", config.rlConfigFile.c_str(), error.what());
+    return false;
+  }
+}
+
+bool RlBackend::setupStateEstimator() {
+  hasEstimatedState_ = false;
+  estimatorSeeded_ = false;
+  lastEstimatedStateReceiptTime_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  lastEstimatedStateSimTime_ = 0.0;
+  stateEstimator_.reset();
+  eeKinematicsPtr_.reset();
+  leggedInterface_.reset();
+
+  if (!estimatorConfig_.enabled) {
+    return true;
+  }
+
+  try {
+    leggedInterface_ = std::make_shared<LeggedRobotInterface>(controllerConfig_.taskFile, controllerConfig_.urdfFile,
+                                                              controllerConfig_.referenceFile);
+    ocs2::CentroidalModelPinocchioMapping pinocchioMapping(leggedInterface_->getCentroidalModelInfo());
+    eeKinematicsPtr_ = std::make_shared<ocs2::PinocchioEndEffectorKinematics>(
+        leggedInterface_->getPinocchioInterface(), pinocchioMapping, leggedInterface_->modelSettings().contactNames3DoF);
+    eeKinematicsPtr_->setPinocchioInterface(leggedInterface_->getPinocchioInterface());
+    stateEstimator_ = StateEstimatorFactory::create(estimatorConfig_, node_, leggedInterface_->getPinocchioInterface(),
+                                                    leggedInterface_->getCentroidalModelInfo(), *eeKinematicsPtr_,
+                                                    controllerConfig_.taskFile, false);
+    estimatedRbdState_.setZero(2 * leggedInterface_->getCentroidalModelInfo().generalizedCoordinatesNum);
+    estimatedOrientation_ = quaternion_t::Identity();
+    estimatedLocalLinearVelocity_.setZero();
+    return true;
+  } catch (const std::exception& error) {
+    RCLCPP_ERROR(node_->get_logger(), "Failed to configure RL state estimator: %s", error.what());
     return false;
   }
 }
@@ -514,6 +556,7 @@ void RlBackend::stateCallback(const legged_msgs::msg::SimulatorStateData::Shared
   latestState_ = *msg;
   hasState_ = true;
   lastStateReceiptTime_ = node_->now();
+  trySeedStateEstimatorFromLatestState();
 
   if (controlState_ == ControlState::Hold && !hasHoldPose_) {
     latchHoldPoseFromLatestState();
@@ -524,6 +567,10 @@ void RlBackend::sensorCallback(const legged_msgs::msg::SimulatorSensorData::Shar
   latestSensor_ = *msg;
   hasSensor_ = true;
   lastSensorReceiptTime_ = node_->now();
+  trySeedStateEstimatorFromLatestState();
+  if (stateEstimator_) {
+    updateStateEstimatorFromSensor(*msg);
+  }
 }
 
 void RlBackend::velocityCommandCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
@@ -764,14 +811,137 @@ bool RlBackend::hasFreshSensor() const {
   }
 
   const auto age = (node_->now() - lastSensorReceiptTime_).seconds();
-  const bool hasLinearVelocityObservation =
-      isFiniteVector(latestSensor_.local_linvel_values, 3) || hasFreshState();
+  const bool requiresQuaternion = !stateEstimator_ || estimatorConfig_.orientationSource == OrientationSource::ImuQuaternion;
+  const bool hasLinearVelocityObservation = stateEstimator_ ? hasFreshEstimatedState()
+                                                            : (isFiniteVector(latestSensor_.local_linvel_values, 3) || hasFreshState());
   return std::isfinite(age) && age <= settings_.stateTimeoutSec &&
-         isFiniteVector(latestSensor_.imu_quat_values, 4) &&
+         (!requiresQuaternion || isFiniteVector(latestSensor_.imu_quat_values, 4)) &&
          isFiniteVector(latestSensor_.imu_angvel_values, 3) &&
          hasLinearVelocityObservation &&
          isFiniteVector(latestSensor_.joint_position_values, kJointCount) &&
          isFiniteVector(latestSensor_.joint_velocity_values, kJointCount);
+}
+
+bool RlBackend::hasFreshEstimatedState() const {
+  if (!stateEstimator_ || !hasEstimatedState_) {
+    return false;
+  }
+
+  const auto age = (node_->now() - lastEstimatedStateReceiptTime_).seconds();
+  return std::isfinite(age) && age <= settings_.stateTimeoutSec &&
+         estimatedRbdState_.size() > 0 &&
+         estimatedOrientation_.norm() > 1e-6 &&
+         estimatedLocalLinearVelocity_.allFinite();
+}
+
+bool RlBackend::buildRbdStateFromStateMsg(const legged_msgs::msg::SimulatorStateData& msg, ocs2::vector_t& rbdState) const {
+  if (!leggedInterface_ && !hasFreshState()) {
+    return false;
+  }
+
+  const std::size_t expectedJointCount = leggedInterface_ ? leggedInterface_->getCentroidalModelInfo().actuatedDofNum : kJointCount;
+  if (!isFiniteVector(msg.base_quat_values, 4) || !isFiniteVector(msg.base_pose_values, 3) ||
+      !isFiniteVector(msg.base_angvel_values, 3) || !isFiniteVector(msg.base_linvel_values, 3) ||
+      !isFiniteVector(msg.joint_position_values, expectedJointCount) || !isFiniteVector(msg.joint_velocity_values, expectedJointCount)) {
+    return false;
+  }
+
+  const Eigen::Quaterniond quaternion = normalizedQuaternionFromState(msg);
+  const vector3_t eulerAngles = quatToZyx(quaternion.cast<ocs2::scalar_t>());
+  const vector3_t angularVelocity(msg.base_angvel_values[0], msg.base_angvel_values[1], msg.base_angvel_values[2]);
+  const vector3_t position(msg.base_pose_values[0], msg.base_pose_values[1], msg.base_pose_values[2]);
+  const vector3_t linearVelocity(msg.base_linvel_values[0], msg.base_linvel_values[1], msg.base_linvel_values[2]);
+
+  rbdState = ocs2::vector_t::Zero(2 * (6 + static_cast<Eigen::Index>(expectedJointCount)));
+  rbdState.segment<3>(0) = eulerAngles;
+  rbdState.segment<3>(3) = position;
+  for (std::size_t i = 0; i < expectedJointCount; ++i) {
+    rbdState(6 + static_cast<Eigen::Index>(i)) = msg.joint_position_values[i];
+    rbdState(12 + static_cast<Eigen::Index>(expectedJointCount) + static_cast<Eigen::Index>(i)) = msg.joint_velocity_values[i];
+  }
+  rbdState.segment<3>(6 + static_cast<Eigen::Index>(expectedJointCount)) = angularVelocity;
+  rbdState.segment<3>(9 + static_cast<Eigen::Index>(expectedJointCount)) = linearVelocity;
+  return true;
+}
+
+bool RlBackend::trySeedStateEstimatorFromLatestState() {
+  if (!stateEstimator_ || estimatorSeeded_ || !hasFreshState()) {
+    return false;
+  }
+
+  ocs2::vector_t seedRbdState;
+  if (!buildRbdStateFromStateMsg(latestState_, seedRbdState)) {
+    return false;
+  }
+
+  stateEstimator_->seed(seedRbdState);
+  estimatorSeeded_ = true;
+  return true;
+}
+
+void RlBackend::updateStateEstimatorFromSensor(const legged_msgs::msg::SimulatorSensorData& msg) {
+  if (!stateEstimator_) {
+    return;
+  }
+
+  const std::size_t expectedJointCount = leggedInterface_->getCentroidalModelInfo().actuatedDofNum;
+  if (!isFiniteVector(msg.imu_angvel_values, 3) || !isFiniteVector(msg.imu_linacc_values, 3) ||
+      !isFiniteVector(msg.joint_position_values, expectedJointCount) || !isFiniteVector(msg.joint_velocity_values, expectedJointCount)) {
+    return;
+  }
+
+  quaternion_t quaternion = quaternion_t::Identity();
+  if (isFiniteVector(msg.imu_quat_values, 4)) {
+    quaternion = quaternion_t(msg.imu_quat_values[0], msg.imu_quat_values[1], msg.imu_quat_values[2], msg.imu_quat_values[3]);
+    if (quaternion.norm() > 1e-6) {
+      quaternion.normalize();
+    } else {
+      quaternion = quaternion_t::Identity();
+    }
+  } else if (estimatorConfig_.orientationSource == OrientationSource::ImuQuaternion) {
+    return;
+  }
+
+  contact_flag_t contactFlags{};
+  contactFlags.fill(false);
+  for (std::size_t i = 0; i < std::min<std::size_t>(contactFlags.size(), msg.contact_flags.size()); ++i) {
+    contactFlags[i] = msg.contact_flags[i];
+  }
+
+  ocs2::vector_t jointPositions(expectedJointCount);
+  ocs2::vector_t jointVelocities(expectedJointCount);
+  for (std::size_t i = 0; i < expectedJointCount; ++i) {
+    jointPositions(static_cast<Eigen::Index>(i)) = msg.joint_position_values[i];
+    jointVelocities(static_cast<Eigen::Index>(i)) = msg.joint_velocity_values[i];
+  }
+
+  const vector3_t angularVelocity(msg.imu_angvel_values[0], msg.imu_angvel_values[1], msg.imu_angvel_values[2]);
+  const vector3_t linearAcceleration(msg.imu_linacc_values[0], msg.imu_linacc_values[1], msg.imu_linacc_values[2]);
+  const matrix3_t zeroCovariance = matrix3_t::Zero();
+
+  stateEstimator_->updateJointStates(jointPositions, jointVelocities);
+  stateEstimator_->updateContact(contactFlags);
+  stateEstimator_->updateImu(quaternion, angularVelocity, linearAcceleration, zeroCovariance, zeroCovariance, zeroCovariance);
+
+  const ocs2::scalar_t updateTime = static_cast<ocs2::scalar_t>(msg.simulation_time);
+  ocs2::scalar_t updatePeriod = 0.0;
+  if (hasEstimatedState_) {
+    const ocs2::scalar_t previousTime = lastEstimatedStateSimTime_;
+    updatePeriod = updateTime - previousTime;
+    if (updatePeriod < 0.0) {
+      stateEstimator_->reset();
+      estimatorSeeded_ = false;
+      trySeedStateEstimatorFromLatestState();
+      updatePeriod = 0.0;
+    }
+  }
+
+  estimatedRbdState_ = stateEstimator_->update(updateTime, updatePeriod);
+  estimatedOrientation_ = stateEstimator_->getOrientationQuaternion();
+  estimatedLocalLinearVelocity_ = stateEstimator_->getBaseLinearVelocityLocal();
+  hasEstimatedState_ = true;
+  lastEstimatedStateReceiptTime_ = node_->now();
+  lastEstimatedStateSimTime_ = updateTime;
 }
 
 bool RlBackend::hasActiveVelocityCommand() const {
@@ -858,11 +1028,14 @@ bool RlBackend::buildObservationSnapshot(ObservationSnapshot& snapshot) const {
     std::vector<double> jointVelocities = latestSensor_.joint_velocity_values;
     transformFeedbackJointState(jointPositions, jointVelocities);
 
-    const Eigen::Quaterniond quaternion = normalizedQuaternionFromSensor(latestSensor_);
+    const Eigen::Quaterniond quaternion =
+        stateEstimator_ ? estimatedOrientation_.cast<double>() : normalizedQuaternionFromSensor(latestSensor_);
     const Eigen::Matrix3d rotation = quaternion.toRotationMatrix();
     const Eigen::Vector3d projectedGravity = rotation.transpose() * Eigen::Vector3d(0.0, 0.0, -1.0);
     Eigen::Vector3d baseLinearVelocity = Eigen::Vector3d::Zero();
-    if (isFiniteVector(latestSensor_.local_linvel_values, 3)) {
+    if (stateEstimator_) {
+      baseLinearVelocity = estimatedLocalLinearVelocity_.cast<double>();
+    } else if (isFiniteVector(latestSensor_.local_linvel_values, 3)) {
       baseLinearVelocity << latestSensor_.local_linvel_values[0], latestSensor_.local_linvel_values[1],
           latestSensor_.local_linvel_values[2];
     } else if (hasFreshState()) {
@@ -876,10 +1049,10 @@ bool RlBackend::buildObservationSnapshot(ObservationSnapshot& snapshot) const {
     snapshot = ObservationSnapshot{};
     snapshot.sensorTime = latestSensor_.simulation_time;
     snapshot.imuQuaternion = {
-        static_cast<float>(latestSensor_.imu_quat_values[0]),
-        static_cast<float>(latestSensor_.imu_quat_values[1]),
-        static_cast<float>(latestSensor_.imu_quat_values[2]),
-        static_cast<float>(latestSensor_.imu_quat_values[3]),
+        static_cast<float>(quaternion.w()),
+        static_cast<float>(quaternion.x()),
+        static_cast<float>(quaternion.y()),
+        static_cast<float>(quaternion.z()),
     };
     snapshot.observation.clear();
     snapshot.observation.reserve(settings_.observationDim);

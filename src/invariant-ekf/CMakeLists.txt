@@ -19,7 +19,7 @@ include(CMakeDependentOption)
 
 find_package(Eigen3 REQUIRED)
 
-option(BUILD_PYTHON_INTERFACE "Build the python binding" ON)
+option(BUILD_PYTHON_INTERFACE "Build the python binding" OFF)
 option(BUILD_BENCHMARK "Build benchmarks" OFF)
 cmake_dependent_option(
     GENERATE_PYTHON_STUBS
@@ -143,3 +143,11 @@ install(
     LIBRARY DESTINATION ${CMAKE_INSTALL_FULL_LIBDIR}
 )
 install(FILES package.xml DESTINATION share/${PROJECT_NAME})
+install(
+    FILES
+        colcon/local_setup.sh
+        colcon/local_setup.bash
+        colcon/local_setup.zsh
+        colcon/local_setup.ps1
+    DESTINATION share/${PROJECT_NAME}
+)

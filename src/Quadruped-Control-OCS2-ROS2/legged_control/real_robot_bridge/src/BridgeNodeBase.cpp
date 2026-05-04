@@ -1,6 +1,7 @@
 #include "real_robot_bridge/BridgeNodeBase.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -49,6 +50,7 @@ BridgeNodeBase::BridgeNodeBase(const std::string& node_name, const rclcpp::NodeO
   declare_parameter<bool>("alwaysPublishStateTopic", false);
   declare_parameter<bool>("debugStateLogging", true);
   declare_parameter<double>("publishRateHz", 0.0);
+  declare_parameter<std::string>("estimatedOdomTopic", "odom");
 }
 
 void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
@@ -124,6 +126,9 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
 
   joint_command_sub_ = create_subscription<legged_msgs::msg::JointControlData>(
       "joint_control_data", 1, std::bind(&BridgeNodeBase::commandCallback, this, std::placeholders::_1));
+  estimated_odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+      get_parameter("estimatedOdomTopic").as_string(), 10,
+      std::bind(&BridgeNodeBase::odomCallback, this, std::placeholders::_1));
   start_control_srv_ = create_service<legged_msgs::srv::StartControl>(
       "start_control", std::bind(&BridgeNodeBase::startControlService, this, std::placeholders::_1, std::placeholders::_2));
 
@@ -155,6 +160,11 @@ void BridgeNodeBase::commandCallback(const legged_msgs::msg::JointControlData::S
   backend_->writeCommand(*msg);
 }
 
+void BridgeNodeBase::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
+  latest_estimated_odom_ = *msg;
+  has_latest_estimated_odom_ = true;
+}
+
 void BridgeNodeBase::publishCallback() {
   if (!backend_) {
     return;
@@ -175,6 +185,7 @@ void BridgeNodeBase::publishCallback() {
     }
     if (state_estimate_) {
       logSensorPublish(data.sensor);
+      logEstimatedOdomComparison(data.state);
     } else {
       logLegacyStatePublish(data.state);
     }
@@ -225,15 +236,69 @@ void BridgeNodeBase::applyConfiguredContactSource(BackendData& data) {
     return;
   }
 
+  std::array<bool, 4> original_contact_flags{};
+  for (std::size_t i = 0; i < std::min<std::size_t>(original_contact_flags.size(), data.state.contact_flags.size()); ++i) {
+    original_contact_flags[i] = data.state.contact_flags[i];
+  }
+
   const auto& joint_positions =
       data.sensor.joint_position_values.empty() ? data.state.joint_position_values : data.sensor.joint_position_values;
   const auto& joint_velocities =
       data.sensor.joint_velocity_values.empty() ? data.state.joint_velocity_values : data.sensor.joint_velocity_values;
+  const auto& base_angvel =
+      data.sensor.imu_angvel_values.size() >= 3 ? data.sensor.imu_angvel_values : data.state.base_angvel_values;
   const auto estimated_contact_flags = contact_estimator_.update(
       joint_positions, joint_velocities, data.state.joint_torque_values,
       data.state.base_pose_values, data.state.base_quat_values,
-      data.state.base_angvel_values, data.state.base_linvel_values);
+      base_angvel, data.state.base_linvel_values);
+  const double contact_time = data.sensor.simulation_time > 0.0 ? data.sensor.simulation_time : data.state.simulation_time;
+  logEstimatedContactTransitions(contact_time, estimated_contact_flags);
+  for (std::size_t i = 0; i < estimated_contact_flags.size(); ++i) {
+    if (estimated_contact_flags[i] != original_contact_flags[i]) {
+      const auto& debug = contact_estimator_.getLastDebugInfo()[i];
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 250,
+          "Estimated contact mismatch t=%.6f leg=%s mujoco=%d estimated=%d raw=%.3f filtered=%.3f "
+          "height=%.4f vz_abs=%.4f vz_up=%.4f kin=%d release=%d off_candidate=%d fallback_torque_norm=%d",
+          contact_time, kEstimatedContactFrameNames[i], static_cast<int>(original_contact_flags[i]),
+          static_cast<int>(estimated_contact_flags[i]), debug.raw_normal_force, debug.filtered_normal_force,
+          debug.height_above_support, debug.vertical_speed, debug.upward_speed,
+          static_cast<int>(debug.kinematic_contact_hint), static_cast<int>(debug.kinematic_release_hint),
+          static_cast<int>(debug.off_candidate), static_cast<int>(debug.fallback_torque_norm));
+    }
+  }
   overwriteContactFlags(data, estimated_contact_flags);
+}
+
+void BridgeNodeBase::logEstimatedContactTransitions(double time, const std::array<bool, 4>& contact_flags) {
+  if (!has_last_estimated_contact_flags_) {
+    last_estimated_contact_flags_ = contact_flags;
+    has_last_estimated_contact_flags_ = true;
+    return;
+  }
+
+  const auto& debug_info = contact_estimator_.getLastDebugInfo();
+  for (std::size_t i = 0; i < contact_flags.size(); ++i) {
+    if (contact_flags[i] == last_estimated_contact_flags_[i]) {
+      continue;
+    }
+
+    const auto& debug = debug_info[i];
+    RCLCPP_WARN(
+        get_logger(),
+        "Estimated contact transition t=%.6f leg=%s %d->%d raw=%.3f median=%.3f filtered=%.3f "
+        "height=%.4f vz_abs=%.4f vz_up=%.4f kin=%d release=%d strong=%d on_candidate=%d off_candidate=%d "
+        "on_count=%d off_count=%d fallback_torque_norm=%d",
+        time, kEstimatedContactFrameNames[i],
+        static_cast<int>(last_estimated_contact_flags_[i]), static_cast<int>(contact_flags[i]),
+        debug.raw_normal_force, debug.median_normal_force, debug.filtered_normal_force,
+        debug.height_above_support, debug.vertical_speed, debug.upward_speed,
+        static_cast<int>(debug.kinematic_contact_hint), static_cast<int>(debug.kinematic_release_hint),
+        static_cast<int>(debug.strong_force), static_cast<int>(debug.on_candidate), static_cast<int>(debug.off_candidate),
+        debug.on_confirmation_count, debug.off_confirmation_count, static_cast<int>(debug.fallback_torque_norm));
+  }
+
+  last_estimated_contact_flags_ = contact_flags;
 }
 
 void BridgeNodeBase::logJointCommand(const legged_msgs::msg::JointControlData& command, double simulation_time) const {
@@ -349,6 +414,38 @@ void BridgeNodeBase::logSensorPublish(const legged_msgs::msg::SimulatorSensorDat
               static_cast<size_t>(sensor.contact_flags[2]), static_cast<size_t>(sensor.contact_flags[3]));
 }
 
+void BridgeNodeBase::logEstimatedOdomComparison(const legged_msgs::msg::SimulatorStateData& state) {
+  if (state.base_pose_values.size() < 3) {
+    return;
+  }
+
+  if (!has_latest_estimated_odom_) {
+    RCLCPP_INFO(get_logger(),
+                "Estimated odom vs MuJoCo: waiting for odom message on estimatedOdomTopic");
+    return;
+  }
+
+  const auto& odom_position = latest_estimated_odom_.pose.pose.position;
+  const double mujoco_x = state.base_pose_values[0];
+  const double mujoco_y = state.base_pose_values[1];
+  const double mujoco_z = state.base_pose_values[2];
+  const double error_x = odom_position.x - mujoco_x;
+  const double error_y = odom_position.y - mujoco_y;
+  const double error_z = odom_position.z - mujoco_z;
+  const double error_norm = std::sqrt(error_x * error_x + error_y * error_y + error_z * error_z);
+  const double odom_time = rclcpp::Time(latest_estimated_odom_.header.stamp).seconds();
+  const double time_error = state.simulation_time - odom_time;
+
+  RCLCPP_INFO(
+      get_logger(),
+      "Estimated odom vs MuJoCo t=%.6f odom_t=%.6f dt=%.4f "
+      "odom_xyz=[%.4f, %.4f, %.4f] mujoco_xyz=[%.4f, %.4f, %.4f] err_xyz=[%.4f, %.4f, %.4f] err_norm=%.4f",
+      state.simulation_time, odom_time, time_error,
+      odom_position.x, odom_position.y, odom_position.z,
+      mujoco_x, mujoco_y, mujoco_z,
+      error_x, error_y, error_z, error_norm);
+}
+
 void BridgeNodeBase::overwriteContactFlags(BackendData& data, const std::array<bool, 4>& contact_flags) const {
   data.state.contact_flags.assign(contact_flags.begin(), contact_flags.end());
   data.sensor.contact_flags.assign(contact_flags.begin(), contact_flags.end());
@@ -367,7 +464,7 @@ void BridgeNodeBase::publishEstimatedContactMarkers(const legged_msgs::msg::Simu
 
   for (std::size_t i = 0; i < contact_flags.size(); ++i) {
     visualization_msgs::msg::Marker marker;
-    marker.header.stamp = now();
+    marker.header.stamp = builtin_interfaces::msg::Time{};
     marker.header.frame_id = kEstimatedContactFrameNames[i];
     marker.ns = "estimated_contact";
     marker.id = static_cast<int>(i);

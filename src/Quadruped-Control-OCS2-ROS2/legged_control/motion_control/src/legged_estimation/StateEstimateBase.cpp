@@ -14,6 +14,7 @@ StateEstimateBase::StateEstimateBase(const rclcpp::Node::SharedPtr& node, ocs2::
 
   odomPub_ = node_->create_publisher<nav_msgs::msg::Odometry>("odom", 10);
   posePub_ = node_->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("pose", 10);
+  tfBroadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
 }
 
 void StateEstimateBase::updateJointStates(const ocs2::vector_t& jointPos, const ocs2::vector_t& jointVel) {
@@ -35,6 +36,18 @@ void StateEstimateBase::updateImu(const Eigen::Quaternion<ocs2::scalar_t>& quat,
   vector3_t angularVelGlobal = ocs2::getGlobalAngularVelocityFromEulerAnglesZyxDerivatives<ocs2::scalar_t>(
       zyx, ocs2::getEulerAnglesZyxDerivativesFromLocalAngularVelocity<ocs2::scalar_t>(quatToZyx(quat), angularVelLocal));
   updateAngular(zyx, angularVelGlobal);
+}
+
+void StateEstimateBase::seed(const ocs2::vector_t& rbdState) {
+  rbdState_ = rbdState;
+}
+
+Eigen::Quaternion<ocs2::scalar_t> StateEstimateBase::getOrientationQuaternion() const {
+  return quat_;
+}
+
+vector3_t StateEstimateBase::getBaseLinearVelocityLocal() const {
+  return getOrientationQuaternion().toRotationMatrix().transpose() * rbdState_.segment<3>(info_.generalizedCoordinatesNum + 3);
 }
 
 void StateEstimateBase::updateAngular(const vector3_t& zyx, const ocs2::vector_t& angularVel) {
@@ -63,9 +76,17 @@ void StateEstimateBase::publishMsgs(const nav_msgs::msg::Odometry& odom) {
   // }
   odomPub_->publish(odom);
 
+  geometry_msgs::msg::TransformStamped tf_msg;
+  tf_msg.header = odom.header;
+  tf_msg.child_frame_id = odom.child_frame_id;
+  tf_msg.transform.translation.x = odom.pose.pose.position.x;
+  tf_msg.transform.translation.y = odom.pose.pose.position.y;
+  tf_msg.transform.translation.z = odom.pose.pose.position.z;
+  tf_msg.transform.rotation = odom.pose.pose.orientation;
+  tfBroadcaster_->sendTransform(tf_msg);
+
   geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
   pose_msg.header = odom.header;
   pose_msg.pose = odom.pose;
   posePub_->publish(pose_msg);
 }
-

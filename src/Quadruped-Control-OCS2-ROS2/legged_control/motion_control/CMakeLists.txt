@@ -53,6 +53,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(angles REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(inekf REQUIRED)
 
 
 
@@ -155,8 +156,11 @@ add_library(${PROJECT_NAME}
   src/legged_wbc/WeightedWbc.cpp
   src/legged_wbc/HoQp.cpp
   src/legged_wbc/HierarchicalWbc.cpp
+  src/legged_estimation/EstimatorConfig.cpp
+  src/legged_estimation/StateEstimatorFactory.cpp
   src/legged_estimation/StateEstimateBase.cpp
   src/legged_estimation/LinearKalmanFilter.cpp
+  src/legged_estimation/InvariantEkfEstimate.cpp
 )
 ament_target_dependencies(${PROJECT_NAME}
   ${dependencies}
@@ -165,6 +169,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 # Keep qpOASES on the motion_control target as before.
 target_link_libraries(${PROJECT_NAME}
   ${QPOASES_LIBRARY}
+  inekf::inekf
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -255,7 +260,8 @@ install(
   #DESTINATION share/${PROJECT_NAME}/
 #)
 
-ament_export_dependencies(${dependencies})  
+ament_export_dependencies(${dependencies})
+ament_export_dependencies(inekf)
 ament_export_include_directories("include/${PROJECT_NAME}")
 ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 ament_package()

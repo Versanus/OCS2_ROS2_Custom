@@ -350,9 +350,9 @@
   <sensor>
     <!-- ===== IMU ===== -->
     <framequat name="imu_quat" objtype="site" objname="imu_sensor_site"/>
-    <gyro name="imu_angvel" site="imu_sensor_site"/>
+    <gyro name="imu_angvel" site="imu_sensor_site" noise="0.054105"/>
     <velocimeter name="local_linvel" site="imu_sensor_site"/>
-    <accelerometer name="imu_linacc" site="imu_sensor_site"/>
+    <accelerometer name="imu_linacc" site="imu_sensor_site" noise="0.3"/>
     <framezaxis name="upvector" objtype="site" objname="imu_sensor_site"/>
 
     

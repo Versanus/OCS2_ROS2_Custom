@@ -26,6 +26,24 @@ class ContactEstimator {
     double strong_force_margin = 1.5;
   };
 
+  struct DebugInfo {
+    double raw_normal_force = 0.0;
+    double median_normal_force = 0.0;
+    double filtered_normal_force = 0.0;
+    double height_above_support = 0.0;
+    double vertical_speed = 0.0;
+    double upward_speed = 0.0;
+    bool kinematic_contact_hint = false;
+    bool kinematic_release_hint = false;
+    bool strong_force = false;
+    bool on_candidate = false;
+    bool off_candidate = false;
+    bool contact = false;
+    bool fallback_torque_norm = false;
+    int on_confirmation_count = 0;
+    int off_confirmation_count = 0;
+  };
+
   ContactEstimator();
   explicit ContactEstimator(const Config& config);
 
@@ -39,6 +57,7 @@ class ContactEstimator {
                              const std::vector<double>& base_angvel,
                              const std::vector<double>& base_linvel);
   const std::array<Eigen::Vector3d, 4>& getLastFootPositionsInBaseFrame() const { return last_foot_positions_in_base_frame_; }
+  const std::array<DebugInfo, 4>& getLastDebugInfo() const { return last_debug_info_; }
 
  private:
   std::array<bool, 4> updateFromTorqueNorm(const std::vector<double>& joint_torques);
@@ -61,6 +80,7 @@ class ContactEstimator {
   std::array<std::size_t, 4> raw_normal_force_history_sizes_{};
   std::array<std::size_t, 4> raw_normal_force_history_indices_{};
   std::array<Eigen::Vector3d, 4> last_foot_positions_in_base_frame_{};
+  std::array<DebugInfo, 4> last_debug_info_{};
 };
 
 }  // namespace real_robot_bridge

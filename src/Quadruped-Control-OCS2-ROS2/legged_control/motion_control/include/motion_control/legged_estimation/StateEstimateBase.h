@@ -12,6 +12,8 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
+#include "tf2_ros/transform_broadcaster.h"
 
 
 class StateEstimateBase {
@@ -22,9 +24,13 @@ class StateEstimateBase {
   virtual void updateImu(const Eigen::Quaternion<ocs2::scalar_t>& quat, const vector3_t& angularVelLocal, const vector3_t& linearAccelLocal,
                          const matrix3_t& orientationCovariance, const matrix3_t& angularVelCovariance,
                          const matrix3_t& linearAccelCovariance);
+  virtual void seed(const ocs2::vector_t& rbdState);
   virtual void reset() {}
 
   virtual ocs2::vector_t update(const ocs2::scalar_t& time, const ocs2::scalar_t& period) = 0;
+  virtual Eigen::Quaternion<ocs2::scalar_t> getOrientationQuaternion() const;
+  virtual vector3_t getBaseLinearVelocityLocal() const;
+  const ocs2::vector_t& getRbdState() const { return rbdState_; }
 
   size_t getMode() { return stanceLeg2ModeNumber(contactFlag_); }
 
@@ -40,13 +46,17 @@ class StateEstimateBase {
   vector3_t zyxOffset_ = vector3_t::Zero();
   ocs2::vector_t rbdState_;
   contact_flag_t contactFlag_{};
-  Eigen::Quaternion<ocs2::scalar_t> quat_;
-  vector3_t angularVelLocal_, linearAccelLocal_;
-  matrix3_t orientationCovariance_, angularVelCovariance_, linearAccelCovariance_;
+  Eigen::Quaternion<ocs2::scalar_t> quat_ = Eigen::Quaternion<ocs2::scalar_t>::Identity();
+  vector3_t angularVelLocal_ = vector3_t::Zero();
+  vector3_t linearAccelLocal_ = vector3_t::Zero();
+  matrix3_t orientationCovariance_ = matrix3_t::Zero();
+  matrix3_t angularVelCovariance_ = matrix3_t::Zero();
+  matrix3_t linearAccelCovariance_ = matrix3_t::Zero();
 
   rclcpp::Node::SharedPtr node_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odomPub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr posePub_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster_;
 
   // rclcpp::Time lastPub_;
 

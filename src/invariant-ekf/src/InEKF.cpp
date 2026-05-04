@@ -411,7 +411,8 @@ void InEKF::correctKinematics(const vectorKinematics &measured_kinematics) {
       long startIndex;
       long startIndex2;
 
-      if (!it->position.isZero(0)) {
+      // Zero is a valid kinematic measurement; zero covariance means omitted.
+      if (!it->covariance.isZero(0)) {
         // Fill out Y
         startIndex = Y.rows();
         Y.conservativeResize(startIndex + dimX, Eigen::NoChange);
@@ -455,7 +456,7 @@ void InEKF::correctKinematics(const vectorKinematics &measured_kinematics) {
 
       // Fill out velocity measures
       auto vel_foot = it->velocity;
-      if (!vel_foot.isZero(0)) {
+      if (!it->covariance_vel.isZero(0)) {
         startIndex = Y.rows();
         Y.conservativeResize(startIndex + dimX, Eigen::NoChange);
         Y.segment(startIndex, dimX).setZero();

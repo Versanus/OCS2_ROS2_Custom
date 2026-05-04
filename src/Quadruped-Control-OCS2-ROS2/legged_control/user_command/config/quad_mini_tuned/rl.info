@@ -3,6 +3,14 @@
 ; Defaults in code cover ONNX names, dims, observation layout, clips, timeouts, and debug settings.
 
 onnxModelPath ../../models/quad_mini_rough_policy.onnx
+
+stateEstimator
+{
+  enabled false
+  type linear
+  orientationSource ekf
+}
+
 mujocoTimestep 0.001
 mujocoControlFrequency 50.0
 mujocoBaseKp 30.0

@@ -92,6 +92,7 @@ void ContactEstimator::setConfig(const Config& config) {
   raw_normal_force_history_ = {};
   raw_normal_force_history_sizes_.fill(0);
   raw_normal_force_history_indices_.fill(0);
+  last_debug_info_ = {};
 }
 
 void ContactEstimator::initialize(const std::string& urdf_file) {
@@ -219,7 +220,19 @@ std::array<bool, 4> ContactEstimator::update(const std::vector<double>& joint_po
     const bool kinematic_release_hint =
         upward_speed >= config_.kinematic_min_liftoff_vertical_speed;
     const bool strong_force =
-        filtered_normal_forces_[contact_index] >= (config_.on_threshold + config_.strong_force_margin);
+        median_normal_force >= (config_.on_threshold + config_.strong_force_margin);
+
+    auto& debug = last_debug_info_[contact_index];
+    debug.raw_normal_force = normal_force;
+    debug.median_normal_force = median_normal_force;
+    debug.filtered_normal_force = filtered_normal_forces_[contact_index];
+    debug.height_above_support = height_above_support;
+    debug.vertical_speed = vertical_speed;
+    debug.upward_speed = upward_speed;
+    debug.kinematic_contact_hint = kinematic_contact_hint;
+    debug.kinematic_release_hint = kinematic_release_hint;
+    debug.strong_force = strong_force;
+    debug.fallback_torque_norm = false;
 
     updateContactFlag(contact_index, filtered_normal_forces_[contact_index], kinematic_contact_hint,
                       kinematic_release_hint, strong_force);
@@ -249,9 +262,24 @@ std::array<bool, 4> ContactEstimator::updateFromTorqueNorm(const std::vector<dou
         filtered_normal_forces_[contact_index], median_leg_load,
         config_.filter_alpha_rising, config_.filter_alpha_falling);
 
+    auto& debug = last_debug_info_[contact_index];
+    debug.raw_normal_force = leg_load;
+    debug.median_normal_force = median_leg_load;
+    debug.filtered_normal_force = filtered_normal_forces_[contact_index];
+    debug.height_above_support = 0.0;
+    debug.vertical_speed = 0.0;
+    debug.upward_speed = 0.0;
+    debug.kinematic_contact_hint = false;
+    debug.kinematic_release_hint = false;
+    debug.strong_force = false;
+    debug.fallback_torque_norm = true;
+
     if (!contact_flags_[contact_index]) {
       off_confirmation_counts_[contact_index] = 0;
-      if (filtered_normal_forces_[contact_index] >= config_.on_threshold) {
+      const bool on_candidate = filtered_normal_forces_[contact_index] >= config_.on_threshold;
+      debug.on_candidate = on_candidate;
+      debug.off_candidate = false;
+      if (on_candidate) {
         ++on_confirmation_counts_[contact_index];
         if (on_confirmation_counts_[contact_index] >= config_.on_confirmation_samples) {
           contact_flags_[contact_index] = true;
@@ -262,7 +290,10 @@ std::array<bool, 4> ContactEstimator::updateFromTorqueNorm(const std::vector<dou
       }
     } else {
       on_confirmation_counts_[contact_index] = 0;
-      if (filtered_normal_forces_[contact_index] <= config_.off_threshold) {
+      const bool off_candidate = filtered_normal_forces_[contact_index] <= config_.off_threshold;
+      debug.on_candidate = false;
+      debug.off_candidate = off_candidate;
+      if (off_candidate) {
         ++off_confirmation_counts_[contact_index];
         if (off_confirmation_counts_[contact_index] >= config_.off_confirmation_samples) {
           contact_flags_[contact_index] = false;
@@ -272,6 +303,9 @@ std::array<bool, 4> ContactEstimator::updateFromTorqueNorm(const std::vector<dou
         off_confirmation_counts_[contact_index] = 0;
       }
     }
+    debug.contact = contact_flags_[contact_index];
+    debug.on_confirmation_count = on_confirmation_counts_[contact_index];
+    debug.off_confirmation_count = off_confirmation_counts_[contact_index];
   }
 
   return contact_flags_;
@@ -292,10 +326,14 @@ double ContactEstimator::rejectOutlierAndGetMedian(std::size_t contact_index, do
 void ContactEstimator::updateContactFlag(std::size_t contact_index, double filtered_normal_force,
                                          bool kinematic_contact_hint, bool kinematic_release_hint,
                                          bool strong_force) {
+  auto& debug = last_debug_info_[contact_index];
   if (!contact_flags_[contact_index]) {
     off_confirmation_counts_[contact_index] = 0;
-    const bool on_candidate = filtered_normal_force >= config_.on_threshold &&
+    const bool measured_contact_force = debug.median_normal_force >= config_.on_threshold;
+    const bool on_candidate = measured_contact_force && !kinematic_release_hint &&
                               (kinematic_contact_hint || strong_force);
+    debug.on_candidate = on_candidate;
+    debug.off_candidate = false;
     if (on_candidate) {
       ++on_confirmation_counts_[contact_index];
       if (on_confirmation_counts_[contact_index] >= config_.on_confirmation_samples) {
@@ -305,12 +343,27 @@ void ContactEstimator::updateContactFlag(std::size_t contact_index, double filte
     } else {
       on_confirmation_counts_[contact_index] = 0;
     }
+    debug.contact = contact_flags_[contact_index];
+    debug.on_confirmation_count = on_confirmation_counts_[contact_index];
+    debug.off_confirmation_count = off_confirmation_counts_[contact_index];
     return;
   }
 
   on_confirmation_counts_[contact_index] = 0;
-  const bool off_candidate = filtered_normal_force <= config_.off_threshold &&
-                             (!kinematic_contact_hint || kinematic_release_hint);
+  const double height_above_support = debug.height_above_support;
+  const bool low_force = filtered_normal_force <= config_.off_threshold;
+  const bool instant_low_force = debug.median_normal_force <= config_.off_threshold;
+  const bool near_support = height_above_support <= 0.5 * config_.kinematic_max_height;
+  const bool lifted_from_support = height_above_support > config_.kinematic_max_height;
+  const bool clearly_airborne = height_above_support > 2.0 * config_.kinematic_max_height;
+  const bool moving_like_swing =
+      kinematic_release_hint || debug.vertical_speed > config_.kinematic_max_vertical_speed;
+  const bool release_candidate = instant_low_force && kinematic_release_hint;
+  const bool off_candidate =
+      release_candidate ||
+      (low_force && !near_support && (clearly_airborne || (lifted_from_support && moving_like_swing)));
+  debug.on_candidate = false;
+  debug.off_candidate = off_candidate;
   if (off_candidate) {
     ++off_confirmation_counts_[contact_index];
     if (off_confirmation_counts_[contact_index] >= config_.off_confirmation_samples) {
@@ -320,6 +373,9 @@ void ContactEstimator::updateContactFlag(std::size_t contact_index, double filte
   } else {
     off_confirmation_counts_[contact_index] = 0;
   }
+  debug.contact = contact_flags_[contact_index];
+  debug.on_confirmation_count = on_confirmation_counts_[contact_index];
+  debug.off_confirmation_count = off_confirmation_counts_[contact_index];
 }
 
 }  // namespace real_robot_bridge

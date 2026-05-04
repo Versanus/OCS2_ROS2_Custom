@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <memory>
 
 #include "rclcpp/rclcpp.hpp"
@@ -8,6 +9,7 @@
 #include "legged_msgs/msg/simulator_sensor_data.hpp"
 #include "legged_msgs/msg/simulator_state_data.hpp"
 #include "legged_msgs/srv/start_control.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "real_robot_bridge/BackendBase.h"
 #include "real_robot_bridge/ContactEstimator.h"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -24,7 +26,8 @@ class BridgeNodeBase : public rclcpp::Node {
 
  private:
   void commandCallback(const legged_msgs::msg::JointControlData::SharedPtr msg);
- void publishCallback();
+  void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
+  void publishCallback();
   void startControlService(
       const std::shared_ptr<legged_msgs::srv::StartControl::Request> request,
       std::shared_ptr<legged_msgs::srv::StartControl::Response> response);
@@ -34,6 +37,8 @@ class BridgeNodeBase : public rclcpp::Node {
   void logLegacyStatePublish(const legged_msgs::msg::SimulatorStateData& state) const;
   void logLegacyStateResponse(const legged_msgs::msg::SimulatorStateData& state) const;
   void logSensorPublish(const legged_msgs::msg::SimulatorSensorData& sensor) const;
+  void logEstimatedOdomComparison(const legged_msgs::msg::SimulatorStateData& state);
+  void logEstimatedContactTransitions(double time, const std::array<bool, 4>& contact_flags);
   void overwriteContactFlags(BackendData& data, const std::array<bool, 4>& contact_flags) const;
   void publishEstimatedContactMarkers(const legged_msgs::msg::SimulatorStateData& state,
                                       const std::array<bool, 4>& contact_flags);
@@ -50,10 +55,15 @@ class BridgeNodeBase : public rclcpp::Node {
   rclcpp::Publisher<legged_msgs::msg::SimulatorSensorData>::SharedPtr sensor_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr estimated_contact_markers_pub_;
   rclcpp::Subscription<legged_msgs::msg::JointControlData>::SharedPtr joint_command_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr estimated_odom_sub_;
   rclcpp::Service<legged_msgs::srv::StartControl>::SharedPtr start_control_srv_;
   rclcpp::TimerBase::SharedPtr publish_timer_;
   legged_msgs::msg::JointControlData last_joint_command_;
   bool has_last_joint_command_{false};
+  nav_msgs::msg::Odometry latest_estimated_odom_;
+  bool has_latest_estimated_odom_{false};
+  std::array<bool, 4> last_estimated_contact_flags_{};
+  bool has_last_estimated_contact_flags_{false};
 };
 
 }  // namespace real_robot_bridge

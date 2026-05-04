@@ -35,6 +35,7 @@
   <depend>ocs2_centroidal_model</depend>
   <depend>ocs2_robotic_assets</depend>
   <depend>legged_msgs</depend>
+  <depend>inekf</depend>
 
   <depend>pinocchio</depend>
 

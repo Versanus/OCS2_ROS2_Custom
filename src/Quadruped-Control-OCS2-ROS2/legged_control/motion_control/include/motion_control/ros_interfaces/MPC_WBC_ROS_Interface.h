@@ -58,6 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "motion_control/common/Types.h"
 #include "motion_control/gait/MotionPhaseDefinition.h"
 #include "motion_control/legged_estimation/StateEstimateBase.h"
+#include "motion_control/legged_estimation/EstimatorConfig.h"
 
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
@@ -167,6 +168,7 @@ protected:
     ocs2::SystemObservation currentObservation_;
     ocs2::vector_t measuredRbdState_;
     std::shared_ptr<StateEstimateBase> stateEstimate_;
+    EstimatorConfig estimatorConfig_;
     std::shared_ptr<ocs2::CentroidalModelRbdConversions> rbdConversions_;
     contact_flag_t contactFlag_{};
 

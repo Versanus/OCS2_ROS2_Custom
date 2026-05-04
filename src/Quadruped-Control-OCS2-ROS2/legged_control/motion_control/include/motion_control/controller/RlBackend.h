@@ -12,6 +12,10 @@
 #include "motion_control/common/Types.h"
 #include "motion_control/controller/ControllerBackend.h"
 #include "motion_control/controller/PolicyRunner.h"
+#include "motion_control/legged_estimation/EstimatorConfig.h"
+#include "motion_control/legged_estimation/StateEstimateBase.h"
+#include "motion_control/legged_interface/LeggedRobotInterface.h"
+#include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
 
@@ -114,6 +118,7 @@ class RlBackend final : public ControllerBackend {
 
   bool loadSettings(const ControllerConfig& config);
   bool loadPoses(const std::string& rlConfigFile);
+  bool setupStateEstimator();
   static ObservationLayout parseObservationLayout(const std::string& value);
   static JointPositionObservation parseJointPositionObservation(const std::string& value);
   static FeedbackJointStateTransform parseFeedbackJointStateTransform(const std::string& value);
@@ -128,9 +133,13 @@ class RlBackend final : public ControllerBackend {
 
   bool hasFreshState() const;
   bool hasFreshSensor() const;
+  bool hasFreshEstimatedState() const;
   bool hasActiveVelocityCommand() const;
   bool latchHoldPoseFromLatestState();
   bool fillPoseFromLatestState(ocs2::vector_t& pose) const;
+  bool buildRbdStateFromStateMsg(const legged_msgs::msg::SimulatorStateData& msg, ocs2::vector_t& rbdState) const;
+  bool trySeedStateEstimatorFromLatestState();
+  void updateStateEstimatorFromSensor(const legged_msgs::msg::SimulatorSensorData& msg);
   void resetPoseTransition();
   void beginPoseTransition(const ocs2::vector_t& targetPose, double durationSec);
   ocs2::vector_t transitionPoseCommand() const;
@@ -153,7 +162,11 @@ class RlBackend final : public ControllerBackend {
   rclcpp::Node::SharedPtr node_;
   ControllerConfig controllerConfig_;
   Settings settings_;
+  EstimatorConfig estimatorConfig_;
   std::unique_ptr<PolicyRunner> policyRunner_;
+  std::shared_ptr<LeggedRobotInterface> leggedInterface_;
+  std::shared_ptr<ocs2::PinocchioEndEffectorKinematics> eeKinematicsPtr_;
+  std::shared_ptr<StateEstimateBase> stateEstimator_;
 
   rclcpp::Publisher<legged_msgs::msg::JointControlData>::SharedPtr jointControlPublisher_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr emergencyOverrideStatePublisher_;
@@ -168,10 +181,14 @@ class RlBackend final : public ControllerBackend {
   geometry_msgs::msg::Twist latestVelocityCommand_;
   rclcpp::Time lastStateReceiptTime_;
   rclcpp::Time lastSensorReceiptTime_;
+  rclcpp::Time lastEstimatedStateReceiptTime_;
+  ocs2::scalar_t lastEstimatedStateSimTime_ = 0.0;
   rclcpp::Time lastCommandReceiptTime_;
   rclcpp::Time firstFreshStateTime_;
   bool hasState_ = false;
   bool hasSensor_ = false;
+  bool hasEstimatedState_ = false;
+  bool estimatorSeeded_ = false;
   bool startupHoldStarted_ = false;
   bool hasHoldPose_ = false;
 
@@ -185,6 +202,9 @@ class RlBackend final : public ControllerBackend {
   ocs2::vector_t standJointState_ = ocs2::vector_t::Zero(12);
   ocs2::vector_t recoveryJointState_ = ocs2::vector_t::Zero(12);
   ocs2::vector_t sitJointState_ = ocs2::vector_t::Zero(12);
+  ocs2::vector_t estimatedRbdState_;
+  vector3_t estimatedLocalLinearVelocity_ = vector3_t::Zero();
+  quaternion_t estimatedOrientation_ = quaternion_t::Identity();
   std::vector<float> lastAction_;
   std::filesystem::path debugDumpDir_;
   std::size_t debugDumpedPolicySteps_ = 0;

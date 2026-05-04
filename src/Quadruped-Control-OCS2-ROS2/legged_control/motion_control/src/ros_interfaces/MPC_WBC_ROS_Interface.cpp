@@ -33,7 +33,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "motion_control/ros_interfaces/RosReferenceManager.h"
 #include "motion_control/legged_wbc/WeightedWbc.h"
 #include "motion_control/legged_wbc/HierarchicalWbc.h"
-#include "motion_control/legged_estimation/LinearKalmanFilter.h"
+#include "motion_control/legged_estimation/StateEstimatorFactory.h"
 
 #include <algorithm>
 #include <array>
@@ -233,10 +233,11 @@ void MPC_WBC_ROS_Interface::setupWbc(const std::string& taskFile, bool verbose) 
 /******************************************************************************************************/
 /******************************************************************************************************/
 void MPC_WBC_ROS_Interface::setupStateEstimate(const std::string& taskFile, bool verbose) {
-  stateEstimate_ = std::make_shared<KalmanFilterEstimate>(node_, leggedInterface_->getPinocchioInterface(),
-                                                          leggedInterface_->getCentroidalModelInfo(), *eeKinematicsPtr_);
-  dynamic_cast<KalmanFilterEstimate&>(*stateEstimate_).loadSettings(taskFile, verbose);
-  //currentObservation_.time = 0;
+  estimatorConfig_ = loadEstimatorConfig(taskFile, true);
+  stateEstimate_ = StateEstimatorFactory::create(estimatorConfig_, node_, leggedInterface_->getPinocchioInterface(),
+                                                 leggedInterface_->getCentroidalModelInfo(), *eeKinematicsPtr_, taskFile, verbose);
+  RCLCPP_INFO(node_->get_logger(), "Configured MPC state estimator: type=%s orientationSource=%s",
+              toString(estimatorConfig_.type), toString(estimatorConfig_.orientationSource));
 }
 
 /******************************************************************************************************/
@@ -787,6 +788,10 @@ void MPC_WBC_ROS_Interface::setInitialState(
   }
 
   currentObservation_.mode = stanceLeg2ModeNumber(contactFlag_);
+  if (StateEstimate_ && stateEstimate_) {
+    stateEstimate_->seed(measuredRbdState_);
+    stateEstimate_->updateContact(contactFlag_);
+  }
   initialStateReady_ = true;
 
 
@@ -1020,7 +1025,10 @@ void MPC_WBC_ROS_Interface::updateStateEstimationFromSensor(
   const bool holdDiscontinuityDetected = shouldResetAroundHoldDiscontinuity(jointPos, time);
 
   if (holdDiscontinuityDetected) {
+    const auto reseedState = stateEstimate_->getRbdState();
     stateEstimate_->reset();
+    stateEstimate_->seed(reseedState);
+    stateEstimate_->updateContact(contactFlag_);
     period = 0.0;
   }
   period = std::max<ocs2::scalar_t>(0.0, period);
