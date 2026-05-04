@@ -20,7 +20,7 @@
   <link name="trunk">
     <inertial>
       <origin xyz="-0.0069912 0.01165 -0.0071119" rpy="0 0 0"/>
-      <mass value="3.6"/>
+      <mass value="4.1"/>
       <inertia ixx="0.014" ixy="0.0" ixz="0.0" iyy="0.058" iyz="0.0" izz="0.063"/>
     </inertial>
     <visual>
@@ -102,7 +102,7 @@
     <child link="RF_thigh"/>
     <axis xyz="0 1 0"/>
     <limit lower="-0.1745" upper="3.316" effort="12" velocity="17.80"/>
-    <dynamics damping="0.05" friction="0.01"/>
+    <dynamics damping="0.10" friction="0.01"/>
   </joint>
 
   <link name="RF_calf">
@@ -134,7 +134,7 @@
     <child link="RF_calf"/>
     <axis xyz="0 1 0"/>
     <limit lower="-1.745529" upper="0.001" effort="12" velocity="17.80"/>
-    <dynamics damping="0.07" friction="0.05"/>
+    <dynamics damping="0.12" friction="0.05"/>
   </joint>
 
   <link name="RF_FOOT">
@@ -228,7 +228,7 @@
     <child link="LF_thigh"/>
     <axis xyz="0 -1 0"/>
     <limit lower="-3.316" upper="0.1745" effort="12" velocity="17.80"/>
-    <dynamics damping="0.05" friction="0.01"/>
+    <dynamics damping="0.10" friction="0.01"/>
   </joint>
 
   <link name="LF_calf">
@@ -260,7 +260,7 @@
     <child link="LF_calf"/>
     <axis xyz="0 -1 0"/>
     <limit lower="-0.001" upper="1.745529" effort="12" velocity="17.80"/>
-    <dynamics damping="0.07" friction="0.05"/>
+    <dynamics damping="0.12" friction="0.05"/>
   </joint>
 
   <link name="LF_FOOT">
@@ -354,7 +354,7 @@
     <child link="RH_thigh"/>
     <axis xyz="0 1 0"/>
     <limit lower="-0.1745" upper="3.316" effort="12" velocity="17.80"/>
-    <dynamics damping="0.05" friction="0.01"/>
+    <dynamics damping="0.10" friction="0.01"/>
   </joint>
 
   <link name="RH_calf">
@@ -386,7 +386,7 @@
     <child link="RH_calf"/>
     <axis xyz="0 1 0"/>
     <limit lower="-1.745529" upper="0.001" effort="12" velocity="17.80"/>
-    <dynamics damping="0.07" friction="0.05"/>
+    <dynamics damping="0.12" friction="0.05"/>
   </joint>
 
   <link name="RH_FOOT">
@@ -480,7 +480,7 @@
     <child link="LH_thigh"/>
     <axis xyz="0 -1 0"/>
     <limit lower="-3.316" upper="0.1745" effort="12" velocity="17.80"/>
-    <dynamics damping="0.05" friction="0.01"/>
+    <dynamics damping="0.10" friction="0.01"/>
   </joint>
 
   <link name="LH_calf">
@@ -512,7 +512,7 @@
     <child link="LH_calf"/>
     <axis xyz="0 -1 0"/>
     <limit lower="-0.001" upper="1.745529" effort="12" velocity="17.80"/>
-    <dynamics damping="0.07" friction="0.05"/>
+    <dynamics damping="0.12" friction="0.05"/>
   </joint>
 
   <link name="LH_FOOT">

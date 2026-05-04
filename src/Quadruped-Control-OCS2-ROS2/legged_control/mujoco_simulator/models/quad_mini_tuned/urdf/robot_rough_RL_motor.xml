@@ -73,7 +73,7 @@
     <body name="trunk" quat="0 0 0 1">
     <inertial
       pos="-0.0069912 0.01165 -0.0071119"
-      mass="3.6"
+      mass="4.1"
       fullinertia="0.014 0.058 0.063 0.0 0.0 0.0"/>
     <!-- BODY COLLISION - BASIC BOX -->
     <geom type="box"
@@ -110,7 +110,7 @@
         <joint name="RF_HFE"
                       axis="0 1 0"
                       range="-0.1745 3.316"
-                      damping="0.05"
+                      damping="0.10"
                       frictionloss="0.01"/>
         <geom type="mesh"
               mesh="FR_thigh_mesh"
@@ -123,7 +123,7 @@
           <joint name="RF_KFE"
                         axis="0 1 0"
                         range="-1.745529 0.001"
-                        damping="0.07"
+                        damping="0.12"
                         frictionloss="0.05"/>
           <geom type="mesh"
                 mesh="FR_calf_mesh"
@@ -173,7 +173,7 @@
         <joint name="LF_HFE"
        axis="0 -1 0"
        range="-3.316 0.1745"
-       damping="0.05"
+       damping="0.10"
        frictionloss="0.01"/>
         <geom type="mesh"
               mesh="FL_thigh_mesh"
@@ -186,7 +186,7 @@
                   <joint name="LF_KFE"
                     axis="0 -1 0"
                     range="-0.001 1.745529"
-                    damping="0.07"
+                    damping="0.12"
                     frictionloss="0.05"/>
           <geom type="mesh"
                 material="orange"
@@ -238,7 +238,7 @@
         <joint name="RH_HFE"
                               axis="0 1 0"
                               range="-0.1745 3.316"
-                              damping="0.05"
+                              damping="0.10"
                               frictionloss="0.01"/>
         <geom type="mesh"
               mesh="HR_thigh_mesh"
@@ -251,7 +251,7 @@
           <joint name="RH_KFE"
                                 axis="0 1 0"
                                 range="-1.745529 0.001"
-                                damping="0.07"
+                                damping="0.12"
                                 frictionloss="0.05"/>
           <geom type="mesh"
                 mesh="HR_calf_mesh"
@@ -302,7 +302,7 @@
         <joint name="LH_HFE"
                           axis="0 -1 0"
                           range="-3.316 0.1745"
-                          damping="0.05"
+                          damping="0.10"
                           frictionloss="0.01"/>
         <geom type="mesh"
               mesh="HL_thigh_mesh"
@@ -315,7 +315,7 @@
           <joint name="LH_KFE"
                             axis="0 -1 0"
                             range="-0.001 1.745529"
-                            damping="0.07"
+                            damping="0.12"
                             frictionloss="0.05"/>
           <geom type="mesh"
                 mesh="HL_calf_mesh"
