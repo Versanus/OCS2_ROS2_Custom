@@ -235,7 +235,7 @@ class OneLegControlGui(Node):
             ttk.Scale(
                 output_row,
                 from_=0.0,
-                to=6.0,
+                to=12.0,
                 variable=torque_var,
                 command=lambda _unused=None: self._update_slider_labels(),
             ).grid(row=1 + index, column=1, sticky='ew', padx=8, pady=4)

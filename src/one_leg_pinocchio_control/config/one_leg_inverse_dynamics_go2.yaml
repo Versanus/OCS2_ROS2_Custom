@@ -1,0 +1,95 @@
+one_leg_inverse_dynamics_node:
+  ros__parameters:
+    enabled: false
+    soft_stop: false
+    clear_faults: false
+    feedforward_torque_enabled: false
+    joint_feedforward_enabled: [0.0, 0.0, 0.0]
+
+    state_topic: "htdw_joint_state"
+    command_topic: "joint_cmd"
+    control_rate_hz: 50.0
+    max_state_age_sec: 0.15
+
+    active_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    model_joint_names:
+      - "FL_hip_joint"
+      - "FL_thigh_joint"
+      - "FL_calf_joint"
+
+    output_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+      - "FR_HipX"
+      - "FR_HipY"
+      - "FR_Knee"
+      - "HL_HipX"
+      - "HL_HipY"
+      - "HL_Knee"
+      - "HR_HipX"
+      - "HR_HipY"
+      - "HR_Knee"
+
+    # Project the midpoint of each URDF joint limit back into hardware coordinates.
+    desired_positions: [0.0, 0.0, 0.0]
+    desired_velocities: [0.0, 0.0, 0.0]
+    desired_accelerations: [0.0, 0.0, 0.0]
+    model_position_offsets: [0.0, 0.0, 0.0]
+
+    id_kp: [1.5, 1.5, 1.0]
+    id_kd: [0.08, 0.08, 0.05]
+
+    command_kp: 0.0
+    command_kd: 0.0
+
+    max_torque: [12.0, 12.0, 12.0]
+    max_torque_rate: [1500.0, 1500.0, 1500.0]
+    max_position_error: [10.0, 10.0, 10.0]
+    max_velocity: [1500.0, 1500.0, 1500.0]
+    startup_ramp_sec: 2.0
+
+one_leg_control_gui:
+  ros__parameters:
+    controller_node: "/one_leg_inverse_dynamics_node"
+    state_topic: "htdw_joint_state"
+    command_topic: "joint_cmd"
+    active_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    # URDF joint limits projected back into hardware coordinates.
+    position_min: [-1.0472, -0.7854018366, -1.1519036732]
+    position_max: [1.0472, 4.2760981634, 0.7330363268]
+    default_desired_positions: [0.0, 0.0, 0.0]
+    default_desired_velocities: [0.0, 0.0, 0.0]
+    default_desired_accelerations: [0.0, 0.0, 0.0]
+    default_id_kp: [1.5, 1.5, 1.0]
+    default_id_kd: [0.08, 0.08, 0.05]
+    default_max_torque: 12.0
+    default_command_kp: 1.0
+    default_command_kd: 1.0
+    default_feedforward_torque_enabled: false
+    default_joint_feedforward_enabled: [0.0, 0.0, 0.0]
+
+one_leg_state_to_model_joint_state:
+  ros__parameters:
+    input_topic: "htdw_joint_state"
+    output_topic: "one_leg_model_joint_states"
+    publish_rate_hz: 50.0
+    hardware_joint_names:
+      - "FL_HipX"
+      - "FL_HipY"
+      - "FL_Knee"
+    model_joint_names:
+      - "FL_hip_joint"
+      - "FL_thigh_joint"
+      - "FL_calf_joint"
+    model_position_offsets: [0.0, 0.0, 0.0]
+    all_model_joint_names:
+      - "FL_hip_joint"
+      - "FL_thigh_joint"
+      - "FL_calf_joint"

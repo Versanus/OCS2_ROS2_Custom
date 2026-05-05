@@ -38,6 +38,7 @@ install(PROGRAMS
 
 install(DIRECTORY
   config
+  go2_description-humble
   launch
   meshes
   rviz

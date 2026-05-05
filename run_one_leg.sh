@@ -6,6 +6,14 @@ WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 
+variant="default"
+variant_args=()
+if [ "${1:-}" = "go2" ]; then
+    variant="go2"
+    variant_args=("go2")
+    shift
+fi
+
 if [ -f "/.dockerenv" ]; then
     echo "Running one-leg controller inside Docker"
 
@@ -25,12 +33,19 @@ if [ -f "/.dockerenv" ]; then
     source /opt/ros/humble/setup.bash
     source "${WS_DIR}/install/local_setup.bash"
 
-    echo "Launching one-leg controller panel on ROS_DOMAIN_ID=${ROS_DOMAIN_ID}..."
+    CONFIG_FILE="${WS_DIR}/src/one_leg_pinocchio_control/config/one_leg_inverse_dynamics.yaml"
+    URDF_FILE="${WS_DIR}/src/one_leg_pinocchio_control/urdf/bacak_test_description.urdf"
+    if [ "${variant}" = "go2" ]; then
+        CONFIG_FILE="${WS_DIR}/src/one_leg_pinocchio_control/config/one_leg_inverse_dynamics_go2.yaml"
+        URDF_FILE="${WS_DIR}/src/one_leg_pinocchio_control/urdf/go2_one_leg.urdf"
+    fi
+
+    echo "Launching one-leg controller panel (${variant}) on ROS_DOMAIN_ID=${ROS_DOMAIN_ID}..."
     echo "Extra launch args: $*"
 
     ros2 launch one_leg_pinocchio_control one_leg_control_panel.launch.py \
-        config_file:="${WS_DIR}/src/one_leg_pinocchio_control/config/one_leg_inverse_dynamics.yaml" \
-        urdf_path:="${WS_DIR}/src/one_leg_pinocchio_control/urdf/bacak_test_description.urdf" \
+        config_file:="${CONFIG_FILE}" \
+        urdf_path:="${URDF_FILE}" \
         rviz_config:="${WS_DIR}/src/one_leg_pinocchio_control/rviz/one_leg.rviz" \
         "$@"
 else
@@ -42,5 +57,5 @@ else
     docker compose run --rm \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         quad_ocs2 \
-        ./run_one_leg.sh "$@"
+        ./run_one_leg.sh "${variant_args[@]}" "$@"
 fi
