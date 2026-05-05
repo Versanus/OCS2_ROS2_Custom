@@ -10,13 +10,13 @@ stateEstimator
 inekf
 {
   footRadius                   0.020
-  gyroNoise                    0.054105
-  accelNoise                   0.3
+  gyroNoise                    0.01
+  accelNoise                   0.1
   gyroBiasNoise                1e-5
   accelBiasNoise               1e-4
-  contactPositionNoise         0.001
+  contactPositionNoise         0.005
   contactVelocityNoise         0.001
-  contactProcessNoise          0.001
+  contactProcessNoise          0.01
   jointPositionNoise           0.001
   useContactVelocityCorrection false
   useKinematicPositionCovariance true
@@ -41,7 +41,7 @@ inekf
   imuLinearAccelerationIncludesGravity true
   gravityX                     0.0
   gravityY                     0.0
-  gravityZ                    -9.81
+  gravityZ                    -9.8065
 }
 
 estimatedContact

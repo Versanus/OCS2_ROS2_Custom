@@ -393,25 +393,14 @@ std::vector<inekf::Kinematics, Eigen::aligned_allocator<inekf::Kinematics>> Inva
   auto& data = pinocchioInterface_.getData();
   const std::size_t actuatedDofNum = info_.actuatedDofNum;
 
-  const auto imuQuaternion =
-      estimatorConfig_.orientationSource == OrientationSource::Ekf ? estimatedOrientationQuat_ : quat_;
-  const auto baseQuaternion = getBaseOrientationFromImu(imuQuaternion);
-  const Eigen::Matrix3d rotationWorldFromBase = baseQuaternion.toRotationMatrix().cast<double>();
   const Eigen::Matrix3d rotationImuFromBase = imuOrientationInBase_.toRotationMatrix().transpose().cast<double>();
-  const vector3_t baseAngularVelLocal = getBaseAngularVelocityLocal();
-  const vector3_t eulerAnglesZyx = quatToZyx(baseQuaternion);
-  const vector3_t angularVelGlobal = ocs2::getGlobalAngularVelocityFromEulerAnglesZyxDerivatives<ocs2::scalar_t>(
-      eulerAnglesZyx,
-      ocs2::getEulerAnglesZyxDerivativesFromLocalAngularVelocity<ocs2::scalar_t>(quatToZyx(baseQuaternion), baseAngularVelLocal));
 
   ocs2::vector_t qPino(info_.generalizedCoordinatesNum);
   ocs2::vector_t vPino(info_.generalizedCoordinatesNum);
   qPino.setZero();
-  qPino.segment<3>(3) = eulerAnglesZyx;
   qPino.tail(actuatedDofNum) = rbdState_.segment(6, actuatedDofNum);
 
   vPino.setZero();
-  vPino.segment<3>(3) = ocs2::getEulerAnglesZyxDerivativesFromGlobalAngularVelocity<ocs2::scalar_t>(eulerAnglesZyx, angularVelGlobal);
   vPino.tail(actuatedDofNum) = rbdState_.segment(6 + info_.generalizedCoordinatesNum, actuatedDofNum);
 
   pinocchio::forwardKinematics(model, data, qPino, vPino);
@@ -424,8 +413,8 @@ std::vector<inekf::Kinematics, Eigen::aligned_allocator<inekf::Kinematics>> Inva
   std::vector<inekf::Kinematics, Eigen::aligned_allocator<inekf::Kinematics>> measurements;
   measurements.reserve(contactIds_.size());
   for (std::size_t i = 0; i < contactIds_.size(); ++i) {
-    const Eigen::Vector3d footPositionBase = rotationWorldFromBase.transpose() * eePositions[i].cast<double>();
-    Eigen::Vector3d position = rotationImuFromBase * (footPositionBase - imuPositionInBase_.cast<double>());
+    const Eigen::Vector3d footPositionBase = eePositions[i].cast<double>();
+    const Eigen::Vector3d position = rotationImuFromBase * (footPositionBase - imuPositionInBase_.cast<double>());
     Eigen::Matrix3d positionCovariance = contactPositionNoise_ * Eigen::Matrix3d::Identity();
     if (useKinematicPositionCovariance_ && i < info_.endEffectorFrameIndices.size()) {
       Eigen::Matrix<double, 6, Eigen::Dynamic> jacobian = Eigen::Matrix<double, 6, Eigen::Dynamic>::Zero(6, model.nv);

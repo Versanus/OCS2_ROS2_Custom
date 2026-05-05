@@ -7,7 +7,7 @@ onnxModelPath ../../models/quad_mini_rough_policy.onnx
 stateEstimator
 {
   enabled false
-  type linear
+  type inekf
   orientationSource ekf
 }
 
