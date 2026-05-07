@@ -13,10 +13,10 @@ stateEstimator
 
 mujocoTimestep 0.001
 mujocoControlFrequency 50.0
-mujocoBaseKp 30.0
-mujocoBaseKd 0.50
+mujocoBaseKp 20.0
+mujocoBaseKd 0.5
 mujocoJointDamping 1.0
-mujocoUseXmlJointDynamics falses
+mujocoUseXmlJointDynamics true
 mujocoDirectPositionControl false
 
 ; Policy joint order in MuJoCo training convention: RF, LF, RH, LH.

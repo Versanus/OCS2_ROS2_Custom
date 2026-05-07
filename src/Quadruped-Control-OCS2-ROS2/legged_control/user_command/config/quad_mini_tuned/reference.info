@@ -14,8 +14,8 @@ teleop
   velocity_accel_limit_vx                1.50
   velocity_accel_limit_vy                1.00
   velocity_accel_limit_yaw               1.00
-  velocity_preview_distance_low_speed   3.0
-  velocity_preview_distance_high_speed  5.0
+  velocity_preview_distance_low_speed   2.0
+  velocity_preview_distance_high_speed  3.0
   velocity_preview_speed_low            1.0
   velocity_preview_speed_high           2.0
 

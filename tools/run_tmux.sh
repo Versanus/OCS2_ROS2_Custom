@@ -3,6 +3,8 @@ set -e
 #./run.sh quad_mini sim mujoco debug rviz gui
 #./run.sh quad_mini sim mujoco nodebug norviz nogui
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
+#./run.sh quad_mini_tuned gazebo estimated debug rviz nogui auto mpc flat
+#./run.sh quad_mini_tuned gazebo_headless estimated debug rviz nogui auto mpc flat
 
 SESSION=quad
 WS=/workspaces/quad_ocs2_ws
@@ -17,11 +19,19 @@ GUI_AUTO=${6:-true}
 RVIZ_SOURCE=${7:-auto}
 CONTROL_TYPE=${8:-mpc}
 MUJOCO_TERRAIN=${9:-flat}
+GAZEBO_HEADLESS=${10:-false}
 ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-23}
 export ROS_DOMAIN_ID
 
+if [ "$BACKEND" = "gazebo_headless" ]; then
+  BACKEND="gazebo"
+  if [ -z "${10:-}" ]; then
+    GAZEBO_HEADLESS=true
+  fi
+fi
+
 if [ -z "$CONTACT_SOURCE" ]; then
-  if [ "$BACKEND" = "real" ]; then
+  if [ "$BACKEND" = "real" ] || [ "$BACKEND" = "gazebo" ]; then
     CONTACT_SOURCE=estimated
   else
     CONTACT_SOURCE=mujoco
@@ -29,9 +39,9 @@ if [ -z "$CONTACT_SOURCE" ]; then
 fi
 
 case "$BACKEND" in
-  sim|real) ;;
+  sim|real|gazebo) ;;
   *)
-    echo "Invalid backend: $BACKEND. Use 'sim' or 'real'."
+    echo "Invalid backend: $BACKEND. Use 'sim', 'real', or 'gazebo'."
     exit 1
     ;;
 esac
@@ -107,6 +117,19 @@ case "$MUJOCO_TERRAIN" in
     ;;
 esac
 
+case "$GAZEBO_HEADLESS" in
+  headless|true)
+    GAZEBO_HEADLESS=true
+    ;;
+  window|gui|false|"")
+    GAZEBO_HEADLESS=false
+    ;;
+  *)
+    echo "Invalid Gazebo headless flag: $GAZEBO_HEADLESS. Use 'headless', 'window', 'true', or 'false'."
+    exit 1
+    ;;
+esac
+
 echo "Launching robot: $ROBOT_TYPE"
 echo "Backend: $BACKEND"
 echo "Contact source: $CONTACT_SOURCE"
@@ -116,6 +139,7 @@ echo "Auto launch GUI: $GUI_AUTO"
 echo "RViz source: $RVIZ_SOURCE"
 echo "Control type: $CONTROL_TYPE"
 echo "MuJoCo terrain: $MUJOCO_TERRAIN"
+echo "Gazebo headless: $GAZEBO_HEADLESS"
 echo "ROS domain ID: $ROS_DOMAIN_ID"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -153,6 +177,8 @@ elif [ "$RVIZ_SOURCE" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$RVIZ_SOURCE" = "sim" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+elif [ "$BACKEND" = "gazebo" ]; then
+  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=topic odom_source:=topic output_joint_state_topic:=joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
   RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ]; then
@@ -168,6 +194,16 @@ if [ "$BACKEND" = "real" ] && [ "$CONTROL_TYPE" = "rl" ]; then
   BRIDGE_FEEDBACK_ARGS="joint_feedback_source:=joint_state joint_state_topic:=htdw_joint_state"
 fi
 
+GAZEBO_TASK_ARGS=""
+if [ "$BACKEND" = "gazebo" ]; then
+  GAZEBO_TASK_ARGS="task_file_name:=task_gazebo.info"
+fi
+
+GAZEBO_LAUNCH_ARGS=""
+if [ "$BACKEND" = "gazebo" ]; then
+  GAZEBO_LAUNCH_ARGS="gazebo_headless:=$GAZEBO_HEADLESS"
+fi
+
 RL_FEEDBACK_TRANSFORM="none"
 if [ "$BACKEND" = "real" ]; then
   RL_FEEDBACK_TRANSFORM="quad_mini_hardware"
@@ -180,10 +216,10 @@ tmux respawn-pane -k -t $SESSION:0.0 \
 "bash -lc '
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
-if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
+if [ \"$BACKEND\" = \"sim\" ] && [ -f $WS/mujoco_env.sh ]; then
   source $WS/mujoco_env.sh
 fi
-ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING control_type:=$CONTROL_TYPE mujoco_terrain:=$MUJOCO_TERRAIN $BRIDGE_FEEDBACK_ARGS
+ros2 launch launch_simulation bridge.launch.py robot_type:=$ROBOT_TYPE backend:=$BACKEND contact_source:=$CONTACT_SOURCE debug_state_logging:=$DEBUG_STATE_LOGGING control_type:=$CONTROL_TYPE mujoco_terrain:=$MUJOCO_TERRAIN $BRIDGE_FEEDBACK_ARGS $GAZEBO_LAUNCH_ARGS $GAZEBO_TASK_ARGS
 '"
 
 
@@ -221,7 +257,7 @@ echo /start_control is ready. Launching controller...
 if [ \"$CONTROL_TYPE\" = \"rl\" ]; then
   ros2 launch launch_simulation controller.launch.py robot_type:=$ROBOT_TYPE robot_name:=legged_robot control_type:=rl rl_feedback_joint_state_transform:=$RL_FEEDBACK_TRANSFORM
 else
-  ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE
+  ros2 launch launch_simulation mpc.launch.py robot_type:=$ROBOT_TYPE $GAZEBO_TASK_ARGS
 fi
 '"
 
@@ -246,7 +282,7 @@ if [ "$RVIZ_AUTO" = true ]; then
   "bash -lc '
   source /opt/ros/humble/setup.bash
   source $WS/install/setup.bash
-  if [ \"$BACKEND\" != \"real\" ] && [ -f $WS/mujoco_env.sh ]; then
+  if [ \"$BACKEND\" = \"sim\" ] && [ -f $WS/mujoco_env.sh ]; then
     source $WS/mujoco_env.sh
   fi
   $RVIZ_COMMAND

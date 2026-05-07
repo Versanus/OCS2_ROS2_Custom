@@ -32,6 +32,7 @@ install(DIRECTORY
 # Install scripts
 install(PROGRAMS
   scripts/gui_status.py
+  scripts/gazebo_joint_effort_adapter.py
   scripts/joint_status.py
   scripts/joint_plotter.py
   scripts/motor_status.py

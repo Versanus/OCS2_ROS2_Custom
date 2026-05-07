@@ -7,6 +7,8 @@
 #./run.sh quad_mini_real real estimated debug rviz gui
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
+#./run.sh quad_mini_tuned gazebo estimated debug rviz nogui auto mpc flat
+#./run.sh quad_mini_tuned gazebo_headless estimated debug rviz nogui auto mpc flat
 
 set -e
 
@@ -20,6 +22,7 @@ GUI_AUTO="${6:-}"
 RVIZ_SOURCE="${7:-auto}"
 CONTROL_TYPE="${8:-mpc}"
 MUJOCO_TERRAIN="${9:-flat}"
+GAZEBO_HEADLESS="${10:-}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 HOST_UID="${HOST_UID:-$(id -u)}"
@@ -41,8 +44,15 @@ if [ "${CONTACT_SOURCE}" = "debug" ] || [ "${CONTACT_SOURCE}" = "nodebug" ] || \
     CONTACT_SOURCE=""
 fi
 
+if [ "${BACKEND}" = "gazebo_headless" ]; then
+    BACKEND="gazebo"
+    if [ -z "${GAZEBO_HEADLESS}" ]; then
+        GAZEBO_HEADLESS="true"
+    fi
+fi
+
 if [ -z "${CONTACT_SOURCE}" ]; then
-    if [ "${BACKEND}" = "real" ]; then
+    if [ "${BACKEND}" = "real" ] || [ "${BACKEND}" = "gazebo" ]; then
         CONTACT_SOURCE="estimated"
     else
         CONTACT_SOURCE="mujoco"
@@ -50,9 +60,9 @@ if [ -z "${CONTACT_SOURCE}" ]; then
 fi
 
 case "${BACKEND}" in
-    sim|real) ;;
+    sim|real|gazebo) ;;
     *)
-        echo "Invalid backend: ${BACKEND}. Use 'sim' or 'real'."
+        echo "Invalid backend: ${BACKEND}. Use 'sim', 'real', or 'gazebo'."
         exit 1
         ;;
 esac
@@ -131,6 +141,19 @@ case "${MUJOCO_TERRAIN}" in
         ;;
 esac
 
+case "${GAZEBO_HEADLESS}" in
+    ""|window|gui|false)
+        GAZEBO_HEADLESS="false"
+        ;;
+    headless|true)
+        GAZEBO_HEADLESS="true"
+        ;;
+    *)
+        echo "Invalid Gazebo headless flag: ${GAZEBO_HEADLESS}. Use 'headless', 'window', 'true', or 'false'."
+        exit 1
+        ;;
+esac
+
 # Detect if running inside Docker
 if [ -f "/.dockerenv" ]; then
     echo "Running inside Docker container"
@@ -144,14 +167,14 @@ if [ -f "/.dockerenv" ]; then
 
     source /opt/ros/humble/setup.bash
     source "${WS_DIR}/install/local_setup.sh"
-    if [ "${BACKEND}" != "real" ]; then
+    if [ "${BACKEND}" = "sim" ]; then
         source "${WS_DIR}/mujoco_env.sh"
     fi
 
     echo "Environment loaded ✅"
-    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} control_type=${CONTROL_TYPE} mujoco_terrain=${MUJOCO_TERRAIN} ros_domain_id=${ROS_DOMAIN_ID}..."
+    echo "Launching backend=${BACKEND} robot=${ROBOT_TYPE} contact_source=${CONTACT_SOURCE} debug_state_logging=${DEBUG_STATE_LOGGING} rviz_auto=${RVIZ_AUTO} gui_auto=${GUI_AUTO} rviz_source=${RVIZ_SOURCE} control_type=${CONTROL_TYPE} mujoco_terrain=${MUJOCO_TERRAIN} gazebo_headless=${GAZEBO_HEADLESS} ros_domain_id=${ROS_DOMAIN_ID}..."
 
-    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}"
+    ./tools/run_tmux.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}" "${GAZEBO_HEADLESS}"
 
 else
     echo "Running on host system"
@@ -183,5 +206,5 @@ else
     docker exec -it \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         "$(docker compose ps -q quad_ocs2)" \
-        ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}"
+        ./run.sh "${ROBOT_TYPE}" "${BACKEND}" "${CONTACT_SOURCE}" "${DEBUG_STATE_LOGGING}" "${RVIZ_AUTO}" "${GUI_AUTO}" "${RVIZ_SOURCE}" "${CONTROL_TYPE}" "${MUJOCO_TERRAIN}" "${GAZEBO_HEADLESS}"
 fi

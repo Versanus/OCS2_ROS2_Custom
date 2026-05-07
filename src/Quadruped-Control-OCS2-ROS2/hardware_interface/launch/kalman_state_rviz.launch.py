@@ -9,11 +9,33 @@ from launch.substitutions import PythonExpression
 from launch_ros.actions import Node
 
 
+def _resolve_urdf_file(mujoco_share, robot_type, urdf_name):
+    urdf_dir = os.path.join(mujoco_share, 'models', robot_type, 'urdf')
+
+    if urdf_name:
+        candidate = urdf_name if os.path.isabs(urdf_name) else os.path.join(urdf_dir, urdf_name)
+        if not os.path.exists(candidate):
+            raise RuntimeError(f"Requested URDF does not exist: {candidate}")
+        return candidate
+
+    preferred_candidates = []
+    if robot_type == 'quad_mini_tuned':
+        preferred_candidates.append(os.path.join(urdf_dir, 'robotSTL.urdf'))
+    preferred_candidates.append(os.path.join(urdf_dir, 'robot.urdf'))
+
+    for candidate in preferred_candidates:
+        if os.path.exists(candidate):
+            return candidate
+
+    raise RuntimeError(f"No RViz URDF found for robot_type={robot_type} under {urdf_dir}.")
+
+
 def _create_nodes(context):
     mujoco_share = get_package_share_directory('mujoco_simulator')
     hardware_share = get_package_share_directory('hardware_interface')
 
     robot_type = LaunchConfiguration('robot_type').perform(context)
+    urdf_name = LaunchConfiguration('urdf_name').perform(context)
     joint_source = LaunchConfiguration('joint_source')
     odom_source = LaunchConfiguration('odom_source')
     sensor_input_topic = LaunchConfiguration('sensor_input_topic')
@@ -23,7 +45,7 @@ def _create_nodes(context):
     odom_topic = LaunchConfiguration('odom_topic')
     path_topic = LaunchConfiguration('path_topic')
 
-    urdf_file = os.path.join(mujoco_share, 'models', robot_type, 'urdf', 'robot.urdf')
+    urdf_file = _resolve_urdf_file(mujoco_share, robot_type, urdf_name)
     rviz_config_file = os.path.join(hardware_share, 'rviz', 'kalman_state.rviz')
     mesh_dir = os.path.join(mujoco_share, 'models', robot_type, 'meshes')
 
@@ -136,6 +158,7 @@ def _create_nodes(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot_type', default_value='quad_mini_real'),
+        DeclareLaunchArgument('urdf_name', default_value=''),
         DeclareLaunchArgument('joint_source', default_value='sensor'),
         DeclareLaunchArgument('odom_source', default_value='topic'),
         DeclareLaunchArgument('sensor_input_topic', default_value='simulator_sensor_data'),

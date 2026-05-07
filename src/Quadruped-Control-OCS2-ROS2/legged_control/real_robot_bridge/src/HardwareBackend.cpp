@@ -136,8 +136,11 @@ bool HardwareBackend::read(BackendData& data) {
   const double joint_time = stampToSeconds(latest_joint_state_.header.stamp);
   const double imu_time = stampToSeconds(latest_imu_.header.stamp);
   const double odom_time = have_odom_ ? stampToSeconds(latest_odom_.header.stamp) : 0.0;
-  const double now_time = node_.now().seconds();
-  const double simulation_time = std::max({joint_time, imu_time, odom_time, now_time});
+  double simulation_time = std::max({joint_time, imu_time, odom_time});
+  if (simulation_time <= 0.0) {
+    // Fall back to the node clock only when sensor timestamps are unavailable.
+    simulation_time = node_.now().seconds();
+  }
 
   data.state.simulation_time = simulation_time;
   data.sensor.simulation_time = simulation_time;

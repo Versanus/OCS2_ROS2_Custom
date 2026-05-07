@@ -55,10 +55,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-grid-map-msgs \
     ros-${ROS_DISTRO}-grid-map-ros \
     ros-${ROS_DISTRO}-grid-map-sdf \
+    ros-${ROS_DISTRO}-gz-ros2-control \
     ros-${ROS_DISTRO}-joint-state-publisher \
     ros-${ROS_DISTRO}-joint-state-publisher-gui \
     ros-${ROS_DISTRO}-octomap \
     ros-${ROS_DISTRO}-robot-state-publisher \
+    ros-${ROS_DISTRO}-ros-gz \
     ros-${ROS_DISTRO}-rviz2 \
     ros-${ROS_DISTRO}-urdf \
     ros-${ROS_DISTRO}-xacro \

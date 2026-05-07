@@ -132,9 +132,7 @@ void BridgeNodeBase::initializeBackend(std::unique_ptr<BackendBase> backend) {
   start_control_srv_ = create_service<legged_msgs::srv::StartControl>(
       "start_control", std::bind(&BridgeNodeBase::startControlService, this, std::placeholders::_1, std::placeholders::_2));
 
-  if (state_estimate_) {
-    sensor_pub_ = create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
-  }
+  sensor_pub_ = create_publisher<legged_msgs::msg::SimulatorSensorData>("simulator_sensor_data", 1);
   if (!state_estimate_ || always_publish_state_topic_) {
     state_pub_ = create_publisher<legged_msgs::msg::SimulatorStateData>("simulator_state_data", 1);
   }

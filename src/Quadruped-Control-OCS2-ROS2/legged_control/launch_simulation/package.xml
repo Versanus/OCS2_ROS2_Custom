@@ -10,11 +10,16 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>ament_index_python</depend>
+  <depend>hardware_interface</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
   <depend>motion_control</depend>
   <depend>mujoco_simulator</depend>
   <depend>real_robot_bridge</depend>
+  <depend>joint_state_publisher_gui</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_sim</depend>
   <depend>user_command</depend>
 
   <test_depend>ament_lint_auto</test_depend>
