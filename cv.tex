@@ -1,0 +1,92 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[left=1.15cm,right=1.15cm,top=1.0cm,bottom=1.0cm]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{tabularx}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.2pt}
+\setlist[itemize]{leftmargin=1.15em,noitemsep,topsep=1pt,parsep=0pt,partopsep=0pt}
+\titleformat{\section}{\bfseries\normalsize\color{black}}{}{0em}{}[\vspace{-2pt}\titlerule]
+\titlespacing*{\section}{0pt}{4pt}{3pt}
+
+\begin{document}
+\small
+
+\begin{center}
+{\Large \textbf{Furkan Kaan Borucu}}\\[-1pt]
+Control \& Robotics Engineer | Legged Robotics, MPC/WBC, ROS 2 Simulation\\[-1pt]
+Istanbul, Türkiye \;|\; \href{mailto:furkanborucu@gmail.com}{furkanborucu@gmail.com} \;|\; +90 532 686 04 90
+\end{center}
+\vspace{-5pt}
+
+\section*{Profile}
+Control and Automation Engineer focused on legged robot locomotion, nonlinear model predictive control, whole-body control, and simulator-to-hardware integration. Experienced with ROS 2, OCS2, MuJoCo, Gazebo/Ignition, Pinocchio, C++ and Python, with hands-on work building complete quadruped control stacks from modeling and state feedback to low-level torque application.
+
+\section*{Core Skills}
+\begin{tabularx}{\textwidth}{@{}l X@{}}
+\textbf{Control} & NMPC, optimal control, whole-body control, centroidal dynamics, inverse dynamics, robust/adaptive control, disturbance observers \\
+\textbf{Robotics} & Legged locomotion, gait scheduling, contact estimation, state estimation, kinematics/dynamics, simulator-to-real workflows \\
+\textbf{Software} & C++, Python, ROS 2 Humble, OCS2, MuJoCo, Gazebo/Ignition, ros2\_control, Pinocchio, Docker, Git \\
+\textbf{Tools} & MATLAB/Simulink, Crocoddyl, Robotoc, OpenCV, RViz, Linux, CMake/colcon \\
+\textbf{Embedded/Automation} & ESP32, STM32, Arduino, UART/I2C, HIL, Siemens PLC/HMI, ABB RobotStudio \\
+\end{tabularx}
+
+\section*{Selected Project}
+\textbf{OCS2 Quad Mini Quadruped Control Stack} \hfill \textit{ROS 2, OCS2, MuJoCo, Gazebo, C++, Docker}
+\begin{itemize}
+\item Developed a ROS 2 locomotion stack for a 12-DOF quadruped using OCS2 model predictive control and whole-body control.
+\item Built MuJoCo and Gazebo simulation workflows for testing standing, gait transitions, joint tracking, and state-feedback behavior.
+\item Implemented a Gazebo low-level effort controller for PD plus feedforward torque control through \texttt{ros2\_control}.
+\item Integrated IMU, odometry, joint-state feedback, contact estimation, RViz visualization, and Docker-based rebuild/run tooling.
+\item Debugged MuJoCo-to-Gazebo differences in orientation frames, torque application, controller loading, and simulator feedback timing.
+\end{itemize}
+
+\section*{Other Projects}
+\textbf{Quadruped NMPC Controller using Crocoddyl} \hfill \textit{Crocoddyl, MuJoCo, ROS}\\
+Implemented a quadruped NMPC pipeline including centroidal modeling, footstep planning, trajectory generation, and optimal-control rollout validation in simulation.
+
+\textbf{Rough-Terrain Locomotion using Robotoc} \hfill \textit{Robotoc, Optimal Control}\\
+Developed terrain-aware trajectory optimization for quadruped locomotion and validated uneven-terrain walking behavior in physics simulation.
+
+\textbf{Adaptive and Robust Control of a Mobile Manipulator} \hfill \textit{M.Sc. Research}\\
+Designed hierarchical MPC planning with adaptive inverse dynamics and DOB/ESO-style disturbance rejection for a 4-wheel + 4-DOF mobile manipulator; validated in MATLAB/Simulink.
+
+\textbf{Eye-Tracking Controlled Mobile Robot} \hfill \textit{Python, OpenCV}\\
+Built a hands-free human-robot interface mapping real-time gaze tracking to mobile robot commands with IMU-assisted stability feedback.
+
+\section*{Experience}
+\textbf{Robotics Engineer, Aware Robotics} \hfill \textit{Present}
+\begin{itemize}
+\item Develop quadruped locomotion control architectures using nonlinear MPC, whole-body control, and optimal-control frameworks.
+\item Build ROS 2 simulation and debugging workflows across MuJoCo, Gazebo, RViz, and hardware-facing bridge topics.
+\item Integrate and compare OCS2, Crocoddyl, Robotoc, Pinocchio, and custom low-level controllers for legged robotics.
+\end{itemize}
+
+\textbf{Automation Intern, Sürmak Makine} \hfill \textit{5 months}
+\begin{itemize}
+\item Supported assembly, wiring, commissioning, and troubleshooting of 10-axis and 12-axis CNC machines.
+\end{itemize}
+
+\textbf{Automation \& Robotics Intern, BRC Test Automation} \hfill \textit{2 months}
+\begin{itemize}
+\item Developed Siemens PLC/HMI programs and ABB RobotStudio routines for automated test and pick-and-place systems.
+\end{itemize}
+
+\section*{Education}
+\textbf{M.Sc. Control and Automation Engineering}, Yıldız Technical University \hfill 2024--Present\\
+Focus: robotics, model predictive control, adaptive/robust control, state estimation.
+
+\textbf{B.Sc. Control and Automation Engineering}, Yıldız Technical University \hfill 2018--2023\\
+Graduation project: mobile manipulator for industrial transport.
+
+\section*{Languages}
+Turkish (Native), English (Advanced), German (Basic), Spanish (Basic)
+
+\end{document}

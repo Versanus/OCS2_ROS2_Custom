@@ -25,6 +25,7 @@
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include "std_msgs/msg/int32.hpp"
+#include "user_command/RumbleFeedback.h"
 #include "user_command/goal/TargetTrajectoriesKeyboardPublisher.h"
 #include "user_command/gait/GaitKeyboardPublisher.h"
 #include "rclcpp/rclcpp.hpp"
@@ -138,6 +139,7 @@ struct GamepadConfig {
   int dpadVerticalAxis = 7;
   int leftTriggerAxis = 2;
   int rightTriggerAxis = 5;
+  int buttonA = 0;
   int buttonB = 1;
   int buttonX = 2;
   int buttonY = 3;
@@ -320,7 +322,9 @@ class GamepadTeleopInput {
   void handleButtonEvent(unsigned int buttonNumber, int16_t value) {
     const bool pressed = value != 0;
     const int button = static_cast<int>(buttonNumber);
-    if (button == config_.buttonB) {
+    if (button == config_.buttonA) {
+      queueKeyOnRisingEdge(pressed, buttonAPressed_, '1');
+    } else if (button == config_.buttonB) {
       queueKeyOnRisingEdge(pressed, buttonBPressed_, 'z');
     } else if (button == config_.buttonLb) {
       queueKeyOnRisingEdge(pressed, buttonLbPressed_, ' ');
@@ -355,6 +359,7 @@ class GamepadTeleopInput {
     dpadDownPressed_ = false;
     leftTriggerPressed_ = false;
     rightTriggerPressed_ = false;
+    buttonAPressed_ = false;
     buttonBPressed_ = false;
     buttonXPressed_ = false;
     buttonYPressed_ = false;
@@ -373,6 +378,7 @@ class GamepadTeleopInput {
   bool dpadDownPressed_ = false;
   bool leftTriggerPressed_ = false;
   bool rightTriggerPressed_ = false;
+  bool buttonAPressed_ = false;
   bool buttonBPressed_ = false;
   bool buttonXPressed_ = false;
   bool buttonYPressed_ = false;
@@ -663,6 +669,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
                              const rclcpp::Node::SharedPtr& node,
                              const rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr& emergencyOverridePublisher,
                              ControlState& controlState) {
+  RumbleFeedback rumbleFeedback("/dev/input/event24");
   auto showVelocityModeHelp = [&](const std::string& status = "") {
     printVelocityModeHelp(controllerType, status);
   };
@@ -793,6 +800,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
 
         if (key == ' ') {
           publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
+          rumbleFeedback.playStop();
           showVelocityModeHelp("Hold active: actuator output is locked, MPC/reference keeps updating in the background.");
         } else if (key == '0') {
           if (controlState == ControlState::SitDown) {
@@ -820,6 +828,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
             gamepadMotionRequiresRecenter = true;
             targetPoseCommand.publishHoldPositionCommand(false);
             publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::ActivateMpc);
+            rumbleFeedback.playBack();
             showVelocityModeHelp("MPC stance resume requested from the current pose.");
           } else {
             std::string stanceCommand = "stance";
@@ -865,6 +874,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
 
       if (key == ' ') {
         publishEmergencyOverrideCommand(emergencyOverridePublisher, ControlCommand::Hold);
+        rumbleFeedback.playStop();
         if (controllerType == ControllerType::Rl) {
           controlState = ControlState::Hold;
         }
@@ -1206,6 +1216,8 @@ int main(int argc, char* argv[]) {
       referenceInfoTree.get<int>("teleop.gamepad.leftTriggerAxis", gamepadConfig.leftTriggerAxis);
   gamepadConfig.rightTriggerAxis =
       referenceInfoTree.get<int>("teleop.gamepad.rightTriggerAxis", gamepadConfig.rightTriggerAxis);
+  gamepadConfig.buttonA =
+      referenceInfoTree.get<int>("teleop.gamepad.buttonA", gamepadConfig.buttonA);
   gamepadConfig.buttonB =
       referenceInfoTree.get<int>("teleop.gamepad.buttonB", gamepadConfig.buttonB);
   gamepadConfig.buttonX =

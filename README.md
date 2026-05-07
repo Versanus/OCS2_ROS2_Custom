@@ -1,375 +1,359 @@
 # OCS2 Quad Mini
 
-This repository contains the current `quad_mini_real` workflow for:
+ROS 2 Humble workspace for quadruped locomotion on the Quad Mini platform. The project combines OCS2 MPC/WBC, MuJoCo simulation, Gazebo/Ignition simulation, RViz visualization, Docker-based development, and real-robot bridge tooling.
 
-- MuJoCo simulation
-- OCS2 MPC / WBC control
-- real-robot bridge
-- RViz visualization
-- sim-to-real command bridging
+The current maintained robots are:
 
-The main maintained path in this repo is now `quad_mini_real`.
+- `quad_mini_tuned`: tuned simulation workflow for MuJoCo and Gazebo.
+- `quad_mini_real`: real-robot and hardware-bridge workflow.
 
-## What Works Today
+## What This Workspace Provides
 
-The project is set up around three practical use cases:
+- OCS2 nonlinear MPC and whole-body control for quadruped locomotion.
+- MuJoCo simulation backend with direct simulator feedback.
+- Gazebo/Ignition backend using `ros2_control` effort interfaces.
+- Custom Gazebo effort controller using:
 
-1. Full local simulation with MuJoCo, MPC, RViz, and GUI
-2. Real robot stack on the Orin
-3. Viewer-only RViz + GUI on a connected PC
+```text
+tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
+```
 
-The launcher interface was simplified. The old `RUN_ROLE` / `MPC_HOST` arguments are no longer part of the active workflow.
+- IMU, odometry, joint state, and estimated-contact bridge paths.
+- RViz moving-base visualization for simulator and hardware topics.
+- Docker workflow with ROS 2 Humble, MuJoCo, Gazebo, ros2_control, and OCS2 dependencies.
+
+## Repository Layout
+
+```text
+.
+├── build.sh                         # Full Docker image + workspace build
+├── rebuild_quick.sh                 # Fast rebuild for active control packages
+├── run.sh                           # Main launcher wrapper
+├── docker/                          # Docker image and entrypoint
+├── tools/                           # tmux launch orchestration and utilities
+└── src/Quadruped-Control-OCS2-ROS2/
+    ├── legged_control/
+    │   ├── gazebo_effort_controller/ # Custom ros2_control effort controller
+    │   ├── launch_simulation/        # MuJoCo/Gazebo/controller launch files
+    │   ├── motion_control/           # MPC/WBC and RL command publishers
+    │   ├── mujoco_simulator/         # MuJoCo/Gazebo robot assets
+    │   ├── real_robot_bridge/        # Simulator/hardware bridge
+    │   └── user_command/             # Robot configs, gait, reference commands
+    ├── ocs2_ros2/                    # Vendored OCS2 ROS 2 stack
+    ├── pinocchio/
+    ├── hpp-fcl/
+    └── qpOASES-master/
+```
 
 ## Requirements
 
+Host machine:
+
 - Ubuntu 22.04
-- `git`
-- Docker Engine with the Docker Compose plugin
-- X11 access if you want MuJoCo, RViz, or GUI windows
-- NVIDIA driver + NVIDIA Container Toolkit if you want GPU MuJoCo rendering
+- Docker Engine with Docker Compose plugin
+- X11 access for RViz/Gazebo GUI
+- NVIDIA driver and NVIDIA Container Toolkit if using GPU rendering
 
-This repo is built around the normal apt-based Docker Engine on Ubuntu. Do not use the Snap Docker package on a new machine.
+The project is designed to run fully inside Docker. Avoid Snap Docker; use the apt-based Docker Engine install.
 
-## New PC Quickstart
+## First-Time Setup
 
-Use these steps on a fresh Ubuntu 22.04 machine.
-
-### 1. Install base packages
+Install host packages:
 
 ```bash
 sudo apt update
 sudo apt install -y git curl ca-certificates x11-xserver-utils
 ```
 
-### 2. Install Docker Engine
+Install Docker Engine and Compose from Docker's official Ubuntu instructions:
 
-Install Docker Engine and the Compose plugin using Docker's official Ubuntu instructions:
+- https://docs.docker.com/engine/install/ubuntu/
+- https://docs.docker.com/compose/install/linux/
 
-- Docker Engine on Ubuntu: https://docs.docker.com/engine/install/ubuntu/
-- Docker Compose plugin on Linux: https://docs.docker.com/compose/install/linux/
+If GPU rendering is needed, install NVIDIA Container Toolkit:
 
-The standard apt-based install is:
+- https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 
-```bash
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-cat <<EOF | sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
-```
-
-Log out and log back in after adding yourself to the `docker` group.
-
-### 3. Install GPU container support
-
-MuJoCo in this repo is configured for NVIDIA GPU rendering by default.
-
-First verify the host driver:
-
-```bash
-nvidia-smi
-```
-
-If that does not work, fix the NVIDIA driver first.
-
-Then install NVIDIA Container Toolkit using the official guide:
-
-- NVIDIA Container Toolkit install guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
-
-The apt-based install is:
-
-```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-
-curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null
-
-sudo apt update
-sudo apt install -y nvidia-container-toolkit
-```
-
-Then configure Docker and restart the daemon:
-
-```bash
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-```
-
-### 4. Validate the host setup
-
-Before building the repo, make sure Docker and GPU containers work:
+Validate Docker and GPU access:
 
 ```bash
 docker --version
 docker compose version
-docker info
 docker run --rm hello-world
 docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
 ```
 
-If the last command fails, fix the host Docker/NVIDIA runtime before building this workspace.
-
-### 5. Clone the repo
+Clone and build:
 
 ```bash
 git clone https://github.com/Versanus/OCS2_quad_mini.git
 cd OCS2_quad_mini
+./build.sh
 ```
 
-### 6. Build the workspace
+`./build.sh` builds the Docker image, external libraries, and the ROS 2 workspace inside the container.
+
+## Docker Notes
+
+The Docker image installs the packages needed for the current Gazebo control path:
+
+- `ros-humble-ros2-control`
+- `ros-humble-ros2-controllers`
+- `ros-humble-gz-ros2-control`
+- `ros-humble-ign-ros2-control`
+
+If Dockerfile dependencies change, rebuild the image:
+
+```bash
+docker compose build quad_ocs2
+```
+
+Start a shell in the container:
+
+```bash
+docker compose up -d
+docker compose exec quad_ocs2 bash
+```
+
+## Build Commands
+
+Full clean build:
 
 ```bash
 ./build.sh
 ```
 
-`./build.sh` will:
-
-- clone the missing external dependencies under `src/Quadruped-Control-OCS2-ROS2`
-- build `qpOASES`
-- build the Docker image
-- build the ROS 2 workspace inside the container
-
-### 7. Source the workspace and run sim
+Fast rebuild after controller/config/launch edits:
 
 ```bash
-source ./source_ws.sh
-./run.sh quad_mini_real sim estimated debug rviz gui
+./rebuild_quick.sh
 ```
 
-## GPU Rendering
+The quick rebuild includes:
 
-Runtime launchers use the single `docker-compose.yml`, which is configured for NVIDIA GPU rendering by default.
+- `legged_msgs`
+- `motion_control`
+- `hardware_interface`
+- `gazebo_effort_controller`
+- `mujoco_simulator`
+- `real_robot_bridge`
+- `user_command`
+- `launch_simulation`
 
-If GPU startup fails with an `nvidia-container-cli` error, the host Docker NVIDIA runtime is not healthy yet. Verify GPU containers separately with:
+## Main Launcher
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+./run.sh <robot> <backend> <contact_source> <debug> <rviz> <gui> <rviz_source> <control_type> <terrain> <gazebo_headless>
 ```
 
-## Build
+Common arguments:
 
-Build the full workspace with:
-
-```bash
-./build.sh
-```
-
-This builds the Docker image and the ROS 2 workspace inside it.
-
-## Workspace Environment
-
-To source the workspace in a normal terminal:
-
-```bash
-source ./source_ws.sh
-```
-
-This exports:
-
-```bash
-ROS_DOMAIN_ID=23
-```
-
-by default.
-
-## Main Commands
-
-### Full launcher
-
-```bash
-./run.sh <robot> <backend> <contact_source> <debug> <rviz> <gui> <rviz_source>
-```
-
-For the current project, the main robot is:
-
-```bash
-quad_mini_real
-```
-
-Arguments:
-
-- `backend`: `sim` or `real`
-- `contact_source`: `mujoco` or `estimated`
-- `debug`: `debug` or `nodebug`
-- `rviz`: `rviz` or `norviz`
-- `gui`: `gui` or `nogui`
-- `rviz_source`: `auto`, `sim`, or `hardware`
-
-### Viewer-only launcher
-
-```bash
-./run_real_viewer.sh quad_mini_real
-```
-
-This opens:
-
-- RViz
-- hardware GUI
-- debug shell
-
-and waits for real-hardware topics. It does not launch MuJoCo or MPC.
+- `robot`: `quad_mini_tuned`, `quad_mini_real`
+- `backend`: `sim`, `gazebo`, `gazebo_headless`, `real`
+- `contact_source`: `mujoco`, `estimated`
+- `debug`: `debug`, `nodebug`
+- `rviz`: `rviz`, `norviz`
+- `gui`: `gui`, `nogui`
+- `rviz_source`: `auto`, `sim`, `hardware`
+- `control_type`: `mpc`, `rl`
+- `terrain`: `flat`, `rough`
 
 ## Common Workflows
 
-### 1. Full local simulation
+### Gazebo + MPC, headless Gazebo, RViz enabled
 
 ```bash
-./run.sh quad_mini_real sim estimated debug rviz gui
+./run.sh quad_mini_tuned gazebo estimated debug rviz nogui auto mpc flat headless
 ```
 
-This starts:
-
-- bridge
-- user command
-- MPC
-- debug terminal
-- RViz
-- GUI
-
-### 2. Real robot stack on the Orin
-
-Run this on the Orin:
+### Gazebo + MPC, Gazebo GUI enabled
 
 ```bash
-./run.sh quad_mini_real real estimated debug norviz nogui
+./run.sh quad_mini_tuned gazebo estimated debug rviz gui auto mpc flat window
 ```
 
-This keeps the Orin focused on the control stack and avoids opening viewer windows there.
-
-### 3. Viewer on the connected PC
-
-Run this on the connected PC:
+### MuJoCo + MPC
 
 ```bash
-./run_real_viewer.sh quad_mini_real
+./run.sh quad_mini_tuned sim mujoco debug rviz gui auto mpc flat
 ```
 
-This waits for:
-
-- `/htdw_joint_state`
-- `/odom`
-
-Then it launches moving-base RViz and the GUI.
-
-### 4. Show real hardware in RViz while local sim is running
-
-If you are running local sim but want RViz to visualize the real robot instead of MuJoCo:
+### Real robot bridge on the robot computer
 
 ```bash
-./run.sh quad_mini_real sim estimated debug rviz gui hardware
+./run.sh quad_mini_real real estimated debug norviz nogui auto mpc flat
 ```
 
-The last `hardware` argument switches RViz to the hardware-side topics.
+## Gazebo ros2_control Backend
 
-## Recommended Daily Flow
+The Gazebo backend no longer sends effort through direct Gazebo `/cmd_force` topics. It now uses:
 
-### Orin
+```text
+joint_control_data
+  -> gazebo_effort_controller/JointControlEffortController
+  -> ros2_control effort command interfaces
+  -> GazeboSystem
+```
+
+Relevant files:
+
+- `src/Quadruped-Control-OCS2-ROS2/legged_control/gazebo_effort_controller/src/joint_control_effort_controller.cpp`
+- `src/Quadruped-Control-OCS2-ROS2/legged_control/mujoco_simulator/models/quad_mini_tuned/urdf/robot_gz.urdf`
+- `src/Quadruped-Control-OCS2-ROS2/legged_control/launch_simulation/launch/quad_mini_tuned_gz.launch.py`
+- `src/Quadruped-Control-OCS2-ROS2/legged_control/launch_simulation/launch/bridge.launch.py`
+
+The controller:
+
+- subscribes to `/joint_control_data`
+- reads joint position, velocity, and effort from ros2_control state interfaces
+- writes effort commands to ros2_control command interfaces
+- publishes `/joint_states` for the bridge and RViz
+- uses Gazebo-provided joint velocity directly
+
+The launch generates a temporary controller config:
+
+```text
+/tmp/<robot_name>_quad_mini_effort_controller.yaml
+```
+
+Useful checks while Gazebo is running:
 
 ```bash
-./run.sh quad_mini_real real estimated debug norviz nogui
+ros2 control list_controllers
+ros2 topic hz /joint_states
+ros2 topic hz /imu/data
+ros2 topic hz /odom
+ros2 topic echo /joint_control_data --once
 ```
 
-### Connected PC
+Expected controller state:
+
+```text
+quad_mini_effort_controller active
+```
+
+## MuJoCo Backend
+
+The MuJoCo backend remains available for comparison and tuning. It is useful because the same MPC/WBC command stream can be checked against a different simulator.
+
+Main command:
 
 ```bash
-./run_real_viewer.sh quad_mini_real
+./run.sh quad_mini_tuned sim mujoco debug rviz gui auto mpc flat
 ```
 
-This is the clean split for real-robot use.
+MuJoCo environment setup is handled by:
 
-## sim2real Bridge
-
-The current `sim2real.py` bridge:
-
-- subscribes to `joint_control_data`
-- publishes to `joint_cmd`
-
-The output topic is parameterized, so it can be changed if your hardware side expects a different command topic.
-
-Relevant file:
-
-- `src/Quadruped-Control-OCS2-ROS2/hardware_interface/scripts/sim2real.py`
+```text
+mujoco_env.sh
+```
 
 ## Important Topics
 
-Main topics in the current workflow:
+Control and state:
+
+- `/joint_control_data`
+- `/joint_states`
+- `/imu/data`
+- `/odom`
+- `/simulator_state_data`
+- `/simulator_sensor_data`
+
+Real-robot hardware bridge:
 
 - `/htdw_joint_state`
 - `/htdw_joint_cmd`
-- `/imu/data`
-- `/odom`
-- `/simulator_sensor_data`
-- `/simulator_state_data`
-- `/joint_control_data`
 
-Useful checks:
+Diagnostics:
 
 ```bash
 ros2 topic list
-ros2 topic hz /htdw_joint_state
+ros2 topic hz /joint_states
+ros2 topic hz /imu/data
 ros2 topic hz /odom
-ros2 topic echo /simulator_sensor_data
+ros2 control list_hardware_interfaces
+ros2 control list_controllers
 ```
 
-## Root Scripts
+## Configuration Files
 
-### Active scripts
+Quad Mini tuned configs:
 
-- `build.sh`
-- `run.sh`
-- `run_real_viewer.sh`
-- `source_ws.sh`
-- `rebuild_quick.sh`
-- `rebuild_user_command.sh`
+```text
+src/Quadruped-Control-OCS2-ROS2/legged_control/user_command/config/quad_mini_tuned/
+├── task.info
+├── task_gazebo.info
+├── simulation.info
+├── reference.info
+├── gait.info
+└── rl.info
+```
 
-### Optional / specialized scripts
+Key notes:
 
-- `mujoco_env.sh`
-  Used by the launch and rebuild flow for MuJoCo library setup.
+- `task.info` is the main MuJoCo/MPC config.
+- `task_gazebo.info` is selected automatically for Gazebo through `tools/run_tmux.sh`.
+- `simulation.info` provides base PD gains used by the Gazebo controller launcher.
+- `rl.info` provides RL-specific base gains when `control_type:=rl`.
 
-- `git-gp`
-  Small local helper that does `git add -A`, commit, and push. Not part of runtime.
+## Troubleshooting
 
-### Legacy / one-leg-only scripts
+### Controller fails to load
 
-These are not part of the main `quad_mini_real` workflow:
+Check that the custom plugin exists:
 
-- `rebuild_one_leg.sh`
-- `run_one_leg.sh`
-- `run_one_leg_rviz.sh`
+```bash
+ls install/gazebo_effort_controller/lib/libgazebo_effort_controller.so
+find install/gazebo_effort_controller -name '*plugins.xml'
+```
 
-They belong to:
+Then check controller manager:
 
-- `src/one_leg_pinocchio_control/`
+```bash
+ros2 control list_controllers
+```
 
-If you do not use the one-leg controller anymore, these are the main cleanup candidates.
+### MPC says bridge is up but no valid state is available
 
-## Reports
+The bridge needs joint state, IMU, and odometry:
 
-There are two LaTeX reports in the repo:
+```bash
+ros2 topic hz /joint_states
+ros2 topic hz /imu/data
+ros2 topic hz /odom
+```
 
-- `quad_mini_usage_report.tex`
-  Short practical usage guide
+If `/joint_states` is missing, the Gazebo effort controller did not activate.
 
-- `quad_mini_detailed_report.tex`
-  Longer technical report
+### RViz mesh errors
 
-## Notes
+The launch rewrites mesh paths as `file://...` URIs for RViz. If meshes are missing, rebuild the simulator package:
 
-- `quad_mini_real` is the intended maintained path
-- `run.sh` always runs MPC where the command is launched
-- `run_real_viewer.sh` is the clean viewer-only command for the connected PC
+```bash
+./rebuild_quick.sh
+```
+
+### Docker package changes are not visible
+
+Rebuild the image, not just the workspace:
+
+```bash
+docker compose build quad_ocs2
+```
+
+## Development Notes
+
+- Use `./rebuild_quick.sh` after C++ controller, launch, URDF, or config changes.
+- Use `./build.sh` after large dependency or Docker changes.
+- The local package `hardware_interface` shares a name with ROS 2 control's `hardware_interface`; the custom controller CMake explicitly resolves ROS 2 control's package from `/opt/ros/$ROS_DISTRO`.
+- Gazebo currently uses `robot_gz.urdf`, which references OBJ meshes. If STL visuals are preferred, mirror the ros2_control block into `robotSTL_gz.urdf` and switch the Gazebo URDF preference.
+
+## Project Summary
+
+This workspace demonstrates a complete quadruped control pipeline:
+
+- OCS2 MPC/WBC locomotion for Quad Mini.
+- MuJoCo and Gazebo simulator backends.
+- Gazebo ros2_control effort controller matching the standard low-level PD + feedforward motor-control structure.
+- Dockerized ROS 2 Humble development environment.
+- Real-robot bridge and RViz visualization workflows.

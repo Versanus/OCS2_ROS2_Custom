@@ -36,7 +36,7 @@ services:
     volumes:
       - .:/workspaces/quad_ocs2_ws
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /dev/input:/dev/input:ro
+      - /dev/input:/dev/input
 
     # Needed for OpenGL / MuJoCo
     devices:

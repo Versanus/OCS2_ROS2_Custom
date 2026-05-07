@@ -25,13 +25,14 @@ teleop
     device                               /dev/input/js0
     axisDeadzone                         0.20
     digitalPressThreshold                0.60
-    axisLateral                          0
+    axisLateral                          3
     axisForward                          1
-    axisYaw                              3
+    axisYaw                              0
     dpadHorizontalAxis                   6
     dpadVerticalAxis                     7
     leftTriggerAxis                      2
     rightTriggerAxis                     5
+    buttonA                              0
     buttonB                              1
     buttonX                              2
     buttonY                              3
