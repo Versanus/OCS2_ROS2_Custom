@@ -598,75 +598,89 @@
       name="ignition::gazebo::systems::Imu"/>
   </gazebo>
 
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LF_HAA</joint_name>
-    </plugin>
-  </gazebo>
+  <ros2_control name="GazeboSystem" type="system">
+    <hardware>
+      <plugin>ign_ros2_control/IgnitionSystem</plugin>
+    </hardware>
+    <joint name="LF_HAA">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="LF_HFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="LF_KFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="LH_HAA">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="LH_HFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="LH_KFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RF_HAA">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RF_HFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RF_KFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RH_HAA">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RH_HFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="RH_KFE">
+      <command_interface name="effort"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
 
   <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LF_HFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LF_KFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LH_HAA</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LH_HFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>LH_KFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RF_HAA</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RF_HFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RF_KFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RH_HAA</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RH_HFE</joint_name>
-    </plugin>
-  </gazebo>
-
-  <gazebo>
-    <plugin filename="libignition-gazebo-apply-joint-force-system.so" name="ignition::gazebo::systems::ApplyJointForce">
-      <joint_name>RH_KFE</joint_name>
+    <plugin
+      filename="libign_ros2_control-system.so"
+      name="ign_ros2_control::IgnitionROS2ControlPlugin">
+      <parameters>__GAZEBO_ROS2_CONTROL_PARAMS__</parameters>
     </plugin>
   </gazebo>
 

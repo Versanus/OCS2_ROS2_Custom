@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 from ament_index_python.packages import get_package_share_directory
 
@@ -17,11 +18,37 @@ GAZEBO_COMMAND_JOINT_NAMES = [
 ]
 
 
-def _load_robot_description(urdf_file, mesh_dir):
+def _write_controller_config(robot_name, joint_names, base_kp, base_kd):
+    config_path = os.path.join(tempfile.gettempdir(), f"{robot_name}_quad_mini_effort_controller.yaml")
+    joint_lines = "\n".join(f"      - {joint_name}" for joint_name in joint_names)
+    base_kp_value = float(base_kp)
+    base_kd_value = float(base_kd)
+    with open(config_path, "w", encoding="utf-8") as file_handle:
+        file_handle.write(
+            "controller_manager:\n"
+            "  ros__parameters:\n"
+            "    update_rate: 1000\n"
+            "    quad_mini_effort_controller:\n"
+            "      type: gazebo_effort_controller/JointControlEffortController\n"
+            "\n"
+            "quad_mini_effort_controller:\n"
+            "  ros__parameters:\n"
+            f"    command_topic: /joint_control_data\n"
+            f"    output_joint_state_topic: /joint_states\n"
+            f"    base_kp: {base_kp_value:.6f}\n"
+            f"    base_kd: {base_kd_value:.6f}\n"
+            "    joints:\n"
+            f"{joint_lines}\n"
+        )
+    return config_path
+
+
+def _load_robot_description(urdf_file, mesh_dir, controller_config):
     with open(urdf_file, "r", encoding="utf-8") as file_handle:
         robot_description = file_handle.read()
-    robot_description = robot_description.replace('filename="meshes/', f'filename="{mesh_dir}/')
+    robot_description = robot_description.replace('filename="meshes/', f'filename="file://{mesh_dir}/')
     robot_description = robot_description.replace('filename="package://', 'filename="package://')
+    robot_description = robot_description.replace("__GAZEBO_ROS2_CONTROL_PARAMS__", controller_config)
     return robot_description
 
 
@@ -59,6 +86,8 @@ def _create_launch_items(context):
     spawn_z = LaunchConfiguration("spawn_z").perform(context)
     spawn_yaw = LaunchConfiguration("spawn_yaw").perform(context)
     world_name = LaunchConfiguration("world_name").perform(context)
+    controller_base_kp = LaunchConfiguration("controller_base_kp").perform(context)
+    controller_base_kd = LaunchConfiguration("controller_base_kd").perform(context)
     robot_name = requested_robot_name if requested_robot_name else robot_type
 
     ros_gz_sim_share = get_package_share_directory("ros_gz_sim")
@@ -68,8 +97,14 @@ def _create_launch_items(context):
     urdf_dir = os.path.join(model_dir, "urdf")
     mesh_dir = os.path.join(model_dir, "meshes")
     urdf_file = _resolve_urdf_file(urdf_dir, robot_type, requested_urdf_name)
+    controller_config = _write_controller_config(
+        robot_name,
+        GAZEBO_COMMAND_JOINT_NAMES,
+        controller_base_kp,
+        controller_base_kd,
+    )
 
-    robot_description = _load_robot_description(urdf_file, mesh_dir)
+    robot_description = _load_robot_description(urdf_file, mesh_dir, controller_config)
     gz_args = "-r -s empty.sdf" if headless else "-r empty.sdf"
 
     gazebo = IncludeLaunchDescription(
@@ -124,12 +159,21 @@ def _create_launch_items(context):
             "/joint_states_gz@sensor_msgs/msg/JointState[gz.msgs.Model",
             "/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
             "/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU",
-        ] + [
-            f"/model/{robot_name}/joint/{joint_name}/cmd_force@std_msgs/msg/Float64]gz.msgs.Double"
-            for joint_name in GAZEBO_COMMAND_JOINT_NAMES
         ],
         remappings=[
             ("/joint_states_gz", "joint_states_raw"),
+        ],
+    )
+
+    effort_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        name="quad_mini_effort_controller_spawner",
+        output="screen",
+        arguments=[
+            "quad_mini_effort_controller",
+            "--controller-manager", "/controller_manager",
+            "--param-file", controller_config,
         ],
     )
 
@@ -152,10 +196,12 @@ def _create_launch_items(context):
             os.pathsep.join([model_dir, urdf_dir, mesh_dir]),
         ),
         LogInfo(msg=f"Gazebo launch robot_type={robot_type} robot_name={robot_name} urdf_file={urdf_file}"),
+        LogInfo(msg=f"Gazebo ros2_control controller config={controller_config}"),
         gazebo,
         robot_state_publisher,
         spawn,
         bridge,
+        effort_controller_spawner,
         joint_state_publisher_gui,
     ]
 
@@ -175,6 +221,8 @@ def generate_launch_description():
             DeclareLaunchArgument("spawn_y", default_value="0.0"),
             DeclareLaunchArgument("spawn_z", default_value="0.32"),
             DeclareLaunchArgument("spawn_yaw", default_value="0.0"),
+            DeclareLaunchArgument("controller_base_kp", default_value="10.0"),
+            DeclareLaunchArgument("controller_base_kd", default_value="0.30"),
             OpaqueFunction(function=_create_launch_items),
         ]
     )

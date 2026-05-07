@@ -159,6 +159,7 @@ colcon build --packages-select \
   stm2ros \
   motion_control \
   hardware_interface \
+  gazebo_effort_controller \
   mujoco_simulator \
   real_robot_bridge \
   user_command \

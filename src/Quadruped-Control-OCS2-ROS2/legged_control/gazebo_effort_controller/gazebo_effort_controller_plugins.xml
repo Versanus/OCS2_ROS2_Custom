@@ -1,0 +1,10 @@
+<library path="gazebo_effort_controller">
+  <class
+    name="gazebo_effort_controller/JointControlEffortController"
+    type="gazebo_effort_controller::JointControlEffortController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Applies legged_msgs/JointControlData as joint effort commands using tau = kp*(q_des-q) + kd*(dq_des-dq) + tau_ff.
+    </description>
+  </class>
+</library>

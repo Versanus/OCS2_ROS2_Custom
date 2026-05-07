@@ -11,6 +11,7 @@
 
   <depend>ament_index_python</depend>
   <depend>hardware_interface</depend>
+  <depend>gazebo_effort_controller</depend>
   <depend>launch</depend>
   <depend>launch_ros</depend>
   <depend>motion_control</depend>
@@ -20,6 +21,8 @@
   <depend>robot_state_publisher</depend>
   <depend>ros_gz_bridge</depend>
   <depend>ros_gz_sim</depend>
+  <depend>controller_manager</depend>
+  <depend>ign_ros2_control</depend>
   <depend>user_command</depend>
 
   <test_depend>ament_lint_auto</test_depend>

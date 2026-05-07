@@ -10,14 +10,6 @@ from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 
 
-GAZEBO_COMMAND_JOINT_NAMES = [
-    'LF_HAA', 'LF_HFE', 'LF_KFE',
-    'LH_HAA', 'LH_HFE', 'LH_KFE',
-    'RF_HAA', 'RF_HFE', 'RF_KFE',
-    'RH_HAA', 'RH_HFE', 'RH_KFE',
-]
-
-
 def _selected_xml_name(control_type, terrain):
     if terrain == 'rough':
         return 'robot_rough_RL_motor.xml' if control_type == 'rl' else 'robot_rough.xml'
@@ -190,7 +182,6 @@ def _create_nodes(context):
 
     if backend_value == 'gazebo':
         odom_topic_value = LaunchConfiguration('odom_topic').perform(context) or 'odom'
-        gazebo_robot_name_value = LaunchConfiguration('gazebo_robot_name').perform(context) or robot_type_value
         gazebo_base_kp, gazebo_base_kd = _resolve_gazebo_base_gains(
             simulator_file, rl_file, control_type_value
         )
@@ -209,7 +200,9 @@ def _create_nodes(context):
                 'spawn_y': LaunchConfiguration('gazebo_spawn_y'),
                 'spawn_z': LaunchConfiguration('gazebo_spawn_z'),
                 'spawn_yaw': LaunchConfiguration('gazebo_spawn_yaw'),
-                'publish_robot_state': 'false',
+                'controller_base_kp': str(gazebo_base_kp),
+                'controller_base_kd': str(gazebo_base_kd),
+                'publish_robot_state': 'true',
             }.items(),
         )
 
@@ -233,22 +226,6 @@ def _create_nodes(context):
                     {'odomTopic': odom_topic_value},
                     {'hardwareCommandTopic': LaunchConfiguration('hardware_command_topic')},
                 ]
-            ),
-            Node(
-                package='hardware_interface',
-                executable='gazebo_joint_effort_adapter.py',
-                name='gazebo_joint_effort_adapter',
-                output='screen',
-                parameters=[
-                    {'use_sim_time': LaunchConfiguration('gazebo_use_sim_time')},
-                    {'command_topic': 'joint_control_data'},
-                    {'input_joint_state_topic': 'joint_states_raw'},
-                    {'output_joint_state_topic': LaunchConfiguration('joint_state_topic')},
-                    {'force_topic_prefix': f'/model/{gazebo_robot_name_value}/joint'},
-                    {'base_kp': gazebo_base_kp},
-                    {'base_kd': gazebo_base_kd},
-                    {'joint_names': GAZEBO_COMMAND_JOINT_NAMES},
-                ],
             ),
         ]
 
