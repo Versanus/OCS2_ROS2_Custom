@@ -30,7 +30,7 @@ class SimToRealBridge(Node):
         self.declare_parameter('feedforward_torque_enabled', True)
         self.declare_parameter('enable_tuning_window', True)
         self.declare_parameter('gain_scale_min', 0.0)
-        self.declare_parameter('gain_scale_max', 100.0)
+        self.declare_parameter('gain_scale_max', 500.0)
         self.declare_parameter('gain_scale_resolution', 0.01)
         self.declare_parameter(
             'source_joint_names',

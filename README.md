@@ -22,11 +22,18 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
 - RViz moving-base visualization for simulator and hardware topics.
 - Docker workflow with ROS 2 Humble, MuJoCo, Gazebo, ros2_control, and OCS2 dependencies.
 
+## Demo
+
+### Rough Terrain Walking
+
+![Quad Mini rough terrain walking demo](docs/media/rough_terrain_walk.gif)
+
 ## Repository Layout
 
 ```text
 .
 ├── build.sh                         # Full Docker image + workspace build
+├── docs/media/                      # README demo media
 ├── run.sh                           # Main launcher wrapper
 ├── docker/                          # Docker image and entrypoint
 ├── rebuild_tools/                   # Targeted rebuild helpers
