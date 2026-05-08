@@ -27,9 +27,9 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
 ```text
 .
 ├── build.sh                         # Full Docker image + workspace build
-├── rebuild_quick.sh                 # Fast rebuild for active control packages
 ├── run.sh                           # Main launcher wrapper
 ├── docker/                          # Docker image and entrypoint
+├── rebuild_tools/                   # Targeted rebuild helpers
 ├── tools/                           # tmux launch orchestration and utilities
 └── src/Quadruped-Control-OCS2-ROS2/
     ├── legged_control/
@@ -132,7 +132,7 @@ Full clean build:
 Fast rebuild after controller/config/launch edits:
 
 ```bash
-./rebuild_quick.sh
+./rebuild_tools/rebuild_quick.sh
 ```
 
 The quick rebuild includes:
@@ -145,6 +145,16 @@ The quick rebuild includes:
 - `real_robot_bridge`
 - `user_command`
 - `launch_simulation`
+
+Other targeted rebuilds:
+
+```bash
+./rebuild_tools/rebuild_user_command.sh
+./rebuild_tools/rebuild_one_leg.sh
+```
+
+- `rebuild_user_command.sh` rebuilds only `user_command` and `launch_simulation`.
+- `rebuild_one_leg.sh` rebuilds only `one_leg_pinocchio_control`.
 
 ## Main Launcher
 
@@ -336,7 +346,7 @@ If `/joint_states` is missing, the Gazebo effort controller did not activate.
 The launch rewrites mesh paths as `file://...` URIs for RViz. If meshes are missing, rebuild the simulator package:
 
 ```bash
-./rebuild_quick.sh
+./rebuild_tools/rebuild_quick.sh
 ```
 
 ### Docker package changes are not visible
@@ -349,7 +359,9 @@ docker compose build quad_ocs2
 
 ## Development Notes
 
-- Use `./rebuild_quick.sh` after C++ controller, launch, URDF, or config changes.
+- Use `./rebuild_tools/rebuild_quick.sh` after C++ controller, launch, URDF, or config changes.
+- Use `./rebuild_tools/rebuild_user_command.sh` after changing only user command config/launch files.
+- Use `./rebuild_tools/rebuild_one_leg.sh` after changing the one-leg controller package.
 - Use `./build.sh` after large dependency or Docker changes.
 - The local hardware/viewer package is named `hardware_inter` to avoid colliding with ROS 2 control's `hardware_interface` package.
 - Gazebo currently uses `robot_gz.urdf`, which references OBJ meshes. If STL visuals are preferred, mirror the ros2_control block into `robotSTL_gz.urdf` and switch the Gazebo URDF preference.

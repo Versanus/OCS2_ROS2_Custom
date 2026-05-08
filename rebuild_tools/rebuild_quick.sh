@@ -2,7 +2,7 @@
 
 set -e
 
-WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 filter_existing_prefixes() {
     local var_name="$1"
@@ -67,5 +67,5 @@ else
     echo "Running on host system"
     echo "Starting Docker container for quick rebuild..."
 
-    docker compose run --rm quad_ocs2 ./rebuild_quick.sh
+    docker compose run --rm quad_ocs2 ./rebuild_tools/rebuild_quick.sh
 fi

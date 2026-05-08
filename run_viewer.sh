@@ -59,5 +59,5 @@ else
     echo "Attaching to container..."
     docker exec -it -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         "$(docker compose ps -q quad_ocs2)" \
-        ./run_viewer "${VIEWER_MODE}" "${ROBOT_TYPE}"
+        ./run_viewer.sh "${VIEWER_MODE}" "${ROBOT_TYPE}"
 fi
