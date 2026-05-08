@@ -52,7 +52,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'robot_type',
-            default_value='b1'
+            default_value='quad_mini_tuned'
         ),
         DeclareLaunchArgument(
             'robot_name',

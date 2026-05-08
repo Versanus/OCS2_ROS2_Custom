@@ -234,7 +234,7 @@ def _create_nodes(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('robot_type', default_value='b1'),
+        DeclareLaunchArgument('robot_type', default_value='quad_mini_tuned'),
         DeclareLaunchArgument('backend', default_value='sim'),
         DeclareLaunchArgument('contact_source', default_value='mujoco'),
         DeclareLaunchArgument('publish_rate_hz', default_value='0.0'),

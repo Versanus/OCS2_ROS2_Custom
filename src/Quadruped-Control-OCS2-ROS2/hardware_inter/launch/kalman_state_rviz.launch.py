@@ -32,7 +32,7 @@ def _resolve_urdf_file(mujoco_share, robot_type, urdf_name):
 
 def _create_nodes(context):
     mujoco_share = get_package_share_directory('mujoco_simulator')
-    hardware_share = get_package_share_directory('hardware_interface')
+    hardware_share = get_package_share_directory('hardware_inter')
 
     robot_type = LaunchConfiguration('robot_type').perform(context)
     urdf_name = LaunchConfiguration('urdf_name').perform(context)
@@ -69,7 +69,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='sensor_to_joint_state.py',
             name='sensor_to_joint_state',
             output='screen',
@@ -81,7 +81,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='mujoco_to_joint_state.py',
             name='state_to_joint_state',
             output='screen',
@@ -94,7 +94,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='digitalTwin.py',
             name='digital_twin_bridge',
             output='screen',
@@ -107,7 +107,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='state_to_odom.py',
             name='state_to_odom_bridge',
             output='screen',
@@ -118,7 +118,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='odom_to_tf.py',
             name='odom_to_tf_bridge',
             output='screen',
@@ -127,7 +127,7 @@ def _create_nodes(context):
             ],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='odom_to_path.py',
             name='odom_to_path_bridge',
             output='screen',

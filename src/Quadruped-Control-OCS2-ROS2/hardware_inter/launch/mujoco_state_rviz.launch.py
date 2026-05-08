@@ -33,7 +33,7 @@ def _create_nodes(context):
             arguments=['-d', rviz_config_file],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='mujoco_to_joint_state.py',
             name='mujoco_to_joint_state',
             output='screen',
@@ -78,7 +78,7 @@ def _create_nodes(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('robot_type', default_value='quad_mini'),
+        DeclareLaunchArgument('robot_type', default_value='quad_mini_tuned'),
         DeclareLaunchArgument('input_topic', default_value='simulator_state_data'),
         DeclareLaunchArgument('output_topic', default_value='joint_states'),
         OpaqueFunction(function=_create_nodes),

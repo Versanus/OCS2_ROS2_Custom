@@ -7,15 +7,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 
-# This workspace also has a local package named "hardware_interface".
-# controller_interface needs the ROS2 control package with the same name.
-if(DEFINED ENV{ROS_DISTRO})
-  set(_ros2_control_hardware_interface_dir "/opt/ros/$ENV{ROS_DISTRO}/share/hardware_interface/cmake")
-  if(EXISTS "${_ros2_control_hardware_interface_dir}/hardware_interfaceConfig.cmake")
-    set(hardware_interface_DIR "${_ros2_control_hardware_interface_dir}" CACHE PATH "" FORCE)
-  endif()
-endif()
-
 find_package(hardware_interface REQUIRED)
 find_package(controller_interface REQUIRED)
 find_package(legged_msgs REQUIRED)

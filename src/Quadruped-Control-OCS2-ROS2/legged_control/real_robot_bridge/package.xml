@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>Shared bridge layer for MuJoCo and real hardware backends.</description>
   <maintainer email="2805140006@qq.com">zhx</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

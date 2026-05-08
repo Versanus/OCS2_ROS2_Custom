@@ -1,35 +1,14 @@
 cmake_minimum_required(VERSION 3.8)
-project(hardware_interface)
+project(hardware_inter)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
-
-# find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(std_msgs REQUIRED)
 
-# find_package(<dependency> REQUIRED)
-
-add_executable(my_hardware src/my_hardware.cpp)
-target_include_directories(my_hardware PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
-target_compile_features(my_hardware PUBLIC c_std_99 cxx_std_17)
-
-ament_target_dependencies(my_hardware std_msgs)
-
-install(TARGETS my_hardware
-  DESTINATION lib/${PROJECT_NAME})
-
-# Install launch files
 install(DIRECTORY
   launch
   rviz
   DESTINATION share/${PROJECT_NAME}/
 )
 
-# Install scripts
 install(PROGRAMS
   scripts/gui_status.py
   scripts/gazebo_joint_effort_adapter.py
@@ -45,7 +24,6 @@ install(PROGRAMS
   scripts/sensor_to_joint_state.py
   scripts/state_to_odom.py
   scripts/sim2real.py
-  scripts/read_to_csv.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

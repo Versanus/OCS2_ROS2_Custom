@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
-#./run.sh quad_mini sim mujoco debug rviz gui
-#./run.sh quad_mini sim mujoco nodebug norviz nogui
+#./run.sh quad_mini_tuned sim mujoco debug rviz gui
+#./run.sh quad_mini_tuned sim mujoco nodebug norviz nogui
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
 #./run.sh quad_mini_tuned gazebo estimated debug rviz nogui auto mpc flat
 #./run.sh quad_mini_tuned gazebo_headless estimated debug rviz nogui auto mpc flat
@@ -10,7 +10,7 @@ SESSION=quad
 WS=/workspaces/quad_ocs2_ws
 
 # robot type argument
-ROBOT_TYPE=${1:-quad_mini}
+ROBOT_TYPE=${1:-quad_mini_tuned}
 BACKEND=${2:-sim}
 CONTACT_SOURCE=${3:-}
 DEBUG_STATE_LOGGING=${4:-false}
@@ -146,8 +146,8 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   tmux kill-session -t "$SESSION"
 fi
 
-if { [ "$RVIZ_AUTO" = true ] || [ "$GUI_AUTO" = true ]; } && ! ros2 pkg prefix hardware_interface >/dev/null 2>&1; then
-  echo "ERROR: package 'hardware_interface' is not installed in this workspace."
+if { [ "$RVIZ_AUTO" = true ] || [ "$GUI_AUTO" = true ]; } && ! ros2 pkg prefix hardware_inter >/dev/null 2>&1; then
+  echo "ERROR: package 'hardware_inter' is not installed in this workspace."
   echo "Rebuild with ./build.sh or ./rebuild_quick.sh before launching with RViz or GUI."
   exit 1
 fi
@@ -172,21 +172,21 @@ fi
 
 # Always use the moving-base RViz launcher. The source behind it changes based on backend/data availability.
 if [ "$RVIZ_SOURCE" = "hardware" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_hardware_odom path_topic:=rviz_hardware_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_hardware_odom path_topic:=rviz_hardware_odom_path"
 elif [ "$RVIZ_SOURCE" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$RVIZ_SOURCE" = "sim" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "gazebo" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=topic odom_source:=topic output_joint_state_topic:=joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=topic odom_source:=topic output_joint_state_topic:=joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ] && [ "$STATE_ESTIMATE" = "true" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 elif [ "$BACKEND" = "sim" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
 elif [ "$STATE_ESTIMATE" = "true" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
 else
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
 fi
 
 BRIDGE_FEEDBACK_ARGS=""
@@ -270,7 +270,7 @@ tmux respawn-pane -k -t $SESSION:0.3 \
 source /opt/ros/humble/setup.bash
 source $WS/install/setup.bash
 if [ \"$BACKEND\" = \"real\" ]; then
-  ros2 run hardware_interface odom_relay.py --ros-args -p input_topic:=odom -p output_topic:=rviz_hardware_odom >/tmp/rviz_hardware_odom.log 2>&1 &
+  ros2 run hardware_inter odom_relay.py --ros-args -p input_topic:=odom -p output_topic:=rviz_hardware_odom >/tmp/rviz_hardware_odom.log 2>&1 &
 fi
 echo Debug terminal ready
 bash
@@ -295,7 +295,7 @@ if [ "$GUI_AUTO" = true ]; then
   "bash -lc '
   source /opt/ros/humble/setup.bash
   source $WS/install/setup.bash
-  ros2 run hardware_interface gui_status.py
+  ros2 run hardware_inter gui_status.py
   '"
 fi
 

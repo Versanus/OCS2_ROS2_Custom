@@ -91,7 +91,13 @@ cd OCS2_quad_mini
 ./build.sh
 ```
 
-`./build.sh` builds the Docker image, external libraries, and the ROS 2 workspace inside the container.
+`./build.sh` initializes the pinned submodules from `.gitmodules`, builds the Docker image, builds external libraries, and builds the ROS 2 workspace inside the container.
+
+If you want to initialize external repositories manually before building:
+
+```bash
+git submodule update --init --recursive
+```
 
 ## Docker Notes
 
@@ -133,7 +139,7 @@ The quick rebuild includes:
 
 - `legged_msgs`
 - `motion_control`
-- `hardware_interface`
+- `hardware_inter`
 - `gazebo_effort_controller`
 - `mujoco_simulator`
 - `real_robot_bridge`
@@ -345,7 +351,7 @@ docker compose build quad_ocs2
 
 - Use `./rebuild_quick.sh` after C++ controller, launch, URDF, or config changes.
 - Use `./build.sh` after large dependency or Docker changes.
-- The local package `hardware_interface` shares a name with ROS 2 control's `hardware_interface`; the custom controller CMake explicitly resolves ROS 2 control's package from `/opt/ros/$ROS_DISTRO`.
+- The local hardware/viewer package is named `hardware_inter` to avoid colliding with ROS 2 control's `hardware_interface` package.
 - Gazebo currently uses `robot_gz.urdf`, which references OBJ meshes. If STL visuals are preferred, mirror the ros2_control block into `robotSTL_gz.urdf` and switch the Gazebo URDF preference.
 
 ## Project Summary

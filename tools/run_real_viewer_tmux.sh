@@ -8,7 +8,7 @@ ROBOT_TYPE="${1:-quad_mini_real}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-23}"
 export ROS_DOMAIN_ID
 
-RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_hardware_odom_path"
+RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_hardware_odom_path"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   tmux kill-session -t "$SESSION"
@@ -55,7 +55,7 @@ until ros2 topic type /htdw_joint_state >/dev/null 2>&1; do
   sleep 1
 done
 echo Launching hardware status GUI...
-ros2 run hardware_interface gui_status.py
+ros2 run hardware_inter gui_status.py
 '"
 
 tmux select-window -t "$SESSION:0"

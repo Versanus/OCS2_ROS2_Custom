@@ -34,7 +34,7 @@ if [ -f "/.dockerenv" ]; then
     # rm -rf build/inekf install/inekf
     # rm -rf build/motion_control install/motion_control
     # rm -rf build/gazebo_effort_controller install/gazebo_effort_controller
-    # rm -rf build/hardware_interface install/hardware_interface
+    # rm -rf build/hardware_inter install/hardware_inter
     # rm -rf build/mujoco_simulator install/mujoco_simulator
     # rm -rf build/real_robot_bridge install/real_robot_bridge
     # rm -rf build/user_command install/user_command
@@ -56,7 +56,7 @@ if [ -f "/.dockerenv" ]; then
     echo "Rebuilding packages..."
 
     colcon build \
-        --packages-select ocs2_oc ocs2_mpc legged_msgs stm2ros inekf motion_control hardware_interface gazebo_effort_controller mujoco_simulator real_robot_bridge user_command launch_simulation
+        --packages-select ocs2_oc ocs2_mpc legged_msgs stm2ros inekf motion_control hardware_inter gazebo_effort_controller mujoco_simulator real_robot_bridge user_command launch_simulation
         #--cmake-clean-cache
 
     source install/local_setup.bash

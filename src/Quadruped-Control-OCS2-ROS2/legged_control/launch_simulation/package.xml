@@ -3,27 +3,27 @@
 <package format="3">
   <name>launch_simulation</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Launch files for Quad Mini MuJoCo, Gazebo, bridge, controller, and user-command workflows.</description>
   <maintainer email="2805140006@qq.com">zhx</maintainer>
-  <license>TODO: License declaration</license>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>ament_index_python</depend>
-  <depend>hardware_interface</depend>
-  <depend>gazebo_effort_controller</depend>
-  <depend>launch</depend>
-  <depend>launch_ros</depend>
-  <depend>motion_control</depend>
-  <depend>mujoco_simulator</depend>
-  <depend>real_robot_bridge</depend>
-  <depend>joint_state_publisher_gui</depend>
-  <depend>robot_state_publisher</depend>
-  <depend>ros_gz_bridge</depend>
-  <depend>ros_gz_sim</depend>
-  <depend>controller_manager</depend>
-  <depend>ign_ros2_control</depend>
-  <depend>user_command</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>hardware_inter</exec_depend>
+  <exec_depend>gazebo_effort_controller</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>motion_control</exec_depend>
+  <exec_depend>mujoco_simulator</exec_depend>
+  <exec_depend>real_robot_bridge</exec_depend>
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>ign_ros2_control</exec_depend>
+  <exec_depend>user_command</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

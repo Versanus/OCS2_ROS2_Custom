@@ -7,6 +7,8 @@ log/
 *.a
 *.pyc
 __pycache__/
+.DS_Store
+*:Zone.Identifier
 .idea/
 .vscode/
 .ros/

@@ -69,7 +69,7 @@ def generate_launch_description():
 
         DeclareLaunchArgument(
             'robot_type',
-            default_value='b1'
+            default_value='quad_mini_tuned'
         ),
         DeclareLaunchArgument('control_type', default_value='mpc'),
         DeclareLaunchArgument('mujoco_terrain', default_value='flat'),

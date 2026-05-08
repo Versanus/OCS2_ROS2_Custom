@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-#./run.sh quad_mini sim
-#./run.sh quad_mini sim debug
-#./run.sh quad_mini sim mujoco debug
-#./run.sh quad_mini sim mujoco debug rviz gui
-#./run.sh quad_mini sim mujoco nodebug norviz nogui
+#./run.sh quad_mini_tuned sim
+#./run.sh quad_mini_tuned sim debug
+#./run.sh quad_mini_tuned sim mujoco debug
+#./run.sh quad_mini_tuned sim mujoco debug rviz gui
+#./run.sh quad_mini_tuned sim mujoco nodebug norviz nogui
 #./run.sh quad_mini_real real estimated debug rviz gui
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl
 #./run.sh quad_mini_real sim estimated nodebug norviz nogui auto rl rough
@@ -13,7 +13,7 @@
 set -e
 
 WS_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-ROBOT_TYPE="${1:-quad_mini}"
+ROBOT_TYPE="${1:-quad_mini_tuned}"
 BACKEND="${2:-sim}"
 CONTACT_SOURCE="${3:-}"
 DEBUG_STATE_LOGGING="${4:-}"

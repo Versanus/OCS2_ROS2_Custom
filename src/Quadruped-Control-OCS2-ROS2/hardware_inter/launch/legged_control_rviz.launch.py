@@ -32,7 +32,7 @@ def _create_nodes(context):
             arguments=['-d', rviz_config_file],
         ),
         Node(
-            package='hardware_interface',
+            package='hardware_inter',
             executable='digitalTwin.py',
             name='digital_twin_bridge',
             output='screen',

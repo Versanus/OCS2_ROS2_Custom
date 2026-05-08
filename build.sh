@@ -42,59 +42,22 @@ xhost +local:docker > /dev/null 2>&1 || true
 
 echo "[2/6] Checking external dependencies..."
 
-cd "$SRC_DIR"
+if [ ! -d "$SRC_DIR/ocs2_ros2" ]; then
+    echo "ERROR: Required vendored directory '$SRC_DIR/ocs2_ros2' is missing."
+    echo "Re-clone the main repository or restore that directory before building."
+    exit 1
+fi
 
-clone_if_missing () {
-    if [ -d "$1/.git" ]; then
-        echo "$1 already exists"
-    elif [ -d "$1" ] && [ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-        echo "Directory '$1' exists but is empty. Replacing it with a fresh clone..."
-        rmdir "$1"
-        git clone "$2"
-    elif [ -d "$1" ]; then
-        echo "ERROR: Directory '$1' already exists but is not a git checkout."
-        echo "Remove it or convert it into a valid clone before running build.sh."
-        exit 1
-    else
-        echo "Cloning $1..."
-        git clone "$2"
-    fi
-}
+if [ ! -f "$WS_DIR/.gitmodules" ]; then
+    echo "ERROR: .gitmodules is missing. Cannot initialize pinned external repositories."
+    exit 1
+fi
 
-clone_recursive_if_missing () {
-    if [ -d "$1/.git" ]; then
-        echo "$1 already exists"
-    elif [ -d "$1" ] && [ -z "$(find "$1" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-        echo "Directory '$1' exists but is empty. Replacing it with a fresh clone..."
-        rmdir "$1"
-        git clone --recurse-submodules "$2"
-    elif [ -d "$1" ]; then
-        echo "ERROR: Directory '$1' already exists but is not a git checkout."
-        echo "Remove it or convert it into a valid clone before running build.sh."
-        exit 1
-    else
-        echo "Cloning $1 with submodules..."
-        git clone --recurse-submodules "$2"
-    fi
-}
-
-require_vendored_dir () {
-    if [ ! -d "$1" ]; then
-        echo "ERROR: Required vendored directory '$1' is missing."
-        echo "This workspace now vendors '$1' directly into the main repository."
-        echo "Re-clone the main repository or restore that directory before building."
-        exit 1
-    fi
-    echo "$1 is vendored in this workspace"
-}
-
-require_vendored_dir "ocs2_ros2"
-clone_if_missing "ocs2_robotic_assets" https://github.com/zhengxiang94/ocs2_robotic_assets.git
-clone_if_missing "plane_segmentation_ros2" https://github.com/zhengxiang94/plane_segmentation_ros2.git
-clone_recursive_if_missing "pinocchio" https://github.com/zhengxiang94/pinocchio.git
-clone_recursive_if_missing "hpp-fcl" https://github.com/zhengxiang94/hpp-fcl.git
-
-cd "$WS_DIR"
+git -C "$WS_DIR" submodule update --init --recursive \
+    src/Quadruped-Control-OCS2-ROS2/ocs2_robotic_assets \
+    src/Quadruped-Control-OCS2-ROS2/plane_segmentation_ros2 \
+    src/Quadruped-Control-OCS2-ROS2/pinocchio \
+    src/Quadruped-Control-OCS2-ROS2/hpp-fcl
 
 
 echo "[3/6] Checking MuJoCo library symlink..."
@@ -158,7 +121,7 @@ colcon build --packages-select \
   legged_msgs \
   stm2ros \
   motion_control \
-  hardware_interface \
+  hardware_inter \
   gazebo_effort_controller \
   mujoco_simulator \
   real_robot_bridge \
@@ -172,6 +135,6 @@ echo "Build finished successfully"
 echo "====================================="
 echo ""
 echo "Typical commands:"
-echo "./run.sh quad_mini_real sim estimated debug rviz gui"
+echo "./run.sh quad_mini_tuned sim mujoco debug rviz gui"
 echo "./run.sh quad_mini_real real estimated debug norviz nogui"
-echo "./run_real_viewer.sh quad_mini_real"
+echo "./run_viewer hardware quad_mini_real"

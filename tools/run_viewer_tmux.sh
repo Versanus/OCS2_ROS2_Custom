@@ -31,14 +31,14 @@ WAIT_TOPICS=()
 USE_HARDWARE_GUI=false
 
 if [ "$VIEWER_MODE" = "hardware" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_hardware_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=hardware odom_source:=topic input_joint_state_topic:=htdw_joint_state output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_hardware_odom_path"
   WAIT_TOPICS=(/htdw_joint_state /odom)
   USE_HARDWARE_GUI=true
 elif [ "$STATE_ESTIMATE" = "true" ]; then
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=sensor odom_source:=topic sensor_input_topic:=simulator_sensor_data output_joint_state_topic:=rviz_joint_states odom_topic:=odom path_topic:=rviz_odom_path"
   WAIT_TOPICS=(/simulator_sensor_data /odom)
 else
-  RVIZ_COMMAND="ros2 launch hardware_interface kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
+  RVIZ_COMMAND="ros2 launch hardware_inter kalman_state_rviz.launch.py robot_type:=$ROBOT_TYPE joint_source:=state odom_source:=state state_input_topic:=simulator_state_data output_joint_state_topic:=rviz_joint_states odom_topic:=rviz_odom path_topic:=rviz_odom_path"
   WAIT_TOPICS=(/simulator_state_data)
 fi
 
@@ -111,7 +111,7 @@ if [ "$USE_HARDWARE_GUI" = true ]; then
     sleep 1
   done
   echo Launching hardware status GUI...
-  ros2 run hardware_interface gui_status.py
+  ros2 run hardware_inter gui_status.py
   '"
 fi
 
