@@ -1,6 +1,6 @@
 ; Smoke-test RL config. This is intentionally simple and does not aim to match training.
 
-onnxModelPath ../../models/go1_policy.onnx
+onnxModelPath ../../models/quad_mini_policy.onnx
 onnxInputName obs
 onnxOutputName continuous_actions
 
