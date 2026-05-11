@@ -26,15 +26,11 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
 
 ### MPC Flat Walking in RViz
 
-<video src="docs/media/mpc_rviz_flat_walk.mp4" controls muted loop playsinline width="100%"></video>
-
-[Open the MPC flat-walking RViz demo](docs/media/mpc_rviz_flat_walk.mp4)
+[![MPC flat-walking RViz demo](docs/media/mpc_rviz_flat_walk_thumb.jpg)](docs/media/mpc_rviz_flat_walk.mp4)
 
 ### RL Rough Terrain Walking
 
-<video src="docs/media/rl_test_rough.mp4" controls muted loop playsinline width="100%"></video>
-
-[Open the RL rough-terrain walking demo](docs/media/rl_test_rough.mp4)
+[![RL rough-terrain walking demo](docs/media/rl_test_rough_thumb.jpg)](docs/media/rl_test_rough.mp4)
 
 ## Repository Layout
 
