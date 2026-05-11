@@ -135,6 +135,8 @@ struct GamepadConfig {
   int axisLateral = 0;
   int axisForward = 1;
   int axisYaw = 3;
+  int axisTiltRoll = 3;
+  int axisTiltPitch = 4;
   int dpadHorizontalAxis = 6;
   int dpadVerticalAxis = 7;
   int leftTriggerAxis = 2;
@@ -218,8 +220,19 @@ class GamepadTeleopInput {
     return !currentMotionAxes().isZero(1e-3);
   }
 
-  void setStabilizeToggleState(bool active) {
-    stabilizeToggleState_ = active;
+  ocs2::vector_t currentTiltAxes() const {
+    ocs2::vector_t axes = ocs2::vector_t::Zero(2);
+    if (fd_ < 0) {
+      return axes;
+    }
+
+    axes(0) = -applyDeadzone(normalizedAxisValue(config_.axisTiltPitch), config_.axisDeadzone);
+    axes(1) = applyDeadzone(normalizedAxisValue(config_.axisTiltRoll), config_.axisDeadzone);
+    return axes;
+  }
+
+  bool hasActiveTiltInput() const {
+    return !currentTiltAxes().isZero(1e-3);
   }
 
  private:
@@ -333,21 +346,13 @@ class GamepadTeleopInput {
     } else if (button == config_.buttonX) {
       queueKeyOnRisingEdge(pressed, buttonXPressed_, 'c');
     } else if (button == config_.buttonY) {
-      queueToggleOnRisingEdge(pressed, buttonYPressed_, 'y', 't');
+      queueKeyOnRisingEdge(pressed, buttonYPressed_, 'p');
     }
   }
 
   void queueKeyOnRisingEdge(bool currentlyPressed, bool& previousPressed, char mappedKey) {
     if (currentlyPressed && !previousPressed) {
       pendingKeys_.push_back(mappedKey);
-    }
-    previousPressed = currentlyPressed;
-  }
-
-  void queueToggleOnRisingEdge(bool currentlyPressed, bool& previousPressed, char onKey, char offKey) {
-    if (currentlyPressed && !previousPressed) {
-      pendingKeys_.push_back(stabilizeToggleState_ ? offKey : onKey);
-      stabilizeToggleState_ = !stabilizeToggleState_;
     }
     previousPressed = currentlyPressed;
   }
@@ -371,7 +376,6 @@ class GamepadTeleopInput {
   rclcpp::Logger logger_;
   int fd_ = -1;
   bool missingDeviceReported_ = false;
-  bool stabilizeToggleState_ = false;
   bool dpadLeftPressed_ = false;
   bool dpadRightPressed_ = false;
   bool dpadUpPressed_ = false;
@@ -424,7 +428,21 @@ class ScopedRawTerminalMode {
   termios originalState_{};
 };
 
-char readSingleKey(std::chrono::milliseconds timeout) {
+enum class KeyboardInputType {
+  None,
+  Character,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+};
+
+struct KeyboardInput {
+  KeyboardInputType type = KeyboardInputType::None;
+  char character = '\0';
+};
+
+char readRawKeyByte(std::chrono::milliseconds timeout) {
   pollfd pfd{};
   pfd.fd = STDIN_FILENO;
   pfd.events = POLLIN;
@@ -437,6 +455,37 @@ char readSingleKey(std::chrono::milliseconds timeout) {
   char key = '\0';
   const ssize_t bytesRead = ::read(STDIN_FILENO, &key, 1);
   return bytesRead == 1 ? key : '\0';
+}
+
+KeyboardInput readKeyboardInput(std::chrono::milliseconds timeout) {
+  const char firstByte = readRawKeyByte(timeout);
+  if (firstByte == '\0') {
+    return {};
+  }
+
+  if (firstByte != '\x1b') {
+    return {KeyboardInputType::Character,
+            static_cast<char>(std::tolower(static_cast<unsigned char>(firstByte)))};
+  }
+
+  const char secondByte = readRawKeyByte(std::chrono::milliseconds(2));
+  if (secondByte != '[') {
+    return {};
+  }
+
+  const char thirdByte = readRawKeyByte(std::chrono::milliseconds(2));
+  switch (thirdByte) {
+    case 'A':
+      return {KeyboardInputType::ArrowUp, '\0'};
+    case 'B':
+      return {KeyboardInputType::ArrowDown, '\0'};
+    case 'C':
+      return {KeyboardInputType::ArrowRight, '\0'};
+    case 'D':
+      return {KeyboardInputType::ArrowLeft, '\0'};
+    default:
+      return {};
+  }
 }
 
 ocs2::vector_t normalizedAxisFromKey(char key) {
@@ -573,6 +622,7 @@ void printVelocityModeHelp(ControllerType controllerType, const std::string& sta
         << "  o/l : raise/lower desired height slowly\n"
         << "  +/- : increase/decrease speeds\n"
         << "  space : hold the current joints from the current pose\n"
+        << "  arrow keys : unavailable in RL path without controller changes\n"
         << "  g : exit velocity mode back to goal mode\n"
         << "\nOptional 8Bitdo gamepad control:\n"
         << "  left stick : w/a/s/d analog motion after RL is active\n"
@@ -580,7 +630,7 @@ void printVelocityModeHelp(ControllerType controllerType, const std::string& sta
         << "  d-pad left/right : 1/2\n"
         << "  d-pad up/down : o/l\n"
         << "  B : z, LB : space(hold), RB : 0\n"
-        << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
+        << "  Y : tilt-mode toggle is unavailable in RL, LT/RT : -/+\n"
         << "Press 2 from stand or 3 from sit to arm RL walking.\n"
         << "Motion keys only move the robot once RL policy is active.\n";
   } else {
@@ -599,17 +649,19 @@ void printVelocityModeHelp(ControllerType controllerType, const std::string& sta
         << "  y : stabilize in place using current x/y reference\n"
         << "  t : resume walking mode inside vel mode\n"
         << "  o/l : raise/lower desired height slowly\n"
+        << "  arrow keys : body pitch/roll while standing in MPC stance only\n"
         << "  +/- : increase/decrease speeds\n"
         << "  r : switch to stance with safe clamped motion\n"
         << "  space : hold current joints and refresh the background target to the current pose\n"
         << "  g : exit velocity mode back to goal mode\n"
         << "\nOptional 8Bitdo gamepad control:\n"
         << "  left stick : w/a/s/d analog motion\n"
-        << "  right stick X : q/e analog yaw\n"
+        << "  right stick X : q/e analog yaw in walking mode\n"
         << "  d-pad left/right : 1/2\n"
         << "  d-pad up/down : o/l\n"
         << "  B : z, LB : space(hold), RB : 0, X : c\n"
-        << "  Y : stabilize toggle (y/t), LT/RT : -/+\n"
+        << "  Y : toggle tilt mode in stance, right stick X/Y : roll/pitch up to 20 deg,\n"
+        << "      stick center returns to default upright pose, LT/RT : -/+\n"
         << "Pressing 1 from HOLD returns to stance from the current pose.\n"
         << "The last motion key stays latched until you overwrite it or clear it with r.\n"
         << "The last active motion source wins, so you can switch between keyboard and controller.\n";
@@ -696,16 +748,98 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
   TeleopCommandState teleopState;
   teleopState.resetAxes();
   teleopState.estopActive = !isWalkingControlActive(controlState, controllerType);
+  const ocs2::scalar_t bodyTiltStepDeg = 2.0;
+  const ocs2::scalar_t gamepadTiltMaxDeg = 20.0;
+  bool gamepadTiltModeActive = false;
+
+  auto disableGamepadTiltMode = [&]() {
+    gamepadTiltModeActive = false;
+    targetPoseCommand.resetDesiredBodyTilt();
+  };
+
+  auto bodyTiltStatus = [&]() {
+    std::ostringstream stream;
+    stream << "Standing body tilt -> pitch: "
+           << targetPoseCommand.getDesiredBodyPitchDegrees()
+           << " deg, roll: "
+           << targetPoseCommand.getDesiredBodyRollDegrees()
+           << " deg.";
+    return stream.str();
+  };
+
+  auto canToggleGamepadTiltMode = [&]() {
+    return controllerType != ControllerType::Rl &&
+           !teleopState.estopActive &&
+           controlState == ControlState::Mpc &&
+           activeGaitCommand == "stance" &&
+           commandedVelocityIsZero(targetVelocityCommand, filteredVelocityCommand);
+  };
 
   while (rclcpp::ok() && currentMode == UserCommandMode::Velocity) {
     rclcpp::spin_some(node);
     teleopState.estopActive = !isWalkingControlActive(controlState, controllerType);
     gamepadInput.poll();
 
-    const char rawKey = readSingleKey(std::chrono::milliseconds(50));
-    const char keyboardKey = rawKey == '\0' ? '\0' : static_cast<char>(std::tolower(static_cast<unsigned char>(rawKey)));
-    const char key = keyboardKey != '\0' ? keyboardKey : gamepadInput.popNextMappedKey();
+    const KeyboardInput keyboardInput = readKeyboardInput(std::chrono::milliseconds(50));
+    const char key = keyboardInput.type == KeyboardInputType::Character
+                         ? keyboardInput.character
+                         : gamepadInput.popNextMappedKey();
     bool keyboardMotionKeyProcessed = false;
+    if (keyboardInput.type == KeyboardInputType::ArrowUp ||
+        keyboardInput.type == KeyboardInputType::ArrowDown ||
+        keyboardInput.type == KeyboardInputType::ArrowLeft ||
+        keyboardInput.type == KeyboardInputType::ArrowRight) {
+      if (controllerType == ControllerType::Rl) {
+        showVelocityModeHelp("Arrow-key body tilt is not available in the RL user-command path.");
+        continue;
+      }
+
+      if (teleopState.estopActive) {
+        showVelocityModeHelp("Arrow-key body tilt requires MPC stance to be active.");
+        continue;
+      }
+
+      if (activeGaitCommand != "stance") {
+        showVelocityModeHelp("Arrow-key body tilt is only available in stance.");
+        continue;
+      }
+
+      if (!commandedVelocityIsZero(targetVelocityCommand, filteredVelocityCommand)) {
+        showVelocityModeHelp("Arrow-key body tilt requires zero commanded velocity.");
+        continue;
+      }
+
+      gamepadTiltModeActive = false;
+      targetVelocityCommand.setZero();
+      filteredVelocityCommand.setZero();
+      forceZeroVelocityCommand = false;
+      teleopState.resetAxes();
+      teleopState.stabilizeModeActive = false;
+      teleopState.holdPositionActive = true;
+      gamepadMotionRequiresRecenter = true;
+
+      switch (keyboardInput.type) {
+        case KeyboardInputType::ArrowUp:
+          targetPoseCommand.adjustDesiredBodyPitch(bodyTiltStepDeg);
+          break;
+        case KeyboardInputType::ArrowDown:
+          targetPoseCommand.adjustDesiredBodyPitch(-bodyTiltStepDeg);
+          break;
+        case KeyboardInputType::ArrowLeft:
+          targetPoseCommand.adjustDesiredBodyRoll(-bodyTiltStepDeg);
+          break;
+        case KeyboardInputType::ArrowRight:
+          targetPoseCommand.adjustDesiredBodyRoll(bodyTiltStepDeg);
+          break;
+        default:
+          break;
+      }
+
+      targetPoseCommand.publishHoldPositionCommand(false);
+      showVelocityModeHelp(bodyTiltStatus());
+      continue;
+    }
+
     if (key != '\0') {
       if (teleopState.estopActive) {
         if (controllerType == ControllerType::Rl) {
@@ -1002,6 +1136,42 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
           teleopState.holdPositionActive = false;
         }
         showVelocityModeHelp("Walking mode resumed inside velocity mode.");
+      } else if (key == 'p') {
+        if (controllerType == ControllerType::Rl) {
+          showVelocityModeHelp("Gamepad tilt mode is not available in the RL user-command path.");
+        } else if (gamepadTiltModeActive) {
+          disableGamepadTiltMode();
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          forceZeroVelocityCommand = false;
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = true;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp("Gamepad tilt mode disabled. Body returned to upright hold.");
+        } else if (!canToggleGamepadTiltMode()) {
+          if (teleopState.estopActive) {
+            showVelocityModeHelp("Gamepad tilt mode requires MPC stance to be active.");
+          } else if (activeGaitCommand != "stance") {
+            showVelocityModeHelp("Gamepad tilt mode is only available in stance.");
+          } else {
+            showVelocityModeHelp("Gamepad tilt mode requires zero commanded velocity.");
+          }
+        } else {
+          gamepadTiltModeActive = true;
+          targetPoseCommand.resetDesiredBodyTilt();
+          targetVelocityCommand.setZero();
+          filteredVelocityCommand.setZero();
+          forceZeroVelocityCommand = false;
+          teleopState.resetAxes();
+          teleopState.holdPositionActive = true;
+          teleopState.stabilizeModeActive = false;
+          gamepadMotionRequiresRecenter = false;
+          targetPoseCommand.publishHoldPositionCommand(false);
+          showVelocityModeHelp(
+              "Gamepad tilt mode active. Right stick controls pitch/roll up to 20 deg. Stick center returns upright.");
+        }
       } else if (key == 'o') {
         const ocs2::scalar_t desiredHeight = targetPoseCommand.adjustDesiredHeight(heightStep);
         if (teleopState.holdPositionActive) {
@@ -1076,6 +1246,7 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       } else if (key == 'c') {
         showVelocityModeHelp("Zero torque is only available after sit-down or from a safe non-MPC mode.");
       } else if (key == 'g') {
+        disableGamepadTiltMode();
         targetVelocityCommand.setZero();
         filteredVelocityCommand.setZero();
         targetPoseCommand.publishHoldPositionCommand();
@@ -1088,18 +1259,30 @@ void runVelocityKeyboardMode(TargetTrajectoriesKeyboardPublisher& targetPoseComm
       }
     }
 
-    gamepadInput.setStabilizeToggleState(teleopState.stabilizeModeActive);
     if (gamepadMotionRequiresRecenter) {
       if (!gamepadInput.hasActiveMotionInput()) {
         gamepadMotionRequiresRecenter = false;
       }
-    } else if (!keyboardMotionKeyProcessed &&
-               (gamepadInput.hasActiveMotionInput() || activeMotionSource == MotionInputSource::Gamepad)) {
-      activeMotionSource = MotionInputSource::Gamepad;
+    } else if (!keyboardMotionKeyProcessed) {
       const ocs2::vector_t gamepadAxes = gamepadInput.currentMotionAxes();
-      teleopState.forwardAxis = gamepadAxes(0);
-      teleopState.lateralAxis = gamepadAxes(1);
-      teleopState.yawAxis = gamepadAxes(2);
+      const ocs2::vector_t gamepadTiltAxes = gamepadInput.currentTiltAxes();
+
+      if (gamepadTiltModeActive) {
+        activeMotionSource = MotionInputSource::Gamepad;
+        targetVelocityCommand.setZero();
+        filteredVelocityCommand.setZero();
+        forceZeroVelocityCommand = false;
+        teleopState.resetAxes();
+        teleopState.stabilizeModeActive = false;
+        teleopState.holdPositionActive = true;
+        targetPoseCommand.setDesiredBodyTiltDegrees(
+            gamepadTiltMaxDeg * gamepadTiltAxes(0), gamepadTiltMaxDeg * gamepadTiltAxes(1));
+      } else if (gamepadInput.hasActiveMotionInput() || activeMotionSource == MotionInputSource::Gamepad) {
+        activeMotionSource = MotionInputSource::Gamepad;
+        teleopState.forwardAxis = gamepadAxes(0);
+        teleopState.lateralAxis = gamepadAxes(1);
+        teleopState.yawAxis = gamepadAxes(2);
+      }
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -1208,6 +1391,10 @@ int main(int argc, char* argv[]) {
       referenceInfoTree.get<int>("teleop.gamepad.axisForward", gamepadConfig.axisForward);
   gamepadConfig.axisYaw =
       referenceInfoTree.get<int>("teleop.gamepad.axisYaw", gamepadConfig.axisYaw);
+  gamepadConfig.axisTiltRoll =
+      referenceInfoTree.get<int>("teleop.gamepad.axisTiltRoll", gamepadConfig.axisTiltRoll);
+  gamepadConfig.axisTiltPitch =
+      referenceInfoTree.get<int>("teleop.gamepad.axisTiltPitch", gamepadConfig.axisTiltPitch);
   gamepadConfig.dpadHorizontalAxis =
       referenceInfoTree.get<int>("teleop.gamepad.dpadHorizontalAxis", gamepadConfig.dpadHorizontalAxis);
   gamepadConfig.dpadVerticalAxis =

@@ -28,6 +28,8 @@ teleop
     axisLateral                          0
     axisForward                          1
     axisYaw                              3
+    axisTiltRoll                         3
+    axisTiltPitch                        4
     dpadHorizontalAxis                   6
     dpadVerticalAxis                     7
     leftTriggerAxis                      2

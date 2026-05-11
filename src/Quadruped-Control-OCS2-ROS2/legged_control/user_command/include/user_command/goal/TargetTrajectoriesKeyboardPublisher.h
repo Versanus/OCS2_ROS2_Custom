@@ -89,7 +89,13 @@ class TargetTrajectoriesKeyboardPublisher {
   void publishVelocityCommand(const ocs2::vector_t& velocityCommand, bool verbose = true);
   void publishHoldPositionCommand(bool verbose = true);
   ocs2::scalar_t adjustDesiredHeight(ocs2::scalar_t deltaHeight);
+  ocs2::scalar_t adjustDesiredBodyPitch(ocs2::scalar_t deltaDegrees);
+  ocs2::scalar_t adjustDesiredBodyRoll(ocs2::scalar_t deltaDegrees);
+  void setDesiredBodyTiltDegrees(ocs2::scalar_t pitchDegrees, ocs2::scalar_t rollDegrees);
+  void resetDesiredBodyTilt();
   ocs2::scalar_t getDesiredHeight() const { return comHeight_; }
+  ocs2::scalar_t getDesiredBodyPitchDegrees() const { return desiredBodyPitchDeg_; }
+  ocs2::scalar_t getDesiredBodyRollDegrees() const { return desiredBodyRollDeg_; }
 
  private:
   /** Gets the target from command line. */
@@ -116,6 +122,9 @@ class TargetTrajectoriesKeyboardPublisher {
   ocs2::TargetTrajectories holdCurrentPoseToTargetTrajectories(
     const ocs2::SystemObservation& observation);
   ocs2::scalar_t estimateTimeToTarget(const ocs2::vector_t& desiredBaseDisplacement);
+  ocs2::scalar_t desiredBodyPitchRadians() const;
+  ocs2::scalar_t desiredBodyRollRadians() const;
+  ocs2::scalar_t clampDesiredBodyTiltDegrees(ocs2::scalar_t degrees) const;
 
   // std::unique_ptr<TargetTrajectoriesRosPublisher>
   //     targetTrajectoriesPublisherPtr_;
@@ -145,6 +154,9 @@ class TargetTrajectoriesKeyboardPublisher {
   bool velocityReferenceInitialized_ = false;
   ocs2::vector_t velocityReferencePose_ = ocs2::vector_t::Zero(6);
   ocs2::scalar_t lastVelocityReferenceTime_ = 0.0;
+  ocs2::scalar_t desiredBodyPitchDeg_ = 0.0;
+  ocs2::scalar_t desiredBodyRollDeg_ = 0.0;
+  ocs2::scalar_t maxDesiredBodyTiltDeg_ = 30.0;
   std::string targetPathFrameId_ = "odom";
   
 };

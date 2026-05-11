@@ -63,8 +63,8 @@ jointGainRatios
 {
   nominalKp                     0.60
   nominalKd                     1.00
-  strongKp                      4.0
-  strongKd                      2.0
+  strongKp                      1.5
+  strongKd                      1.0
   zeroKp                        0.0
   zeroKd                        0.0
 }

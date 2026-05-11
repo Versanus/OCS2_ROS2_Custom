@@ -24,9 +24,13 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
 
 ## Demo
 
-### Rough Terrain Walking
+### MPC Flat Walking in RViz
 
-![Quad Mini rough terrain walking demo](docs/media/rough_terrain_walk.gif)
+[Watch the MPC flat-walking RViz demo](docs/media/mpc_rviz_flat_walk.mp4)
+
+### RL Rough Terrain Walking
+
+[Watch the RL rough-terrain walking demo](docs/media/rl_test_rough.mp4)
 
 ## Repository Layout
 
@@ -318,6 +322,71 @@ Key notes:
 - `task_gazebo.info` is selected automatically for Gazebo through `tools/run_tmux.sh`.
 - `simulation.info` provides base PD gains used by the Gazebo controller launcher.
 - `rl.info` provides RL-specific base gains when `control_type:=rl`.
+
+## User Command Teleop
+
+The `user_command` node starts in velocity mode and reads keyboard input from the terminal. The default launch file is:
+
+```text
+src/Quadruped-Control-OCS2-ROS2/legged_control/launch_simulation/launch/user_command.launch.py
+```
+
+Its default `robot_type` is `quad_mini_tuned`, so the active teleop/gamepad axis mapping usually comes from:
+
+```text
+src/Quadruped-Control-OCS2-ROS2/legged_control/user_command/config/quad_mini_tuned/reference.info
+```
+
+### Keyboard Controls
+
+In MPC velocity mode:
+
+- `w/s`: forward/backward
+- `a/d`: lateral motion
+- `q/e`: yaw
+- arrow keys: standing body pitch/roll adjustment
+- `y`: stabilize mode
+- `t`: return from stabilize mode to normal walking mode
+- `o/l`: raise/lower desired body height
+- `r`: switch back to `stance`
+- `space`: hold current pose
+
+The arrow-key tilt path is intended for standing use. Body tilt is limited in `user_command` and published as part of the standing target trajectory.
+
+### Gamepad Controls
+
+Walking and tilt mode use separate axis mappings.
+
+Normal walking uses:
+
+- `axisForward`
+- `axisLateral`
+- `axisYaw`
+
+Tilt mode uses:
+
+- `axisTiltRoll`
+- `axisTiltPitch`
+
+Current behavior:
+
+- left stick keeps the normal walking command mapping
+- `Y` toggles tilt mode on/off
+- while tilt mode is active, one stick controls both body axes:
+  - stick X -> roll
+  - stick Y -> pitch
+- tilt mode uses `+/-20 deg` limits on both pitch and roll
+- returning the tilt stick to center returns the body target to the default upright pose
+
+For `quad_mini_tuned`, the current config keeps the original walking mapping and adds dedicated tilt axes in:
+
+```text
+teleop.gamepad.axisForward
+teleop.gamepad.axisLateral
+teleop.gamepad.axisYaw
+teleop.gamepad.axisTiltRoll
+teleop.gamepad.axisTiltPitch
+```
 
 ## Troubleshooting
 

@@ -41,6 +41,12 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 namespace {
 
+constexpr ocs2::scalar_t kPi = 3.14159265358979323846;
+
+ocs2::scalar_t degreesToRadians(ocs2::scalar_t degrees) {
+  return degrees * kPi / 180.0;
+}
+
 geometry_msgs::msg::Quaternion quaternionFromYawPitchRoll(
     ocs2::scalar_t yaw, ocs2::scalar_t pitch, ocs2::scalar_t roll) {
   const ocs2::scalar_t halfYaw = 0.5 * yaw;
@@ -220,6 +226,61 @@ void TargetTrajectoriesKeyboardPublisher::publishRawVelocityCommand(const ocs2::
 ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::adjustDesiredHeight(ocs2::scalar_t deltaHeight) {
   comHeight_ = std::clamp(comHeight_ + deltaHeight, ocs2::scalar_t(0.12), ocs2::scalar_t(0.40));
   return comHeight_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::adjustDesiredBodyPitch(ocs2::scalar_t deltaDegrees) {
+  desiredBodyPitchDeg_ = clampDesiredBodyTiltDegrees(desiredBodyPitchDeg_ + deltaDegrees);
+  return desiredBodyPitchDeg_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::adjustDesiredBodyRoll(ocs2::scalar_t deltaDegrees) {
+  desiredBodyRollDeg_ = clampDesiredBodyTiltDegrees(desiredBodyRollDeg_ + deltaDegrees);
+  return desiredBodyRollDeg_;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::setDesiredBodyTiltDegrees(
+    ocs2::scalar_t pitchDegrees, ocs2::scalar_t rollDegrees) {
+  desiredBodyPitchDeg_ = clampDesiredBodyTiltDegrees(pitchDegrees);
+  desiredBodyRollDeg_ = clampDesiredBodyTiltDegrees(rollDegrees);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+void TargetTrajectoriesKeyboardPublisher::resetDesiredBodyTilt() {
+  desiredBodyPitchDeg_ = 0.0;
+  desiredBodyRollDeg_ = 0.0;
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::desiredBodyPitchRadians() const {
+  return degreesToRadians(desiredBodyPitchDeg_);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::desiredBodyRollRadians() const {
+  return degreesToRadians(desiredBodyRollDeg_);
+}
+
+/******************************************************************************************************/
+/******************************************************************************************************/
+/******************************************************************************************************/
+ocs2::scalar_t TargetTrajectoriesKeyboardPublisher::clampDesiredBodyTiltDegrees(
+    ocs2::scalar_t degrees) const {
+  return std::clamp(degrees, -maxDesiredBodyTiltDeg_, maxDesiredBodyTiltDeg_);
 }
 
 // /******************************************************************************************************/
@@ -453,8 +514,8 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::commandLineToTarge
     // theta_z relative to current
     target(3) = currentPose(3) + commadLineTarget(3) * M_PI / 180.0;
     // theta_y, theta_x
-    target(4) = currentPose(4);
-    target(5) = currentPose(5);
+    target(4) = desiredBodyPitchRadians();
+    target(5) = desiredBodyRollRadians();
     return target;
   }();
   
@@ -485,8 +546,8 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::velocityCommandToT
   const ocs2::vector_t currentPose = observation.state.segment<6>(6);
   ocs2::vector_t desiredPoseNow = currentPose;
   desiredPoseNow(2) = comHeight_;
-  desiredPoseNow(4) = 0.0;
-  desiredPoseNow(5) = 0.0;
+  desiredPoseNow(4) = desiredBodyPitchRadians();
+  desiredPoseNow(5) = desiredBodyRollRadians();
   if (!velocityReferenceInitialized_ || observation.time < lastVelocityReferenceTime_ ||
       observation.time - lastVelocityReferenceTime_ > 0.5) {
     velocityReferencePose_ = desiredPoseNow;
@@ -547,12 +608,12 @@ ocs2::TargetTrajectories TargetTrajectoriesKeyboardPublisher::holdCurrentPoseToT
   const ocs2::scalar_array_t timeTrajectory{observation.time, observation.time + holdTrajectoryDuration_};
   ocs2::vector_t desiredPoseNow = currentPose;
   desiredPoseNow(2) = comHeight_;
-  desiredPoseNow(4) = 0.0;
-  desiredPoseNow(5) = 0.0;
+  desiredPoseNow(4) = desiredBodyPitchRadians();
+  desiredPoseNow(5) = desiredBodyRollRadians();
   ocs2::vector_t holdPose = currentPose;
   holdPose(2) = comHeight_;
-  holdPose(4) = 0.0;
-  holdPose(5) = 0.0;
+  holdPose(4) = desiredBodyPitchRadians();
+  holdPose(5) = desiredBodyRollRadians();
 
   ocs2::vector_array_t stateTrajectory(2, ocs2::vector_t::Zero(observation.state.size()));
   stateTrajectory[0] << ocs2::vector_t::Zero(6), desiredPoseNow, defaultJointState_;
