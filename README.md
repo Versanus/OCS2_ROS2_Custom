@@ -1,7 +1,14 @@
 
+
 # OCS2 Quad Mini
 
 ROS 2 Humble workspace for quadruped locomotion on the Quad Mini platform. The project combines OCS2 MPC/WBC, MuJoCo simulation, Gazebo/Ignition simulation, RViz visualization, Docker-based development, and real-robot bridge tooling.
+
+
+https://github.com/user-attachments/assets/bfb32b24-cfe3-4999-bf00-ae66e05c550d
+
+
+https://github.com/user-attachments/assets/3b519629-4c04-4968-8f5e-f8ad8fbd3b3c
 
 The current maintained robots are:
 
@@ -22,26 +29,6 @@ tau = tau_ff + kp * (q_des - q) + kd * (dq_des - dq)
 - IMU, odometry, joint state, and estimated-contact bridge paths.
 - RViz moving-base visualization for simulator and hardware topics.
 - Docker workflow with ROS 2 Humble, MuJoCo, Gazebo, ros2_control, and OCS2 dependencies.
-
-
-
-Uploading mpc_rviz_flat_walk1.mp4…
-
-
-https://github.com/user-attachments/assets/ccecc167-d873-49f6-b29c-68943f8ec607
-
-
-
-
-## Demo
-
-### MPC Flat Walking in RViz
-
-[![MPC flat-walking RViz demo](docs/media/mpc_rviz_flat_walk_thumb.jpg)](docs/media/mpc_rviz_flat_walk.mp4)
-
-### RL Rough Terrain Walking
-
-[![RL rough-terrain walking demo](docs/media/rl_test_rough_thumb.jpg)](docs/media/rl_test_rough.mp4)
 
 ## Repository Layout
 
