@@ -120,6 +120,7 @@ echo 'Building simulator, bridge, and visualization packages'
 colcon build --packages-select \
   legged_msgs \
   stm2ros \
+  inekf \
   motion_control \
   hardware_inter \
   gazebo_effort_controller \
