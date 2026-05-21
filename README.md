@@ -1,8 +1,12 @@
 
 
+
 # OCS2 Quad Mini
 
 ROS 2 Humble workspace for quadruped locomotion on the Quad Mini platform. The project combines OCS2 MPC/WBC, MuJoCo simulation, Gazebo/Ignition simulation, RViz visualization, Docker-based development, and real-robot bridge tooling.
+
+
+https://github.com/user-attachments/assets/7d614b2a-a1de-49e8-8b1c-aaabd890db55
 
 
 https://github.com/user-attachments/assets/29d99706-da81-4bc8-b035-7d9399f1a6cf
